@@ -226,6 +226,7 @@ class VentanaOverlay(QWidget):
         self.banner = QLabel()
         self.banner.setWordWrap(True)
         self.banner.setTextFormat(Qt.RichText)
+        self.banner.setOpenExternalLinks(True)
         self.banner.setStyleSheet(
             f"color: {PALETA['aviso']}; border: 1px solid {PALETA['aviso']};"
             " border-radius: 6px; padding: 4px 8px;"
@@ -391,6 +392,7 @@ class VentanaOverlay(QWidget):
         self.hilo_comparador = QThread(self)
         self.servicio_comparador = ServicioComparador(escuadra=True)
         self.servicio_comparador.moveToThread(self.hilo_comparador)
+        self.hilo_comparador.started.connect(self.servicio_comparador.iniciar)
         self.lector_recompensas.leidas.connect(self.servicio_comparador.comparar)
         self.servicio_comparador.veredicto.connect(self._veredicto_recompensas)
         self.hilo_comparador.start()
@@ -534,9 +536,20 @@ class VentanaOverlay(QWidget):
         self.preparar_datos(forzar=True)
 
     def _hay_version_nueva(self, version) -> None:
+        """Version nueva publicada. Se avisa en el banner, que no se borra solo.
+
+        Antes esto iba a la linea de estado, que a los pocos segundos la pisa el
+        primer mensaje de la carga de datos o de la siguiente busqueda: el aviso
+        salia y desaparecia sin que diera tiempo a leerlo.
+        """
         self.nueva_version = version
-        self.estado.setText(
-            t("Hay una version nueva ({version}). Descargala desde Ajustes.", version=version.etiqueta)
+        self._aviso(
+            "version",
+            t(
+                'Hay una version nueva de Farmadex ({version}). '
+                '<a style="color:{color}" href="{url}">Descargala</a>, o instalala desde Ajustes.',
+                version=version.etiqueta, color=PALETA["acento"], url=version.url,
+            ),
         )
         self.ajustes.anunciar_version(version)
 
@@ -564,9 +577,10 @@ class VentanaOverlay(QWidget):
     def _hay_version_local(self, version) -> None:
         self._version_encontrada = version
         self.ajustes.estado_version(t("Hay una version nueva: {version}", version=version.etiqueta))
-        self.estado.setText(
+        self._aviso(
+            "version",
             t("Hay compilada una version nueva ({version}): instalala desde Ajustes.",
-              version=version.etiqueta)
+              version=version.etiqueta),
         )
         self.ajustes.anunciar_version(version, local=True)
 

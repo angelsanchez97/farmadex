@@ -111,11 +111,13 @@ def test_comprobar_a_mano_contesta_siempre(monkeypatch):
     comprobador.comprobar_ahora(manual=True)
     assert fallos == ["sin conexion"]
 
-    # 3) Automatica, la misma version: aqui si se calla.
+    # 3) La automatica del arranque contesta igual: quien escucha decide si lo
+    #    ensena. Una version nueva sale en el banner de la ventana; "estas al dia"
+    #    solo se escribe en Ajustes, que es donde se va a mirar.
     iguales.clear()
     monkeypatch.setattr(comprobador.cliente, "json", lambda *a, **k: {"tag_name": VERSION})
     comprobador.comprobar_ahora()
-    assert iguales == []
+    assert iguales == [1]
     comprobador.cerrar()
 
 
@@ -150,3 +152,31 @@ def test_se_ofrece_el_instalador_no_el_zip():
         }
     )
     assert version.url == "exe"
+
+
+def test_la_version_nueva_se_avisa_en_el_banner_no_en_la_linea_de_estado():
+    """El usuario pidio que al abrir el programa se le diga si hay actualizacion.
+
+    Ya se comprobaba al arrancar, pero el aviso iba a la linea de estado del pie,
+    que a los pocos segundos la pisa el primer mensaje de la carga de datos: salia
+    y desaparecia. El banner, en cambio, se queda hasta que deja de hacer falta.
+    """
+    import types
+
+    from farmadex.actualizador.app import Version
+    from farmadex.ui.overlay import VentanaOverlay
+
+    avisos, estado = {}, []
+    falso = types.SimpleNamespace(
+        _aviso=lambda clave, texto: avisos.__setitem__(clave, texto),
+        estado=types.SimpleNamespace(setText=estado.append),
+        ajustes=types.SimpleNamespace(anunciar_version=lambda *a, **k: None),
+        nueva_version=None,
+    )
+    version = Version(etiqueta="v9.9.9", url="https://ejemplo/Farmadex-setup.exe", notas="")
+
+    VentanaOverlay._hay_version_nueva(falso, version)
+
+    assert "v9.9.9" in avisos["version"]
+    assert version.url in avisos["version"], "tiene que poder pincharse para descargar"
+    assert estado == [], "la linea de estado se pisa sola: el aviso no puede vivir ahi"

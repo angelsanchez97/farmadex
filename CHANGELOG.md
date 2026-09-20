@@ -1,5 +1,19 @@
 # Cambios
 
+## 0.1.8
+
+- **El aviso de version nueva ya se ve.** Se comprobaba al arrancar desde la
+  0.1.6, pero el aviso iba a la linea de estado del pie, la misma que usan la
+  carga de datos y las busquedas: salia y a los dos segundos lo pisaba otro
+  mensaje. Ahora sale en el recuadro de avisos, que no se borra solo, se ve
+  tambien en modo compacto y lleva un enlace para bajar el instalador.
+- **La primera reliquia de la sesion tarda menos.** Pagaba ella sola la carga
+  del modelo de OCR (~300 ms), su primera lectura (~500 ms) y la creacion del
+  cliente de precios (~220 ms). Ahora todo eso se hace al arrancar el programa,
+  cuando no hay nadie esperando: los nombres salen en ~1,9 s en vez de ~2,3 s y
+  el veredicto en ~3,5 s en vez de ~3,9 s. Las reliquias siguientes ya iban a
+  esa velocidad.
+
 ## 0.1.7
 
 - **Los ajustes ya se guardan.** El tema, el idioma, la opacidad, la

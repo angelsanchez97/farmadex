@@ -125,6 +125,7 @@ class MotorOCR:
 
     _compartidos: dict[str, object] = {}
     _fallidos: dict[str, str] = {}  # motor -> motivo; no se reintenta en bucle
+    _precalentados: set[str] = set()  # motores que ya hicieron su primera inferencia
     _cerrojo = threading.Lock()
 
     def __init__(self, motor: str = "rapidocr", hilos: int = HILOS_OCR):
@@ -170,12 +171,41 @@ class MotorOCR:
             log.info("Motor OCR '%s' cargado en %.1f s", self.motor, time.monotonic() - inicio)
         return self._ocr
 
+    def precalentar(self) -> None:
+        """Carga el motor y hace una lectura de prueba, para que la primera reliquia no la pague.
+
+        Medido (herramientas/medir_reliquia.py): cargar el modelo cuesta ~300 ms y
+        la primera inferencia de ONNX Runtime ~500 ms; con esto la primera lectura
+        de verdad baja a ~350 ms, lo mismo que cualquier otra pantalla con nombres
+        nuevos (ONNX Runtime planifica la memoria del reconocedor por cada ancho
+        de texto que no ha visto; solo repetir la misma pantalla baja a ~180 ms).
+        Se hace una sola vez por motor compartido, con una imagen del tamano de la
+        franja de recompensas y nombres pintados para que pasen por el detector y
+        por el reconocedor. Lanza `ErrorMotorOCR` si el motor no carga; un fallo
+        de la lectura de prueba solo se registra.
+        """
+        motor = self._cargar()
+        with MotorOCR._cerrojo:
+            if self.motor in MotorOCR._precalentados:
+                return
+            MotorOCR._precalentados.add(self.motor)
+        if motor == "winocr":  # pragma: no cover - el OCR de Windows no calienta nada
+            return
+        inicio = time.monotonic()
+        try:
+            self.leer(_imagen_de_prueba())
+        except Exception as e:  # noqa: BLE001 - es solo un calentamiento
+            log.warning("El precalentado del OCR fallo: %s", e)
+            return
+        log.info("Motor OCR '%s' precalentado en %.0f ms", self.motor, (time.monotonic() - inicio) * 1000)
+
     @classmethod
     def descargar(cls) -> None:
         """Suelta los modelos compartidos y olvida los fallos (pruebas, cambio de motor)."""
         with cls._cerrojo:
             cls._compartidos.clear()
             cls._fallidos.clear()
+            cls._precalentados.clear()
 
     @classmethod
     def olvidar_fallo(cls, motor: str) -> None:
@@ -239,6 +269,25 @@ class MotorOCR:
             )
             for linea in resultado.get("lines", [])
         ]
+
+
+def _imagen_de_prueba(ancho: int = 1536, alto: int = 454):
+    """Franja oscura con una palabra clara, como la pantalla de recompensas a 1080p."""
+    import numpy as np
+
+    imagen = np.full((alto, ancho, 3), 16, np.uint8)
+    # Cuatro nombres repartidos como las tarjetas, para que el reconocedor reciba
+    # un lote parecido al real (varias cajas de texto de anchos distintos).
+    paso = ancho // 4
+    try:
+        import cv2
+
+        for i, palabra in enumerate(("SISTEMAS DE ASH PRIME", "CANON DE BRATON PRIME", "RECEPTOR PRIME", "PLANO")):
+            cv2.putText(imagen, palabra, (paso * i + 20, alto * 3 // 4), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (235, 235, 235), 2)
+    except ImportError:  # pragma: no cover - cv2 viene con rapidocr
+        for i in range(4):
+            imagen[alto * 3 // 4 - 20 : alto * 3 // 4, paso * i + 20 : paso * i + 220] = 235
+    return imagen
 
 
 def preparar(imagen):

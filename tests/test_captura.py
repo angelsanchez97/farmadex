@@ -281,3 +281,52 @@ def test_recuadro_del_cursor_no_se_sale_del_escritorio_con_dos_monitores(monkeyp
 def test_recortar_franja_en_proporciones():
     region = pantalla.Region(100, 200, 1000, 500).recortar(0.1, 0.3, 0.9, 0.7)
     assert (region.x, region.y, region.ancho, region.alto) == (200, 350, 800, 200)
+
+
+# --- precalentado del motor al arrancar ------------------------------------------
+
+
+def test_iniciar_precalienta_el_motor_una_sola_vez(monkeypatch):
+    """La primera reliquia no paga ni la carga del modelo ni la primera inferencia."""
+    from farmadex.datos import indice
+
+    MotorOCR.descargar()
+    lecturas = []
+
+    def motor_falso(imagen):
+        lecturas.append(imagen.shape)
+        return [], None
+
+    creados = []
+    monkeypatch.setattr(ocr, "_crear_rapidocr", lambda hilos: creados.append(hilos) or motor_falso)
+    monkeypatch.setattr(indice, "hay_indice", lambda *a, **k: False)
+    monkeypatch.setattr(pantalla, "declarar_dpi", lambda: None)
+    try:
+        a, b = LectorRecompensas("rapidocr"), LectorCursor("rapidocr")
+        a.iniciar()
+        b.iniciar()
+        assert creados == [ocr.HILOS_OCR]  # el modelo se carga al arrancar, una vez
+        assert len(lecturas) == 1  # y la lectura de prueba se hace una vez por motor compartido
+        alto, ancho, canales = lecturas[0]
+        assert canales == 3 and ancho > alto  # del tamano y forma de la franja de recompensas
+        a.iniciar()  # reintentos (sin indice) no vuelven a calentar
+        assert len(lecturas) == 1
+    finally:
+        MotorOCR.descargar()
+
+
+def test_motor_roto_no_revienta_el_arranque_y_avisa_una_vez(catalogo, motor_roto, monkeypatch):
+    con, _ = catalogo
+    _con_indice(monkeypatch, con)
+    lector = LectorRecompensas("rapidocr")
+    estados = []
+    lector.estado.connect(estados.append)
+
+    lector.iniciar()  # no lanza nada; el fallo queda apuntado en el motor
+    assert estados == []  # y no se avisa hasta que el usuario pide leer
+    assert lector.casador is not None  # el casador se prepara igual
+
+    lector.leer_ahora()
+    lector.leer_ahora()
+    assert estados.count(AVISO_MOTOR) == 1
+    assert len(motor_roto) == 1  # iniciar no reintenta la carga

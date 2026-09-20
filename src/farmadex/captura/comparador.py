@@ -30,16 +30,28 @@ vendedor mas barato que esta en el juego) y se avisa cuando el mercado es fino
 Tiempo
 ------
 La recompensa se elige con una cuenta atras de unos 15 s. Medido el 2026-09-20
-con `herramientas/comparar_reliquias.py ... --medir 3` (indice real, red domestica):
+con `herramientas/medir_reliquia.py --vueltas 4` (indice real, red domestica,
+pantalla sintetica de 1920x1080 con cuatro piezas):
 
     espera animacion (DisparadorAutomatico.ESPERA_MS)   1500 ms
-    captura + OCR RapidOCR de la franja                  600-1300 ms (medir_ocr.py)
-    completar (indice + objetivos)                       0.0 ms (4 piezas)
-    precios: ~290 ms por pieza con slug, en frio         572 ms con 2 slugs; 4 slugs ~1200 ms
-             (limite del cliente: 2 peticiones/s)        1 ms con la cache de 10 min
-    puntuar                                              0.02 ms
+    captura mss de la franja                             13 ms (34 la primera)
+    OCR RapidOCR de la franja 1536x454                   330-470 ms con nombres nuevos (180 si
+                                                         se repite la misma pantalla); la primera
+                                                         de la sesion costaba 290 de cargar el
+                                                         modelo + 505 de primera inferencia, por
+                                                         eso se precalienta al arrancar
+    casado con el catalogo                               20 ms
+    completar (indice + objetivos)                       0.1 ms (4 piezas)
+    pintar las etiquetas                                 1-4 ms
+    precios: 4 slugs en serie, en frio                   1550 ms (110 el primero, ~480 el
+             (manda el limitador de 2 peticiones/s,      resto: es la espera del limitador,
+             no la red: en paralelo no ganaria nada)     no la red); 0 ms con la cache de 10 min
+    crear el cliente HTTP                                220 ms (ahora al arrancar el hilo)
+    puntuar                                              0.1 ms
     ------------------------------------------------------------------
-    total desde "Got rewards" hasta veredicto            ~3.5-4 s en frio, ~2.5 s con cache
+    nombres en pantalla desde el aviso de EE.log         ~1.9 s, tambien la primera reliquia
+                                                         (antes ~2.5 s)
+    veredicto                                            +1.6 s en frio, +0 con cache
 
 Queda margen, pero por si la red se atasca `puntuar` lleva un plazo
 (`PLAZO_PRECIOS_S`): cuando se agota deja de pedir precios y da el veredicto con
@@ -340,7 +352,9 @@ class ServicioComparador(QObject):
 
     La interfaz conecta `LectorRecompensas.leidas` a `comparar` y pinta al recibir
     `veredicto(recompensas, Veredicto)`. Las conexiones SQLite se abren aqui, en el
-    hilo que las usa; el proveedor de precios se crea perezoso la primera vez.
+    hilo que las usa. El proveedor de precios lo crea `iniciar` al arrancar el hilo
+    (crear el cliente HTTP cuesta ~220 ms medidos, que antes pagaba la primera
+    reliquia); si nadie llama a `iniciar`, se crea perezoso la primera vez.
     """
 
     veredicto = Signal(list, object)  # list[Recompensa] ya completadas, Veredicto
@@ -351,6 +365,11 @@ class ServicioComparador(QObject):
         self.ruta_usuario = ruta_usuario
         self._crear_market = crear_market
         self._market = None
+
+    @Slot()
+    def iniciar(self) -> None:
+        """Crea el proveedor de precios ya, en el hilo del comparador, sin que nadie espere."""
+        self._precios_de()
 
     def _precios_de(self):
         if self._market is None:

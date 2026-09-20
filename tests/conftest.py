@@ -1,5 +1,13 @@
+import os
 import sqlite3
+import tempfile
 from pathlib import Path
+
+# Antes de importar nada de farmadex: las rutas de datos se resuelven al importar
+# `config`, y sin esto las pruebas escriben en la carpeta de verdad del usuario.
+# Ya paso una vez con config.json, que le cambio el tema sin que el tocara nada;
+# el registro a fichero estaba haciendo lo mismo con su log.
+os.environ.setdefault("FARMADEX_DATOS", str(Path(tempfile.gettempdir()) / "farmadex-pruebas"))
 
 import pytest
 

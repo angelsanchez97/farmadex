@@ -117,7 +117,7 @@
   "Ha caido:": "Gefallen:",
   "Hay compilada una version nueva ({version}): instalala desde Ajustes.": "Ein neuer Build ist verfügbar ({version}): installiere ihn in den Einstellungen.",
   "Hay que comprarla a otro jugador.": "Muss von einem anderen Spieler gekauft werden.",
-  "Hay una version nueva ({version}). Descargala desde Ajustes.": "Neue Version verfügbar ({version}). Lade sie in den Einstellungen herunter.",
+  "Hay una version nueva de Farmadex ({version}). <a style=\"color:{color}\" href=\"{url}\">Descargala</a>, o instalala desde Ajustes.": "Es gibt eine neue Version von Farmadex ({version}). <a style=\"color:{color}\" href=\"{url}\">Herunterladen</a>, oder aus den Einstellungen installieren.",
   "Hay una version nueva: <b>{version}</b>.": "Neue Version verfügbar: <b>{version}</b>.",
   "Hay una version nueva: {version}": "Neue Version verfügbar: {version}",
   "Honoria": "Honoria",

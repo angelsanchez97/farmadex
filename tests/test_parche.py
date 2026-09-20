@@ -313,6 +313,8 @@ def test_si_la_franja_sale_vacia_se_lee_la_ventana_entera(con, monkeypatch):
 
     monkeypatch.setattr(ocr.MotorOCR, "leer", leer_falso)
     monkeypatch.setattr(ocr.MotorOCR, "fallo", property(lambda self: None))
+    # El precalentado del arranque tambien pasa por leer(); aqui solo cuentan las lecturas de pantalla.
+    monkeypatch.setattr(ocr.MotorOCR, "precalentar", lambda self: None)
     lector = LectorRecompensas("rapidocr")
     leidas = []
     lector.leidas.connect(leidas.append)

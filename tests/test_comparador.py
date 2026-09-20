@@ -257,3 +257,32 @@ def test_puntuacion_clave_ordena_objetivo_valor_rareza():
     c = Puntuacion(3, "c", objetivo="0/1", valor=1.0)
     d = Puntuacion(4, "d", rareza="rara")
     assert sorted([a, b, c, d], key=lambda p: p.clave, reverse=True) == [c, b, a, d]
+
+
+def test_el_servicio_crea_el_mercado_al_iniciar_y_no_lo_repite():
+    """Crear el cliente HTTP cuesta ~220 ms: se hace al arrancar el hilo, no en la primera reliquia."""
+    from types import SimpleNamespace
+
+    from farmadex.captura.comparador import ServicioComparador
+
+    creados = []
+
+    def fabrica():
+        creados.append(1)
+        return SimpleNamespace(precios=lambda slug: None, cerrar=lambda: None)
+
+    servicio = ServicioComparador(escuadra=True, crear_market=fabrica)
+    assert creados == []  # nada hasta que arranca el hilo
+    servicio.iniciar()
+    assert len(creados) == 1
+    assert servicio._precios_de() is not None
+    assert len(creados) == 1  # la primera reliquia reutiliza el que ya habia
+    servicio.cerrar()
+
+
+def test_iniciar_sin_mercado_no_revienta():
+    from farmadex.captura.comparador import ServicioComparador
+
+    servicio = ServicioComparador(escuadra=True, crear_market=lambda: (_ for _ in ()).throw(OSError("sin red")))
+    servicio.iniciar()  # solo se registra; la primera reliquia se puntua con ducados y rareza
+    assert servicio._precios_de() is None

@@ -87,9 +87,15 @@ class LectorBase(QObject):
 
     @Slot()
     def iniciar(self) -> None:
-        """Prepara el casador con el indice. Si no hay indice, se reintenta luego."""
+        """Prepara el casador con el indice y precalienta el motor OCR.
+
+        Corre en el hilo de captura al arrancar, cuando nadie espera: asi la primera
+        reliquia no paga la carga del modelo ni la primera inferencia (~800 ms
+        medidos). Si no hay indice, el casador se reintenta luego.
+        """
         from ..datos import indice
 
+        self._precalentar()
         if not indice.hay_indice():
             self.casador = None
             return
@@ -102,12 +108,27 @@ class LectorBase(QObject):
             con.close()
         pantalla.declarar_dpi()
 
+    def _precalentar(self) -> None:
+        """Carga y calienta el motor sin que un fallo reviente el arranque.
+
+        Un motor que no carga deja su motivo apuntado en `MotorOCR`; se avisa al
+        usuario en la primera lectura (`_preparado`), no aqui, para que el aviso
+        salga una sola vez y cuando el tiene algo que ver.
+        """
+        try:
+            self.motor.precalentar()
+        except ErrorMotorOCR as e:
+            log.debug("El motor OCR no se pudo precalentar: %s", e)
+        except Exception:  # noqa: BLE001 - un calentamiento no puede tumbar el arranque
+            log.exception("Fallo inesperado precalentando el motor OCR")
+
     @Slot(str)
     def cambiar_motor(self, motor_ocr: str) -> None:
         """El usuario eligio otro motor en Ajustes: se vuelve a intentar con el."""
         MotorOCR.olvidar_fallo(motor_ocr)
         self.motor = MotorOCR(motor_ocr)
         self._avisado_motor = False
+        self._precalentar()
 
     def _preparado(self) -> bool:
         """Casador listo y motor sin fallo conocido; si no, avisa y devuelve False."""

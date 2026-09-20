@@ -71,11 +71,13 @@ def analizar_release(datos: dict) -> Version | None:
 class ComprobadorApp(QObject):
     """Mira las releases de GitHub.
 
-    Hay dos formas de llamarlo y no se comportan igual. La automatica, al
-    arrancar, solo habla si hay algo nuevo: nadie quiere un aviso de "todo en
-    orden" cada vez que abre el programa. La de a mano, desde el boton de
-    Ajustes, contesta siempre -- tambien si no hay nada o si la consulta falla,
-    porque un boton que no responde parece roto.
+    Contesta siempre: hay version nueva, no la hay, o no se ha podido mirar.
+    Quien escucha decide cuanto ruido hace con cada cosa -- una version nueva
+    merece un aviso en la ventana, "estas al dia" solo merece verse si entras en
+    Ajustes a mirarlo.
+
+    `a_mano` no cambia lo que se contesta, solo que no se reutiliza la respuesta
+    guardada: si acabas de publicar y pulsas el boton, quieres preguntar otra vez.
     """
 
     nueva_version = Signal(object)  # Version
@@ -98,14 +100,13 @@ class ComprobadorApp(QObject):
 
     @Slot()
     def comprobar_a_mano(self) -> None:
-        """Igual, pero saltandose la cache y contestando pase lo que pase."""
+        """Igual, pero sin reutilizar la respuesta guardada."""
         self._lanzar(manual=True)
 
     def _lanzar(self, manual: bool) -> None:
         if not self.activo:
             log.debug("Comprobacion de version desactivada (no hay repositorio publicado)")
-            if manual:
-                self.sin_novedades.emit()
+            self.sin_novedades.emit()
             return
         if self._hilo is not None and self._hilo.is_alive():
             return
@@ -126,20 +127,18 @@ class ComprobadorApp(QObject):
         except Exception as e:  # noqa: BLE001 - 404 con repo privado, sin red, JSON raro
             # Sin pedirlo no es un error que contar al usuario: solo se anota.
             log.info("Sin informacion de versiones nuevas (%s)", e)
-            if manual:
-                self.fallo.emit(str(e))
+            self.fallo.emit(str(e))
             return
         try:
             version = analizar_release(datos if isinstance(datos, dict) else {})
         except Exception as e:  # noqa: BLE001 - respuesta con otra forma
             log.info("Respuesta de versiones ilegible (%s)", e)
-            if manual:
-                self.fallo.emit(str(e))
+            self.fallo.emit(str(e))
             return
         if version and es_mas_nueva(version.etiqueta):
             log.info("Hay una version nueva: %s", version.etiqueta)
             self.nueva_version.emit(version)
-        elif manual:
+        else:
             self.sin_novedades.emit()
 
     def cerrar(self) -> None:
