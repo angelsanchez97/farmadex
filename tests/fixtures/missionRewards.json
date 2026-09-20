@@ -1,0 +1,24 @@
+{
+  "Sedna": {
+    "Hydron": {
+      "gameMode": "Defense",
+      "isEvent": false,
+      "rewards": {
+        "A": [
+          { "itemName": "Axi A7 Relic", "rarity": "Uncommon", "chance": 11.06 }
+        ],
+        "B": [
+          { "itemName": "Ash Prime Chassis Blueprint", "rarity": "Rare", "chance": 2.0 }
+        ]
+      }
+    }
+  },
+  "Europa": {
+    "Abaddon": {
+      "gameMode": "Exterminate",
+      "rewards": [
+        { "itemName": "Axi A7 Relic", "rarity": "Rare", "chance": 5.0 }
+      ]
+    }
+  }
+}

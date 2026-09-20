@@ -1,0 +1,473 @@
+{
+ "Results": [
+  {
+   "DisplayName": "TennoPrueba",
+   "AccountId": {
+    "$oid": "0123456789abcdef01234567"
+   },
+   "PlayerLevel": 21,
+   "Created": {
+    "$date": {
+     "$numberLong": "1365052038815"
+    }
+   },
+   "GuildName": "Clan de Prueba",
+   "GuildTier": 2,
+   "GuildXp": 12345,
+   "PlatformNames": [
+    "TennoPrueba"
+   ],
+   "UnlockedOperator": true,
+   "Alignment": {
+    "Wisdom": 5,
+    "Alignment": 0
+   },
+   "LoadOutInventory": {
+    "XPInfo": [
+     {
+      "ItemType": "/Lotus/Powersuits/Excalibur/Excalibur",
+      "XP": 2031176
+     },
+     {
+      "ItemType": "/Lotus/Weapons/Tenno/Rifle/StartingRifle",
+      "XP": 460339
+     },
+     {
+      "ItemType": "/Lotus/Weapons/MK1Series/MK1Kunai",
+      "XP": 100000
+     },
+     {
+      "ItemType": "/Lotus/Weapons/Grineer/Bows/GrnBow/GrnBowWeapon",
+      "XP": 500000
+     },
+     {
+      "ItemType": "/Lotus/Powersuits/EntratiMech/NechroTech",
+      "XP": 1000000
+     },
+     {
+      "ItemType": "/Lotus/Weapons/Ostron/Melee/ModularMelee01/Tip/TipOne",
+      "XP": 2396429
+     },
+     {
+      "ItemType": "/Lotus/Types/Sentinels/SentinelPowersuits/CarrierPowerSuit",
+      "XP": 56924126
+     },
+     {
+      "ItemType": "/Lotus/Types/Game/CatbrowPet/CheshireCatbrowPetPowerSuit",
+      "XP": 299136150
+     },
+     {
+      "ItemType": "/Lotus/Weapons/Sentients/OperatorAmplifiers/SentTrainingAmplifier/SentAmpTrainingBarrel",
+      "XP": 561077
+     },
+     {
+      "ItemType": "/Lotus/Types/Vehicles/Hoverboard/HoverboardParts/PartComponents/HoverboardCorpusA/HoverboardCorpusADeck",
+      "XP": 1647942
+     },
+     {
+      "ItemType": "/Lotus/Types/Game/CrewShip/RailJack/DefaultHarness",
+      "XP": 20101277
+     },
+     {
+      "ItemType": "/Lotus/Powersuits/AntiMatter/Anti",
+      "XP": 6152457
+     },
+     {
+      "ItemType": "/Lotus/Powersuits/Archwing/StandardJetPack/StandardJetPack",
+      "XP": 2919458
+     },
+     {
+      "ItemType": "/Lotus/Powersuits/Banshee/Banshee",
+      "XP": 8258238
+     },
+     {
+      "ItemType": "/Lotus/Powersuits/Berserker/Berserker",
+      "XP": 8625675
+     },
+     {
+      "ItemType": "/Lotus/Powersuits/Ember/Ember",
+      "XP": 1333072
+     },
+     {
+      "ItemType": "/Lotus/Powersuits/Ember/EmberPrime",
+      "XP": 76655383
+     },
+     {
+      "ItemType": "/Lotus/Powersuits/Excalibur/ExcaliburPrime",
+      "XP": 285323893
+     },
+     {
+      "ItemType": "/Lotus/Powersuits/Frost/Frost",
+      "XP": 958983
+     },
+     {
+      "ItemType": "/Lotus/Powersuits/Frost/FrostPrime",
+      "XP": 39983452
+     },
+     {
+      "ItemType": "/Lotus/Powersuits/Harlequin/Harlequin",
+      "XP": 1554516
+     },
+     {
+      "ItemType": "/Lotus/Powersuits/Jade/Jade",
+      "XP": 921163
+     },
+     {
+      "ItemType": "/Lotus/Powersuits/Loki/Loki",
+      "XP": 2089593
+     },
+     {
+      "ItemType": "/Lotus/Powersuits/Loki/LokiPrime",
+      "XP": 30267384
+     },
+     {
+      "ItemType": "/Lotus/Powersuits/Mag/Mag",
+      "XP": 943026
+     },
+     {
+      "ItemType": "/Lotus/Powersuits/Mag/MagPrime",
+      "XP": 62024884
+     }
+    ],
+    "Suits": [
+     {
+      "ItemType": "/Lotus/Powersuits/Trapper/TrapperPrime",
+      "Configs": [
+       {
+        "Skins": [
+         "/Lotus/Upgrades/Skins/Trapper/SWSuppressorHelmet",
+         "/Lotus/Upgrades/Skins/Armor/GuideOfTheLotus/GuideOfTheLotusArmArmor",
+         "/Lotus/Upgrades/Skins/Armor/SentEvoArmor/SentEvoArmor1L",
+         "",
+         "",
+         "/Lotus/Upgrades/Skins/Fairy/FairyNobleAnims",
+         "/Lotus/Upgrades/Skins/Scarves/NarmerEvolvingSyandanaCCape",
+         "/Lotus/Upgrades/Skins/Trapper/SWSuppressorSkin",
+         "/Lotus/Upgrades/Skins/Armor/WarframeDefaults/EmptyCustomization",
+         "/Lotus/Upgrades/Skins/Armor/GuideOfTheLotus/GuideOfTheLotusArmArmor",
+         "/Lotus/Upgrades/Skins/Armor/SentEvoArmor/SentEvoArmor1L",
+         "",
+         "/Lotus/Upgrades/Skins/Sigils/LotusGuideSigil",
+         "/Lotus/Upgrades/Skins/Sigils/SyndicateSigilCephalonSudaK",
+         "",
+         "/Lotus/Upgrades/Skins/Trapper/VaubanEffectsSetDefault",
+         "/Lotus/Upgrades/Skins/Effects/NarmerEvolvingEphemeraC"
+        ],
+        "sigcol": {
+         "t0": -2130706433,
+         "t1": -9109761,
+         "en": -2130724225
+        },
+        "pricol": {
+         "t0": -16777216,
+         "t1": -16777216,
+         "t2": -16777216,
+         "t3": -14459797
+        },
+        "attcol": {
+         "t0": -16777216,
+         "t1": -16777216,
+         "t2": -16777216,
+         "t3": -14459797,
+         "m0": -11086849,
+         "m1": -16735489,
+         "en": -11685664,
+         "e1": -14249531
+        },
+        "Name": "Duration - Range",
+        "ugly": true,
+        "syancol": {
+         "t0": -16777216,
+         "t1": -16777216,
+         "t2": -16777216,
+         "t3": -14459797,
+         "m0": -11086849,
+         "m1": -16735489,
+         "en": -11685664,
+         "e1": -14249531
+        },
+        "AbilityOverride": {
+         "Ability": "/Lotus/Powersuits/PowersuitAbilities/OdaliskDispensaryAbility",
+         "Index": 0
+        }
+       },
+       {
+        "Skins": [
+         "/Lotus/Upgrades/Skins/Trapper/SWSuppressorHelmet",
+         "/Lotus/Upgrades/Skins/Armor/WarframeDefaults/EmptyCustomization",
+         "/Lotus/Upgrades/Skins/Armor/WarframeDefaults/EmptyCustomization",
+         "/Lotus/Upgrades/Skins/Clan/ClanEmblemItem",
+         "/Lotus/Upgrades/Skins/Clan/FoundersBadgeGrandMasterItem",
+         "/Lotus/Upgrades/Skins/Trapper/TrapperNobleAnims",
+         "/Lotus/Upgrades/Skins/Scarves/NarmerEvolvingSyandanaBCape",
+         "/Lotus/Upgrades/Skins/Trapper/SWSuppressorSkin",
+         "/Lotus/Upgrades/Skins/Armor/WarframeDefaults/EmptyCustomization",
+         "/Lotus/Upgrades/Skins/Armor/WarframeDefaults/EmptyCustomization",
+         "/Lotus/Upgrades/Skins/Armor/WarframeDefaults/EmptyCustomization",
+         "",
+         "/Lotus/Upgrades/Skins/Sigils/LotusGuideSigil",
+         "/Lotus/Upgrades/Skins/Sigils/SyndicateSigilSteelMeridianK",
+         "",
+         "/Lotus/Upgrades/Skins/Trapper/VaubanEffectsSetDefault",
+         "/Lotus/Upgrades/Skins/Effects/NarmerEvolvingEphemeraC"
+        ],
+        "sigcol": {
+         "t0": -2132198349,
+         "t1": -662640897,
+         "en": -2130724224
+        },
+        "attcol": {
+         "t0": -16777216,
+         "t1": -5948869,
+         "t2": -10668233,
+         "t3": -23280,
+         "en": -9043968
+        },
+        "pricol": {
+         "t0": -16777216,
+         "t1": -16777216,
+         "t2": -16777216,
+         "t3": -16777216,
+         "m0": -16777216,
+         "m1": -11776175,
+         "en": -208060,
+         "e1": -4658714
+        },
+        "syancol": {
+         "t0": -16777216,
+         "t1": -16777216,
+         "t2": -16777216,
+         "t3": -16777216,
+         "m0": -16777216,
+         "m1": -11776175,
+         "en": -2544081,
+         "e1": -1097419
+        },
+        "AbilityOverride": {
+         "Ability": "/Lotus/Powersuits/PowersuitAbilities/OdaliskDispensaryAbility",
+         "Index": 0
+        }
+       },
+       {
+        "Skins": [
+         "550b93f307c56fd56207b8fe",
+         "/Lotus/Upgrades/Skins/Armor/GuideOfTheLotus/GuideOfTheLotusArmArmor",
+         "/Lotus/Upgrades/Skins/Armor/PrimeSetTwo/PrimeSetTwoLegArmor",
+         "/Lotus/Upgrades/Skins/Clan/AllianceEmblemItem",
+         "/Lotus/Upgrades/Skins/Clan/ClanEmblemItem",
+         "/Lotus/Upgrades/Skins/Magician/MagicianAgileAnims",
+         "/Lotus/Upgrades/Skins/Scarves/TennoConScarf",
+         "550b93f307c56fd56207b8fd",
+         "/Lotus/Upgrades/Skins/Armor/PrimeSetThree/PrimeSetThreeC",
+         "/Lotus/Upgrades/Skins/Armor/GuideOfTheLotus/GuideOfTheLotusArmArmor",
+         "/Lotus/Upgrades/Skins/Armor/PrimeSetTwo/PrimeSetTwoLegArmor",
+         "",
+         "/Lotus/Upgrades/Skins/Sigils/LotusGuideSigil",
+         "/Lotus/Upgrades/Skins/Sigils/SyndicateSigilSteelMeridianK"
+        ],
+        "attcol": {
+         "t0": -11447983,
+         "t1": -15395563,
+         "t2": -13610403,
+         "t3": -1260454,
+         "en": -16713474
+        },
+        "sigcol": {
+         "t0": -2139771448,
+         "t1": -109018881,
+         "en": -2137671040
+        },
+        "syancol": {
+         "t0": -11447983,
+         "t1": -15395563,
+         "t2": -13610403,
+         "t3": -1260454,
+         "en": -16713474
+        },
+        "AbilityOverride": {
+         "Ability": "/Lotus/Powersuits/PowersuitAbilities/OdaliskDispensaryAbility",
+         "Index": 0
+        }
+       }
+      ],
+      "UpgradeVer": 101,
+      "XP": 8621561,
+      "Polarized": 5,
+      "Polarity": [
+       {
+        "Slot": 0,
+        "Value": "AP_DEFENSE"
+       },
+       {
+        "Slot": 1,
+        "Value": "AP_UNIVERSAL"
+       },
+       {
+        "Slot": 2,
+        "Value": "AP_UNIVERSAL"
+       },
+       {
+        "Slot": 3,
+        "Value": "AP_TACTIC"
+       },
+       {
+        "Slot": 4,
+        "Value": "AP_UMBRA"
+       },
+       {
+        "Slot": 5,
+        "Value": "AP_TACTIC"
+       },
+       {
+        "Slot": 6,
+        "Value": "AP_ATTACK"
+       },
+       {
+        "Slot": 7,
+        "Value": "AP_DEFENSE"
+       },
+       {
+        "Slot": 8,
+        "Value": "AP_TACTIC"
+       },
+       {
+        "Slot": 9,
+        "Value": "AP_UNIVERSAL"
+       }
+      ],
+      "InfestationDate": {
+       "$date": {
+        "$numberLong": "2147483647000"
+       }
+      },
+      "Features": 3,
+      "FocusLens": "/Lotus/Upgrades/Focus/AttackLensLua",
+      "ItemId": {
+       "$oid": "574e3da008c56fae512b5042"
+      }
+     }
+    ],
+    "LongGuns": [],
+    "Pistols": [],
+    "Melee": [],
+    "WeaponSkins": []
+   },
+   "Missions": [
+    {
+     "Tag": "SolNode203",
+     "Completes": 5
+    },
+    {
+     "Tag": "ClanNode0",
+     "Completes": 3,
+     "Tier": 1
+    },
+    {
+     "Tag": "SolNode999",
+     "Completes": 1
+    },
+    {
+     "Tag": "EarthToMarsJunction",
+     "Completes": 1
+    },
+    {
+     "Tag": "CrewBattleNode500",
+     "Completes": 2,
+     "RewardsCooldownTime": {
+      "$date": {
+       "$numberLong": "1700000000000"
+      }
+     }
+    },
+    {
+     "Tag": "CetusHub",
+     "Completes": 40
+    }
+   ],
+   "PlayerSkills": {
+    "LPP_SPACE": 1000,
+    "LPS_PILOTING": 3,
+    "LPS_GUNNERY": 2,
+    "LPS_TACTICAL": 1,
+    "LPS_ENGINEERING": 4,
+    "LPS_COMMAND": 0,
+    "LPP_DRIFTER": 500,
+    "LPS_DRIFT_RIDING": 1,
+    "LPS_DRIFT_COMBAT": 2,
+    "LPS_DRIFT_OPPORTUNITY": 1,
+    "LPS_DRIFT_ENDURANCE": 1
+   },
+   "Affiliations": [
+    {
+     "Tag": "SteelMeridianSyndicate",
+     "Standing": 125000,
+     "Title": 4
+    },
+    {
+     "Tag": "NewLokaSyndicate",
+     "Standing": -44000,
+     "Title": -1
+    },
+    {
+     "Tag": "CetusSyndicate",
+     "Standing": 20100,
+     "Title": 2
+    }
+   ],
+   "DailyAffiliation": 16000,
+   "DailyAffiliationCetus": 16000,
+   "DailyFocus": 250000,
+   "ChallengeProgress": [
+    {
+     "Name": "Earn100000Credits",
+     "Progress": 100000
+    },
+    {
+     "Name": "KillEnemiesWithMelee",
+     "Progress": 4321
+    }
+   ],
+   "Wishlist": []
+  }
+ ],
+ "TechProjects": [],
+ "XpComponents": [],
+ "XpCacheExpiryDate": {
+  "$date": {
+   "$numberLong": "1752027435000"
+  }
+ },
+ "Stats": {
+  "MissionsCompleted": 1400,
+  "MissionsFailed": 44,
+  "TimePlayedSec": 720000.5,
+  "Deaths": 300,
+  "PlayerLevel": 21,
+  "Rank": 21,
+  "Rating": 210,
+  "GuildName": "Clan de Prueba",
+  "Weapons": [
+   {
+    "type": "/Lotus/Weapons/Tenno/Rifle/StartingRifle",
+    "kills": 1001,
+    "fired": 25227,
+    "xp": 1435196
+   }
+  ],
+  "Enemies": [
+   {
+    "type": "/Lotus/Types/Enemies/Grineer/Forest/Avatars/RifleLancerTutorialAvatar",
+    "kills": 30
+   }
+  ],
+  "Missions": [
+   {
+    "type": "SolNode203",
+    "highScore": 12
+   }
+  ],
+  "Abilities": [],
+  "PVP": [],
+  "Races": {}
+ }
+}

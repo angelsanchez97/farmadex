@@ -1,0 +1,20 @@
+[
+  {
+    "uniqueName": "SolNode203",
+    "name": "Abaddon",
+    "systemName": "Europa",
+    "category": "Node",
+    "missionIndex": 5,
+    "factionIndex": 1,
+    "minEnemyLevel": 21,
+    "maxEnemyLevel": 23
+  },
+  {
+    "uniqueName": "SolNode48",
+    "name": "Hydron",
+    "systemName": "Sedna",
+    "category": "Node",
+    "minEnemyLevel": 30,
+    "maxEnemyLevel": 40
+  }
+]

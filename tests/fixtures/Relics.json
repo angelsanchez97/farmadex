@@ -1,0 +1,40 @@
+[
+  {
+    "uniqueName": "/Lotus/Types/Game/Projections/T4VoidProjectionAshVaubanVaultABronze",
+    "name": "Axi A7 Intact",
+    "type": "Relic",
+    "category": "Relics",
+    "tradable": true,
+    "vaulted": true,
+    "imageName": "RelicAxiA.png",
+    "rewards": [
+      {
+        "chance": 2,
+        "rarity": "Rare",
+        "item": {
+          "name": "Ash Prime Systems Blueprint",
+          "uniqueName": "/Lotus/Types/Recipes/WarframeRecipes/AshPrimeSystemsComponent"
+        }
+      }
+    ]
+  },
+  {
+    "uniqueName": "/Lotus/Types/Game/Projections/T4VoidProjectionAshVaubanVaultAGold",
+    "name": "Axi A7 Radiant",
+    "type": "Relic",
+    "category": "Relics",
+    "tradable": true,
+    "vaulted": true,
+    "imageName": "RelicAxiA.png",
+    "rewards": [
+      {
+        "chance": 20,
+        "rarity": "Rare",
+        "item": {
+          "name": "Ash Prime Systems Blueprint",
+          "uniqueName": "/Lotus/Types/Recipes/WarframeRecipes/AshPrimeSystemsComponent"
+        }
+      }
+    ]
+  }
+]

@@ -1,0 +1,32 @@
+[project]
+name = "farmadex"
+version = "0.1.4"
+description = "Overlay para Warframe: de donde sale cada cosa, en espanol"
+requires-python = ">=3.12"
+dependencies = [
+    "PySide6>=6.8",
+    "httpx>=0.27",
+    "rapidfuzz>=3.9",
+    "rapidocr-onnxruntime>=1.2",
+    # headless, no la normal: la version con interfaz mete 70 MB de mas en el
+    # ejecutable y aqui solo se usa para tratar la imagen antes del OCR.
+    "opencv-python-headless>=4.9",
+    "mss>=9.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pyinstaller>=6.0", "pillow>=10.0"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+farmadex = ["datos/*.sql", "datos/*.json"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

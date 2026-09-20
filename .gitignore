@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+build/
+dist/
+*.spec.bak
+.pytest_cache/
+
+# Correspondencia y datos del usuario: no se publican
+docs/correo-a-soporte-de.md
