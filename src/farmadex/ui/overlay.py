@@ -512,11 +512,10 @@ class VentanaOverlay(QWidget):
         self.comprobador_datos.hay_novedades.connect(self._hay_datos_nuevos)
         self.comprobador_datos.iniciar()
 
-        # Mientras no haya repositorio publicado, las versiones nuevas salen de
-        # la carpeta donde se compilan.
+        # Las compilaciones sin publicar se dejan en una carpeta del PC; las
+        # publicadas salen de GitHub. El boton de Ajustes mira las dos.
         self.comprobador_local = ComprobadorLocal(parent=self)
         self.comprobador_local.nueva_version.connect(self._hay_version_local)
-        # El boton "Comprobar ahora" de Ajustes mira la misma carpeta.
         self.ajustes.comprobar_version.connect(self._comprobar_version)
         QTimer.singleShot(2000, self.comprobador_local.comprobar)
         self._reloj_versiones = QTimer(self)
@@ -525,6 +524,8 @@ class VentanaOverlay(QWidget):
 
         self.comprobador_app = ComprobadorApp(self)
         self.comprobador_app.nueva_version.connect(self._hay_version_nueva)
+        self.comprobador_app.sin_novedades.connect(self._no_hay_version_nueva)
+        self.comprobador_app.fallo.connect(self._fallo_al_comprobar_version)
         if self.config.get("comprobar_actualizaciones_app", True):
             QTimer.singleShot(5000, self.comprobador_app.comprobar)
 
@@ -540,11 +541,25 @@ class VentanaOverlay(QWidget):
         self.ajustes.anunciar_version(version)
 
     def _comprobar_version(self) -> None:
-        """Comprobacion a mano desde Ajustes: siempre contesta algo."""
+        """Comprobacion a mano desde Ajustes: siempre contesta algo.
+
+        Primero la carpeta de compilaciones, que es instantanea; si ahi no hay
+        nada, se pregunta a GitHub, que tarda y contesta por su cuenta. Hasta
+        entonces, Ajustes se queda en "Comprobando...".
+        """
         self._version_encontrada = None
         self.comprobador_local.comprobar()
-        if self._version_encontrada is None:
-            self.ajustes.estado_version(t("Estas en la ultima version ({version})", version=VERSION))
+        if self._version_encontrada is not None:
+            return
+        self.comprobador_app.comprobar_a_mano()
+
+    def _no_hay_version_nueva(self) -> None:
+        self.ajustes.estado_version(t("Estas en la ultima version ({version})", version=VERSION))
+
+    def _fallo_al_comprobar_version(self, motivo: str) -> None:
+        self.ajustes.estado_version(
+            t("No se ha podido comprobar si hay version nueva ({motivo})", motivo=motivo)
+        )
 
     def _hay_version_local(self, version) -> None:
         self._version_encontrada = version

@@ -46,7 +46,8 @@ def test_ventanas_win32_en_proceso_aparte():
         cwd=str(Path(__file__).resolve().parents[1]),
     )
     assert resultado.returncode == 0, (resultado.stdout[-4000:] + resultado.stderr[-2000:])
-    assert " passed" in resultado.stdout
+    # "skipped" es una respuesta valida: con Warframe abierto no se pueden correr.
+    assert " passed" in resultado.stdout or " skipped" in resultado.stdout
 
 WS_OVERLAPPEDWINDOW = 0x00CF0000
 WS_POPUP = 0x80000000
@@ -106,7 +107,15 @@ def _registrar_clase() -> None:
 
 @pytest.fixture()
 def ventana_falsa():
-    """Crea una ventana visible titulada 'Warframe' con el estilo y tamano que se pidan."""
+    """Crea una ventana visible titulada 'Warframe' con el estilo y tamano que se pidan.
+
+    Si el juego de verdad esta abierto no hay prueba posible: `ventana_juego()`
+    devuelve la primera ventana con ese titulo y no hay forma de distinguir la
+    nuestra de la suya, asi que se salta en vez de fallar. Pasaba en el equipo de
+    desarrollo al compilar con Warframe en marcha.
+    """
+    if pantalla.ventana_juego() is not None:
+        pytest.skip("Warframe esta abierto: su ventana se confunde con la de prueba")
     creadas = []
     user32 = ctypes.windll.user32
     user32.CreateWindowExW.restype = wintypes.HWND

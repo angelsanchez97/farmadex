@@ -195,6 +195,7 @@
   "No hay invasiones ni alertas activas": "Não há invasões nem alertas ativos",
   "No he encontrado nada para «{busqueda}»": "Nao encontrei nada para “{busqueda}”",
   "No se ha importado: {motivo}": "Não importado: {motivo}",
+  "No se ha podido comprobar si hay version nueva ({motivo})": "Nao foi possivel verificar se ha uma versao nova ({motivo})",
   "No se ha podido consultar el estado del mundo ({motivo}). Se reintenta solo cada minuto.": "Nao foi possivel consultar o estado do mundo ({motivo}). Tenta de novo sozinho a cada minuto.",
   "No se pudo anadir el objetivo": "Não foi possível adicionar o objetivo",
   "No se pudo capturar la pantalla": "Não foi possível capturar a tela",

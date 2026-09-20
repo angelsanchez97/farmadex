@@ -1,3 +1,4 @@
+from farmadex import VERSION
 from farmadex.actualizador.app import analizar_release, es_mas_nueva, numeros
 
 
@@ -78,3 +79,74 @@ def test_comprobar_app_traga_cualquier_fallo_del_cliente(monkeypatch):
     comprobador.comprobar_ahora()
     assert [v.etiqueta for v in avisos] == ["v99.0.0"]
     comprobador.cerrar()
+
+
+def test_comprobar_a_mano_contesta_siempre(monkeypatch):
+    """El boton "Comprobar ahora" de Ajustes no puede quedarse callado.
+
+    Lo reporto el usuario con la 0.1.4: el boton solo miraba la carpeta local de
+    compilaciones, que en su PC esta vacia, asi que con la 0.1.5 ya publicada en
+    GitHub seguia diciendole que estaba en la ultima version.
+    """
+    from farmadex.actualizador import app
+
+    monkeypatch.setattr(app, "PROPIETARIO", "alguien")
+    monkeypatch.setattr(app, "REPOSITORIO", "farmadex")
+    comprobador = app.ComprobadorApp()
+    nuevas, iguales, fallos = [], [], []
+    comprobador.nueva_version.connect(nuevas.append)
+    comprobador.sin_novedades.connect(lambda: iguales.append(1))
+    comprobador.fallo.connect(fallos.append)
+
+    # 1) La misma version que la instalada: lo dice, no se calla.
+    monkeypatch.setattr(comprobador.cliente, "json", lambda *a, **k: {"tag_name": VERSION})
+    comprobador.comprobar_ahora(manual=True)
+    assert iguales == [1] and nuevas == [] and fallos == []
+
+    # 2) Sin red: tambien lo dice.
+    def reventar(*a, **k):
+        raise RuntimeError("sin conexion")
+
+    monkeypatch.setattr(comprobador.cliente, "json", reventar)
+    comprobador.comprobar_ahora(manual=True)
+    assert fallos == ["sin conexion"]
+
+    # 3) Automatica, la misma version: aqui si se calla.
+    iguales.clear()
+    monkeypatch.setattr(comprobador.cliente, "json", lambda *a, **k: {"tag_name": VERSION})
+    comprobador.comprobar_ahora()
+    assert iguales == []
+    comprobador.cerrar()
+
+
+def test_a_mano_no_se_queda_con_la_respuesta_guardada(monkeypatch):
+    """Sin esto, pulsar el boton justo despues de publicar repite lo de hace una hora."""
+    from farmadex.actualizador import app
+
+    monkeypatch.setattr(app, "PROPIETARIO", "alguien")
+    monkeypatch.setattr(app, "REPOSITORIO", "farmadex")
+    comprobador = app.ComprobadorApp()
+    caches = []
+    monkeypatch.setattr(
+        comprobador.cliente,
+        "json",
+        lambda url, segundos_cache=0.0, **k: caches.append(segundos_cache) or {"tag_name": VERSION},
+    )
+    comprobador.comprobar_ahora(manual=True)
+    comprobador.comprobar_ahora()
+    assert caches == [0, 3600]
+    comprobador.cerrar()
+
+
+def test_se_ofrece_el_instalador_no_el_zip():
+    """GitHub devuelve los adjuntos por orden alfabetico y "portable.zip" va antes."""
+    version = analizar_release(
+        {
+            "tag_name": "v0.1.5",
+            "assets": [
+                {"name": "Farmadex-0.1.5-portable.zip", "browser_download_url": "zip"},
+                {"name": "Farmadex-0.1.5-setup.exe", "browser_download_url": "exe"},
+            ],
+        }
+    )
+    assert version.url == "exe"

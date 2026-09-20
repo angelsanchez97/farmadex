@@ -195,6 +195,7 @@
   "No hay invasiones ni alertas activas": "No active invasions or alerts",
   "No he encontrado nada para «{busqueda}»": "Nothing found for “{busqueda}”",
   "No se ha importado: {motivo}": "Not imported: {motivo}",
+  "No se ha podido comprobar si hay version nueva ({motivo})": "Couldn't check for a new version ({motivo})",
   "No se ha podido consultar el estado del mundo ({motivo}). Se reintenta solo cada minuto.": "Couldn't check the world state ({motivo}). It retries on its own every minute.",
   "No se pudo anadir el objetivo": "Could not add the goal",
   "No se pudo capturar la pantalla": "Could not capture the screen",

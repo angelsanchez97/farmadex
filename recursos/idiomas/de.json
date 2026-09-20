@@ -195,6 +195,7 @@
   "No hay invasiones ni alertas activas": "Keine aktiven Invasionen oder Alarme",
   "No he encontrado nada para «{busqueda}»": "Nichts gefunden fuer „{busqueda}“",
   "No se ha importado: {motivo}": "Nicht importiert: {motivo}",
+  "No se ha podido comprobar si hay version nueva ({motivo})": "Es konnte nicht gepruft werden, ob es eine neue Version gibt ({motivo})",
   "No se ha podido consultar el estado del mundo ({motivo}). Se reintenta solo cada minuto.": "Der Weltzustand konnte nicht abgefragt werden ({motivo}). Es wird jede Minute automatisch erneut versucht.",
   "No se pudo anadir el objetivo": "Ziel konnte nicht hinzugefügt werden",
   "No se pudo capturar la pantalla": "Bildschirm konnte nicht aufgenommen werden",

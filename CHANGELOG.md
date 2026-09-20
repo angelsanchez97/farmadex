@@ -1,5 +1,16 @@
 # Cambios
 
+## 0.1.6
+
+- **El boton "Comprobar ahora" ya comprueba de verdad.** Solo miraba una carpeta
+  del propio PC donde se dejan las compilaciones sin publicar; como en un equipo
+  normal esa carpeta esta vacia, contestaba siempre "estas en la ultima version"
+  aunque hubiera uno nueva en GitHub. Ahora mira las dos cosas, no se queda con
+  la respuesta guardada de hace un rato, y contesta pase lo que pase: si no hay
+  nada nuevo lo dice, y si la consulta falla dice por que.
+- **Se ofrece el instalador, no el zip portable.** GitHub devuelve los ficheros
+  por orden alfabetico y el enlace que salia era el del zip.
+
 ## 0.1.5
 
 - **El boton "Atras" ya funciona**. Antes el historial se borraba al pinchar

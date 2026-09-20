@@ -51,19 +51,36 @@ def analizar_release(datos: dict) -> Version | None:
     etiqueta = datos.get("tag_name") or ""
     if not etiqueta:
         return None
+    # El instalador antes que el zip: GitHub los devuelve por orden alfabetico y
+    # el portable iba primero, asi que se ofrecia un zip a quien solo quiere
+    # pulsar dos veces. Si no hay ninguno de los dos, la pagina de la release.
+    adjuntos = [
+        (str(a.get("name", "")).lower(), a.get("browser_download_url"))
+        for a in datos.get("assets") or []
+    ]
     instalador = next(
-        (
-            a.get("browser_download_url")
-            for a in datos.get("assets") or []
-            if str(a.get("name", "")).lower().endswith((".exe", ".zip"))
+        (url for nombre, url in adjuntos if nombre.endswith(".exe")),
+        next(
+            (url for nombre, url in adjuntos if nombre.endswith(".zip")),
+            datos.get("html_url", ""),
         ),
-        datos.get("html_url", ""),
     )
     return Version(etiqueta=etiqueta, url=instalador, notas=datos.get("body") or "")
 
 
 class ComprobadorApp(QObject):
+    """Mira las releases de GitHub.
+
+    Hay dos formas de llamarlo y no se comportan igual. La automatica, al
+    arrancar, solo habla si hay algo nuevo: nadie quiere un aviso de "todo en
+    orden" cada vez que abre el programa. La de a mano, desde el boton de
+    Ajustes, contesta siempre -- tambien si no hay nada o si la consulta falla,
+    porque un boton que no responde parece roto.
+    """
+
     nueva_version = Signal(object)  # Version
+    sin_novedades = Signal()
+    fallo = Signal(str)  # motivo, para ensenarlo en Ajustes
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -77,35 +94,53 @@ class ComprobadorApp(QObject):
     @Slot()
     def comprobar(self) -> None:
         """Consulta GitHub en un hilo para no congelar la interfaz."""
+        self._lanzar(manual=False)
+
+    @Slot()
+    def comprobar_a_mano(self) -> None:
+        """Igual, pero saltandose la cache y contestando pase lo que pase."""
+        self._lanzar(manual=True)
+
+    def _lanzar(self, manual: bool) -> None:
         if not self.activo:
             log.debug("Comprobacion de version desactivada (no hay repositorio publicado)")
+            if manual:
+                self.sin_novedades.emit()
             return
         if self._hilo is not None and self._hilo.is_alive():
             return
         self._hilo = threading.Thread(
-            target=self.comprobar_ahora, name="comprobador-app", daemon=True
+            target=self.comprobar_ahora, args=(manual,), name="comprobador-app", daemon=True
         )
         self._hilo.start()
 
-    def comprobar_ahora(self) -> None:
+    def comprobar_ahora(self, manual: bool = False) -> None:
         """La consulta en si, sincrona. Nunca propaga."""
         if not self.activo:
             return
         url = f"https://api.github.com/repos/{PROPIETARIO}/{REPOSITORIO}/releases/latest"
         try:
-            datos = self.cliente.json(url, segundos_cache=3600, intentos=1)
+            # A mano no se usa la cache: si acabas de publicar y pulsas el boton,
+            # lo que quieres es preguntar otra vez, no que te repitan lo de hace un rato.
+            datos = self.cliente.json(url, segundos_cache=0 if manual else 3600, intentos=1)
         except Exception as e:  # noqa: BLE001 - 404 con repo privado, sin red, JSON raro
-            # No es un error que contar al usuario: solo se anota.
+            # Sin pedirlo no es un error que contar al usuario: solo se anota.
             log.info("Sin informacion de versiones nuevas (%s)", e)
+            if manual:
+                self.fallo.emit(str(e))
             return
         try:
             version = analizar_release(datos if isinstance(datos, dict) else {})
         except Exception as e:  # noqa: BLE001 - respuesta con otra forma
             log.info("Respuesta de versiones ilegible (%s)", e)
+            if manual:
+                self.fallo.emit(str(e))
             return
         if version and es_mas_nueva(version.etiqueta):
             log.info("Hay una version nueva: %s", version.etiqueta)
             self.nueva_version.emit(version)
+        elif manual:
+            self.sin_novedades.emit()
 
     def cerrar(self) -> None:
         self.cliente.cerrar()
