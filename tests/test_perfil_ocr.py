@@ -400,12 +400,20 @@ def _leer_captura(nombre, catalogo, motor):
     return PE.leer_pagina(cv2.imread(str(ruta)), motor, PE.casador_equipamiento(catalogo), catalogo)
 
 
+# Las capturas del repositorio llevan la franja superior difuminada para tapar el
+# nombre de cuenta, el titulo y el clan. En esta el difuminado alcanza tambien al
+# contador "102/151", que ya no se puede leer; el resto de la pagina si.
+CONTADOR_TAPADO = {"secundarias"}
+
+
 @pytest.mark.parametrize("nombre", sorted(VERDAD_REAL))
 def test_captura_real(nombre, catalogo, motor):
     categoria, completado, verdad = VERDAD_REAL[nombre]
     pagina = _leer_captura(nombre, catalogo, motor)
 
-    assert pagina.categoria == categoria and pagina.completado == completado
+    assert pagina.categoria == categoria
+    if nombre not in CONTADOR_TAPADO:
+        assert pagina.completado == completado
     # El casador devuelve la etiqueta en el idioma en que caso (es o en): se compara por unique_name.
     estados = {t.unique_name: t.estado for t in pagina.tarjetas}
     esperados = {_un(catalogo, n): (P.DOMINADO if d else P.NO_DOMINADO) for n, d in verdad}

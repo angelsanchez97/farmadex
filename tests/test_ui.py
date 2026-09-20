@@ -93,7 +93,11 @@ def test_elegir_tema_cambia_la_paleta_y_la_hoja(monkeypatch):
         assert paleta["acento"] == widgets.TEMAS["tenno"]["acento"]
         assert widgets.TEMAS["tenno"]["acento"] in widgets.hoja_estilos()
         # Un nombre desconocido cae al tema por defecto, no revienta.
-        assert widgets.elegir_tema("no existe")["acento"] == widgets.TEMAS["vacio"]["acento"]
+        # (el por defecto se lee de la constante: cambiarlo no debe romper la prueba)
+        assert (
+            widgets.elegir_tema("no existe")["acento"]
+            == widgets.TEMAS[widgets.TEMA_POR_DEFECTO]["acento"]
+        )
     finally:
         widgets.elegir_tema(next(k for k, v in widgets.TEMAS.items() if v["acento"] == original["acento"]))
 

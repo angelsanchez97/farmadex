@@ -21,7 +21,9 @@ from .http import Cliente
 
 log = obtener("worldstate")
 
-URL = "https://api.warframestat.us/{plataforma}/?language=es"
+# Sin "?language=": la API lo retiro y con ese parametro responde 404 siempre.
+# Los nombres se traducen aqui con el indice y el glosario, que es mas fiable.
+URL = "https://api.warframestat.us/{plataforma}"
 RE_NODO = re.compile(r"^(.*?)\s*\((.*)\)\s*$")
 # Pasados estos minutos desde el 'timestamp' de la respuesta, el estado del mundo se
 # da por viejo: el dia del parche la API sigue contestando, pero con lo de antes.
@@ -352,6 +354,27 @@ def _avisar_era(era: str) -> None:
         log.warning("Era de fisura desconocida en el estado del mundo: %r (se ensena igual)", era)
 
 
+class ErrorMundo(RuntimeError):
+    """La API contesto, pero con un error en vez de con el estado del mundo."""
+
+
+def comprobar_respuesta(datos) -> dict:
+    """Distingue un estado del mundo de verdad de un error disfrazado de JSON.
+
+    warframestat.us devuelve 404 con cuerpo {"message": "WorldState Not Found",
+    "error": ..., "statusCode": 404} cuando no consigue leer el estado de DE, y
+    pasa cada dos por tres. Sin esta comprobacion la pestana se quedaba vacia y
+    parecia que no hay fisuras, que es peor que decir que no se ha podido mirar.
+    """
+    if not isinstance(datos, dict):
+        raise ErrorMundo("la respuesta no es un objeto")
+    if datos.get("error") or datos.get("statusCode"):
+        raise ErrorMundo(str(datos.get("message") or datos.get("error")))
+    if "timestamp" not in datos and "fissures" not in datos:
+        raise ErrorMundo("la respuesta no trae el estado del mundo")
+    return datos
+
+
 def analizar(datos: dict, traductor: Traductor) -> Mundo:
     if not isinstance(datos, dict):
         log.warning("El estado del mundo no es un objeto JSON (%s)", type(datos).__name__)
@@ -621,8 +644,10 @@ class ServicioMundo(QObject):
 
     def refrescar(self) -> None:
         try:
-            datos = self.cliente.json(URL.format(plataforma=PLATAFORMA), segundos_cache=30)
-        except RuntimeError as e:
+            datos = comprobar_respuesta(
+                self.cliente.json(URL.format(plataforma=PLATAFORMA), segundos_cache=30)
+            )
+        except (RuntimeError, ErrorMundo) as e:
             log.warning("Estado del mundo no disponible: %s", e)
             self.fallo.emit(str(e))
             return

@@ -166,7 +166,9 @@ def _estilo(hwnd: int) -> int:
 
 
 def _ventana_activa() -> int:
-    return ctypes.windll.user32.GetForegroundWindow()
+    # Con el tipo declarado: sin el, ctypes lo trunca a 32 bits con signo.
+    ctypes.windll.user32.GetForegroundWindow.restype = wintypes.HWND
+    return ctypes.windll.user32.GetForegroundWindow() or 0
 
 
 def _estado_notificaciones() -> int:

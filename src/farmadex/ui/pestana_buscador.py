@@ -63,6 +63,8 @@ def era_de(nombre_en: str | None) -> str:
 MAX_RELIQUIAS_DETALLADAS = 12
 # Y cuantas filas se ensenan por tipo de fuente (un mod cae de 300 enemigos).
 MAX_FILAS_POR_TIPO = 25
+# Cuantas fichas recuerda el boton 'Atras'.
+MAX_HISTORIAL = 50
 
 CATEGORIAS_ES = {
     "Warframes": "Warframe", "Primary": "Arma primaria", "Secondary": "Arma secundaria",
@@ -154,7 +156,10 @@ class PestanaBuscador(QWidget):
         self._hay_perfil = False
         self.config = cargar()
         self._resultados: list[dict] = []
-        self._historial: list[int] = []
+        # (item_id, texto que se buscaba), para poder rehacer la busqueda al volver.
+        self._historial: list[tuple[int, str]] = []
+        # Mientras se vuelve atras no se apunta nada nuevo en el historial.
+        self._volviendo = False
         self._actual: int | None = None
         self._datos_actuales: dict | None = None
         # Lo ultimo que se busco sin exito, para volver a pintar el aviso al cambiar de idioma.
@@ -317,9 +322,31 @@ class PestanaBuscador(QWidget):
             webbrowser.open(texto)
 
     def _volver(self) -> None:
-        if len(self._historial) >= 2:
-            self._historial.pop()
-            self.abrir(self._historial.pop(), recordar=True)
+        """Vuelve a la ficha anterior, venga de donde venga: de la lista, de una
+        busqueda distinta o de un enlace dentro de una ficha."""
+        if len(self._historial) < 2:
+            return
+        self._historial.pop()  # la que se esta viendo
+        item_id, consulta = self._historial[-1]
+        # Si aquella ficha salio de otra busqueda, se recupera tambien el texto y
+        # su lista; si no, la lista de resultados dejaria de cuadrar con la ficha.
+        if consulta and consulta != self.caja.text().strip():
+            self._volviendo = True
+            self.caja.setText(consulta)
+            self._buscar()
+            self._volviendo = False
+        self._seleccionar_en_lista(item_id)
+        self.abrir(item_id, recordar=False)
+        self.atras.setEnabled(len(self._historial) > 1)
+
+    def _seleccionar_en_lista(self, item_id: int) -> None:
+        """Deja marcado en la lista el objeto al que se vuelve, sin abrirlo otra vez."""
+        for fila, resultado in enumerate(self._resultados):
+            if resultado["item_id"] == item_id:
+                self.lista.blockSignals(True)
+                self.lista.setCurrentRow(fila)
+                self.lista.blockSignals(False)
+                return
 
     def abrir(self, item_id: int, recordar: bool = True) -> None:
         if not self.con:
@@ -330,8 +357,10 @@ class PestanaBuscador(QWidget):
         self._actual = item_id
         self._datos_actuales = datos
         self._sin_resultados = None
-        if recordar and (not self._historial or self._historial[-1] != item_id):
-            self._historial.append(item_id)
+        if recordar and (not self._historial or self._historial[-1][0] != item_id):
+            # Se guarda con la busqueda que lo encontro, para poder rehacerla al volver.
+            self._historial.append((item_id, self.caja.text().strip()))
+            del self._historial[:-MAX_HISTORIAL]
         self.atras.setEnabled(len(self._historial) > 1)
         self.ficha.setHtml(self._html(datos))
         self.ficha.verticalScrollBar().setValue(0)
@@ -464,8 +493,9 @@ class PestanaBuscador(QWidget):
         self.lista.blockSignals(False)
 
     def _elegir_resultado(self, fila: int) -> None:
-        if 0 <= fila < len(self._resultados):
-            self._historial.clear()
+        # Moverse por la lista tambien cuenta como navegar: antes se borraba el
+        # historial aqui y el boton "Atras" quedaba apagado casi siempre.
+        if 0 <= fila < len(self._resultados) and not self._volviendo:
             self.abrir(self._resultados[fila]["item_id"])
 
     # -- pintado ----------------------------------------------------------

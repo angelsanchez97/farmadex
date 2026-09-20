@@ -59,17 +59,21 @@ def test_nace_completa_y_alterna_a_compacta(ventana):
 def test_cada_modo_recuerda_su_posicion_y_tamano(ventana):
     from farmadex.config import cargar
 
-    ventana.setGeometry(100, 100, 1100, 650)
+    # Geometria que cabe entera en la pantalla de pruebas (offscreen, 800x800) y respeta
+    # el minimo de la vista completa: si se saliera o fuese mas pequena que el minimo,
+    # _asegurar_en_pantalla/setMinimumSize la corregirian y el test de abajo comprobaria
+    # otra cosa. Ese comportamiento tiene su propio test.
+    ventana.setGeometry(10, 10, 780, 600)
     ventana.alternar_modo()  # a compacto: guarda la geometria de la completa
-    ventana.move(300, 40)
-    ventana.alternar_modo()  # vuelve a completa: recupera 100,100 1100x650
+    ventana.move(200, 40)
+    ventana.alternar_modo()  # vuelve a completa: recupera 10,10 780x600
     g = ventana.geometry()
-    assert (g.x(), g.y(), g.width(), g.height()) == (100, 100, 1100, 650)
+    assert (g.x(), g.y(), g.width(), g.height()) == (10, 10, 780, 600)
     guardado = cargar()
-    assert guardado["overlay_geometria_compacto"][:2] == [300, 40]
-    assert guardado["overlay_geometria"] == [100, 100, 1100, 650]
+    assert guardado["overlay_geometria_compacto"][:2] == [200, 40]
+    assert guardado["overlay_geometria"] == [10, 10, 780, 600]
     ventana.alternar_modo()
-    assert (ventana.x(), ventana.y()) == (300, 40)
+    assert (ventana.x(), ventana.y()) == (200, 40)
 
 
 def test_el_modo_guardado_se_aplica_al_arrancar(app, tmp_path, monkeypatch):

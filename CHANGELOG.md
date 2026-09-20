@@ -1,5 +1,29 @@
 # Cambios
 
+## 0.1.5
+
+- **El boton "Atras" ya funciona**. Antes el historial se borraba al pinchar
+  otro resultado de la lista, asi que el boton solo servia dentro de una misma
+  ficha. Ahora guarda las ultimas 50 fichas vistas y, al volver, recupera
+  tambien la busqueda que las encontro y la deja seleccionada en la lista.
+- **Ventana redimensionable**: se arrastra desde cualquier borde o esquina. El
+  tamano se guarda por separado para el modo completo y el compacto, asi que
+  Ctrl+M devuelve cada uno como lo dejaste. Minimos 760x420 y 420x190. Si
+  cambias de monitor o de resolucion y la ventana no cabe, se encoge y se
+  recoloca sola.
+- **Platino en las recompensas de reliquia**: la etiqueta que sale encima de
+  cada recompensa ya no dice solo los ducados, sino tambien lo que vale en
+  platino ("Ash Prime Sistemas - 38 platino - 45 ducados"), y la mejor de las
+  cuatro sale marcada en dorado.
+- **El comparador ya no se queda mudo** si warframe.market no responde: avisa en
+  el registro y puntua igual con ducados y rareza en vez de no decir nada.
+- **Estado del mundo arreglado**. La API dejo de aceptar el parametro de idioma
+  y a veces contesta con un error en vez de con el mundo; Farmadex lo tomaba por
+  "no hay fisuras". Ahora distingue las dos cosas, dice el motivo del fallo y
+  reintenta solo cada minuto.
+- **Tema Orokin por defecto**, y los ajustes se guardan al cambiarlos.
+- **Manual de usuario y guia de instalacion** incluidos en el repositorio.
+
 ## 0.1.4
 
 - **Comparador de reliquias**: al abrir una fisura, Farmadex lee las cuatro

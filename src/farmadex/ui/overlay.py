@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QPoint, QRect, Qt, QThread, QTimer, Signal
-from PySide6.QtGui import QColor, QGuiApplication, QKeySequence, QPainter, QPixmap, QShortcut
+from PySide6.QtCore import QEvent, QPoint, QRect, QSize, Qt, QThread, QTimer, Signal
+from PySide6.QtGui import QColor, QCursor, QGuiApplication, QKeySequence, QPainter, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -26,6 +26,7 @@ from ..actualizador.app import ComprobadorApp
 from ..actualizador.datos import ComprobadorDatos
 from ..actualizador.local import ComprobadorLocal, instalar
 from ..captura import pantalla
+from ..captura.comparador import ServicioComparador
 from ..captura.cursor import LectorCursor
 from ..captura.reliquias import DisparadorAutomatico, LectorRecompensas, completar, resumir
 from ..online.servicio_market import ServicioMarket
@@ -36,7 +37,13 @@ from .pestana_mundo import DISENO_POR_DEFECTO, PestanaMundo
 from .etiquetas import EtiquetasRecompensas
 from .pestana_objetivos import PestanaObjetivos
 from .pestana_perfil import PestanaPerfil
-from .vista_compacta import ALTO as ALTO_COMPACTO, ANCHO as ANCHO_COMPACTO, VistaCompacta
+from .vista_compacta import (
+    ALTO as ALTO_COMPACTO,
+    ALTO_MINIMO as ALTO_MINIMO_COMPACTO,
+    ANCHO as ANCHO_COMPACTO,
+    ANCHO_MINIMO as ANCHO_MINIMO_COMPACTO,
+    VistaCompacta,
+)
 from .maestria import estado_con_padre, texto_maestria
 from .widgets import PALETA, BarraProgreso, elegir_tema, hoja_estilos
 
@@ -44,6 +51,83 @@ log = obtener("overlay")
 
 # Atajo, dentro de la ventana, para pasar de la vista completa a la compacta y volver.
 ATAJO_MODO = "Ctrl+M"
+
+# Franja en los bordes/esquinas donde el cursor pasa a redimensionar en vez de a arrastrar
+# o a hacer clic normal. Cabe dentro de los margenes del marco (10, 6, 10, 8) para no pisar
+# ningun widget de dentro.
+MARGEN_REDIMENSION = 6
+
+# Minimo de la vista completa: cuatro pestanas y la barra de busqueda siguen legibles,
+# comprobado con una captura (herramientas/capturas/overlay_minimo_completo.png).
+ANCHO_MINIMO_COMPLETO = 760
+ALTO_MINIMO_COMPLETO = 420
+
+_OESTE = {"o", "no", "so"}
+_ESTE = {"e", "ne", "se"}
+_NORTE = {"n", "no", "ne"}
+_SUR = {"s", "so", "se"}
+
+CURSOR_POR_BORDE = {
+    "n": Qt.SizeVerCursor,
+    "s": Qt.SizeVerCursor,
+    "e": Qt.SizeHorCursor,
+    "o": Qt.SizeHorCursor,
+    "no": Qt.SizeFDiagCursor,
+    "se": Qt.SizeFDiagCursor,
+    "ne": Qt.SizeBDiagCursor,
+    "so": Qt.SizeBDiagCursor,
+}
+
+
+def borde_en_posicion(x: int, y: int, ancho: int, alto: int, margen: int = MARGEN_REDIMENSION) -> str | None:
+    """A que borde o esquina cae (x, y) dentro de una ventana de (ancho, alto).
+
+    None si el punto no esta en ninguna franja de redimensionado (clic normal).
+    """
+    izquierda = x <= margen
+    derecha = x >= ancho - margen
+    arriba = y <= margen
+    abajo = y >= alto - margen
+    if arriba and izquierda:
+        return "no"
+    if arriba and derecha:
+        return "ne"
+    if abajo and izquierda:
+        return "so"
+    if abajo and derecha:
+        return "se"
+    if arriba:
+        return "n"
+    if abajo:
+        return "s"
+    if izquierda:
+        return "o"
+    if derecha:
+        return "e"
+    return None
+
+
+def geometria_redimensionada(borde: str, geometria: QRect, delta: QPoint, minimo: QSize) -> QRect:
+    """Nueva geometria al arrastrar `borde` un `delta` (coordenadas globales de pantalla).
+
+    El borde opuesto al que se arrastra no se mueve; el tamano nunca baja de `minimo`.
+    """
+    x, y, w, h = geometria.x(), geometria.y(), geometria.width(), geometria.height()
+    dx, dy = delta.x(), delta.y()
+    min_ancho = max(minimo.width(), 1)
+    min_alto = max(minimo.height(), 1)
+    nx, ny, nw, nh = x, y, w, h
+    if borde in _ESTE:
+        nw = max(min_ancho, w + dx)
+    elif borde in _OESTE:
+        nw = max(min_ancho, w - dx)
+        nx = (x + w) - nw
+    if borde in _SUR:
+        nh = max(min_alto, h + dy)
+    elif borde in _NORTE:
+        nh = max(min_alto, h - dy)
+        ny = (y + h) - nh
+    return QRect(nx, ny, nw, nh)
 
 
 class VentanaOverlay(QWidget):
@@ -67,12 +151,22 @@ class VentanaOverlay(QWidget):
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.resize(1100, 700)
         self._arrastre: QPoint | None = None
+        # Redimensionado a mano por los bordes: que borde se arrastra (o None) y de donde
+        # partio, para poder calcular la geometria nueva a cada movimiento del raton.
+        self._borde_activo: str | None = None
+        self._geom_inicio_resize: QRect | None = None
+        self._pos_inicio_resize: QPoint | None = None
         # "completo" (pestanas) o "compacto" (solo busqueda y resultado esencial).
         self.modo = "compacto" if self.config.get("overlay_modo") == "compacto" else "completo"
 
         self.marco = QFrame(self)
         self.marco.setObjectName("marco")
         self.aplicar_opacidad(float(self.config.get("overlay_opacidad", 0.94)))
+        # Sin arrastrar el raton, el marco solo recibe MouseMove si se le pide: hace falta
+        # para pintar el cursor de redimensionar con solo pasar por encima del borde.
+        self.setMouseTracking(True)
+        self.marco.setMouseTracking(True)
+        self.marco.installEventFilter(self)
 
         # Cabecera: titulo, arrastre y cerrar.
         self.titulo = QLabel(f"  {NOMBRE_APP}")
@@ -120,6 +214,7 @@ class VentanaOverlay(QWidget):
         self.compacta.abrir_completo.connect(self._abrir_completo)
         self.servicio_mundo: ServicioMundo | None = None
         self.hilo_captura: QThread | None = None
+        self.hilo_comparador: QThread | None = None
         self.etiquetas = EtiquetasRecompensas()
         self.vigilante: VigilanteEELog | None = None
         self._version_encontrada = None
@@ -218,6 +313,7 @@ class VentanaOverlay(QWidget):
             self.mundo.conectar_objetivos(indice.conectar(), self.objetivos.usuario)
             self._arrancar_mundo()
             self._arrancar_captura()
+            self._arrancar_comparador()
             self._arrancar_actualizador()
             self._comprobar_desfase()
         elif indice.hay_indice():
@@ -285,6 +381,19 @@ class VentanaOverlay(QWidget):
         self.vigilante.evento.connect(self._evento_juego)
         self.vigilante.arranque.connect(self._arranque_juego)
         self.vigilante.start()
+
+    def _arrancar_comparador(self) -> None:
+        """Puntua las recompensas en su propio hilo: los precios tardan ~300 ms por pieza
+        y no pueden retrasar ni el OCR ni la ventana. Las etiquetas ya se ven sin esto;
+        cuando llegue el veredicto, solo se les añade la marca de cual conviene."""
+        if self.hilo_comparador is not None:
+            return
+        self.hilo_comparador = QThread(self)
+        self.servicio_comparador = ServicioComparador(escuadra=True)
+        self.servicio_comparador.moveToThread(self.hilo_comparador)
+        self.lector_recompensas.leidas.connect(self.servicio_comparador.comparar)
+        self.servicio_comparador.veredicto.connect(self._veredicto_recompensas)
+        self.hilo_comparador.start()
 
     # -- el juego: version y modo de pantalla ---------------------------------
 
@@ -371,14 +480,29 @@ class VentanaOverlay(QWidget):
         return None
 
     def _asegurar_en_pantalla(self) -> None:
-        """La geometria guardada puede apuntar a un monitor que ya no esta."""
+        """La geometria guardada puede apuntar a un monitor que ya no esta, o a una
+        resolucion mayor que la actual: se encoge si no cabe y se reencuadra dentro de
+        la pantalla mas parecida, sin descolocar mas de lo necesario."""
         g = self.frameGeometry()
-        if any(p.availableGeometry().intersects(g) for p in QGuiApplication.screens()):
+        pantallas = QGuiApplication.screens()
+        pantalla = next((p for p in pantallas if p.availableGeometry().intersects(g)), None)
+        centrar = pantalla is None
+        if pantalla is None:
+            pantalla = QGuiApplication.primaryScreen()
+        if pantalla is None:
             return
-        principal = QGuiApplication.primaryScreen()
-        if principal:
-            disponible = principal.availableGeometry()
+        disponible = pantalla.availableGeometry()
+        ancho = min(self.width(), disponible.width())
+        alto = min(self.height(), disponible.height())
+        if (ancho, alto) != (self.width(), self.height()):
+            self.resize(ancho, alto)
+        if centrar:
             self.move(disponible.center() - QPoint(self.width() // 2, self.height() // 2))
+            return
+        x = min(max(self.x(), disponible.x()), disponible.x() + disponible.width() - self.width())
+        y = min(max(self.y(), disponible.y()), disponible.y() + disponible.height() - self.height())
+        if (x, y) != (self.x(), self.y()):
+            self.move(x, y)
 
     def _arrancar_actualizador(self) -> None:
         """Vigila si salen datos nuevos del juego o una version nueva de la app."""
@@ -474,6 +598,14 @@ class VentanaOverlay(QWidget):
         self.estado.setText(resumen)
         self.etiquetas.mostrar(_a_logicas(recompensas), maestria)
 
+    def _veredicto_recompensas(self, recompensas: list, veredicto) -> None:
+        """Llega despues, con los precios: solo añade la marca de "mejor" a lo que ya se ve."""
+        if self.modo_pantalla == pantalla.MODO_EXCLUSIVO:
+            return
+        self.etiquetas.marcar_veredicto(recompensas, veredicto)
+        if veredicto.puntuaciones:
+            self.estado.setText(veredicto.resumen())
+
     def _maestria_recompensas(self, recompensas: list, con) -> dict[int, tuple[str, str]]:
         """Para cada recompensa que da rango (o cuya pieza lo da): (texto, estado). Vacio sin perfil."""
         if not self.perfil.hay_perfil():
@@ -518,12 +650,11 @@ class VentanaOverlay(QWidget):
         self.estado.setVisible(not compacto)
         self.pista.setVisible(not compacto)
         self._pintar_boton_modo()
+        self.setMaximumSize(16777215, 16777215)
         if compacto:
-            self.setMinimumSize(ANCHO_COMPACTO, ALTO_COMPACTO)
-            self.setMaximumHeight(ALTO_COMPACTO)
+            self.setMinimumSize(ANCHO_MINIMO_COMPACTO, ALTO_MINIMO_COMPACTO)
         else:
-            self.setMaximumHeight(16777215)
-            self.setMinimumSize(0, 0)
+            self.setMinimumSize(ANCHO_MINIMO_COMPLETO, ALTO_MINIMO_COMPLETO)
         geometria = self.config.get(self._clave_geometria())
         if geometria and len(geometria) == 4:
             self.setGeometry(*geometria)
@@ -708,6 +839,72 @@ class VentanaOverlay(QWidget):
     def mouseReleaseEvent(self, evento):  # noqa: N802
         self._arrastre = None
 
+    # -- redimensionado por los bordes ---------------------------------------
+
+    def eventFilter(self, objeto, evento):  # noqa: N802 - firma de Qt
+        """El marco cubre toda la ventana: los eventos de raton en el borde llegan a el,
+        no a self. Se interceptan aqui antes de que el marco los ignore y burbujeen hacia
+        el arrastre de la cabecera, que sigue viviendo en mousePressEvent/mouseMoveEvent."""
+        if objeto is self.marco:
+            tipo = evento.type()
+            if tipo == QEvent.MouseMove:
+                if self._redimensionar_mover(evento):
+                    return True
+            elif tipo == QEvent.MouseButtonPress:
+                if self._redimensionar_iniciar(evento):
+                    return True
+            elif tipo == QEvent.MouseButtonRelease:
+                if self._redimensionar_soltar():
+                    return True
+            elif tipo == QEvent.Leave and self._borde_activo is None:
+                self.unsetCursor()
+        return super().eventFilter(objeto, evento)
+
+    def _borde_bajo_cursor(self, evento) -> str | None:
+        pos = evento.position().toPoint()
+        return borde_en_posicion(pos.x(), pos.y(), self.width(), self.height())
+
+    def _redimensionar_iniciar(self, evento) -> bool:
+        if evento.button() != Qt.LeftButton:
+            return False
+        borde = self._borde_bajo_cursor(evento)
+        if borde is None:
+            return False
+        self._borde_activo = borde
+        self._geom_inicio_resize = self.geometry()
+        self._pos_inicio_resize = evento.globalPosition().toPoint()
+        return True
+
+    def _redimensionar_mover(self, evento) -> bool:
+        if self._borde_activo:
+            if not (evento.buttons() & Qt.LeftButton):
+                # El boton se solto fuera de la ventana y no llego el release: no se queda
+                # arrastrando para siempre.
+                self._redimensionar_soltar()
+                return False
+            delta = evento.globalPosition().toPoint() - self._pos_inicio_resize
+            nueva = geometria_redimensionada(
+                self._borde_activo, self._geom_inicio_resize, delta, self.minimumSize()
+            )
+            self.setGeometry(nueva)
+            return True
+        if evento.buttons() == Qt.NoButton:
+            borde = self._borde_bajo_cursor(evento)
+            if borde:
+                self.setCursor(QCursor(CURSOR_POR_BORDE[borde]))
+            else:
+                self.unsetCursor()
+        return False
+
+    def _redimensionar_soltar(self) -> bool:
+        if self._borde_activo is None:
+            return False
+        self._borde_activo = None
+        self._geom_inicio_resize = None
+        self._pos_inicio_resize = None
+        self.unsetCursor()
+        return True
+
     def closeEvent(self, evento):  # noqa: N802
         # La X del sistema solo esconde: se sale desde la bandeja.
         evento.ignore()
@@ -724,6 +921,10 @@ class VentanaOverlay(QWidget):
         if self.hilo_captura:
             self.hilo_captura.quit()
             self.hilo_captura.wait(3000)
+        if self.hilo_comparador:
+            self.servicio_comparador.cerrar()
+            self.hilo_comparador.quit()
+            self.hilo_comparador.wait(3000)
         if self.servicio_mundo:
             self.servicio_mundo.cerrar()
             self.hilo_mundo.quit()

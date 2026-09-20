@@ -37,7 +37,7 @@ TEMAS = {
         "aviso": "#f2b04a", "ok": "#7ee08a", "fondo_rgb": "11, 20, 22",
     },
 }
-TEMA_POR_DEFECTO = "vacio"
+TEMA_POR_DEFECTO = "orokin"
 
 # Colores por rareza (los del juego) y por estado.
 RAREZA = {

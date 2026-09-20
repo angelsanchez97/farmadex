@@ -23,6 +23,11 @@ from .widgets import COLOR_BOVEDA, COLOR_DISPONIBLE, PALETA, color_rareza
 ANCHO = 560
 ALTO = 250
 
+# Minimo antes de que el resumen se corte o se solape con el pie: comprobado con
+# una captura (herramientas/capturas). Mas pequeno que el minimo de la vista completa.
+ANCHO_MINIMO = 420
+ALTO_MINIMO = 190
+
 
 class VistaCompacta(QWidget):
     pedir_precios = Signal(str)

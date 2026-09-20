@@ -8,3 +8,7 @@ dist/
 
 # Correspondencia y datos del usuario: no se publican
 docs/correo-a-soporte-de.md
+
+# Capturas de trabajo del redimensionado (no son documentacion)
+herramientas/capturas/overlay_*_real*.png
+herramientas/capturas/overlay_compacto_contenido_*.png

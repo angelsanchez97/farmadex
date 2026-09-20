@@ -39,7 +39,7 @@ POR_DEFECTO = {
     "hotkey_cursor": "Ctrl+Alt+Q",
     "hotkey_reliquias": "Ctrl+Alt+R",
     "overlay_opacidad": 0.94,
-    "tema": "vacio",
+    "tema": "orokin",
     "diseno_mundo": "lista",
     "overlay_geometria": None,
     # Vista compacta para el directo: cual se usaba y su propia posicion y tamano.

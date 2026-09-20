@@ -77,6 +77,14 @@ class WNDCLASSW(ctypes.Structure):
 _proc = None  # el callback tiene que seguir vivo mientras exista la clase
 
 
+def _declarar_manejadores() -> None:
+    """Tipos de las llamadas Win32 que devuelven manejadores de 64 bits."""
+    ctypes.windll.kernel32.GetModuleHandleW.restype = wintypes.HMODULE
+    ctypes.windll.kernel32.GetModuleHandleW.argtypes = [wintypes.LPCWSTR]
+    ctypes.windll.user32.RegisterClassW.restype = wintypes.ATOM
+    ctypes.windll.user32.RegisterClassW.argtypes = [ctypes.POINTER(WNDCLASSW)]
+
+
 def _registrar_clase() -> None:
     global _proc
     if _proc is not None:
@@ -84,6 +92,10 @@ def _registrar_clase() -> None:
     user32 = ctypes.windll.user32
     user32.DefWindowProcW.restype = ctypes.c_ssize_t
     user32.DefWindowProcW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+    # Sin declarar el tipo, ctypes da por hecho que devuelve un int de 32 bits y
+    # trunca el manejador del modulo, que en 64 bits no cabe: RegisterClassW
+    # recibia basura y reventaba con un fallo de acceso, a veces si y a veces no.
+    _declarar_manejadores()
     _proc = WNDPROC(lambda h, m, w, l: user32.DefWindowProcW(h, m, w, l))
     clase = WNDCLASSW()
     clase.lpfnWndProc = _proc

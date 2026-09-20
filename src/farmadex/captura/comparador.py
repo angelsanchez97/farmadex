@@ -364,6 +364,12 @@ class ServicioComparador(QObject):
             except Exception as e:  # noqa: BLE001 - sin mercado se puntua con ducados y rareza
                 log.warning("Mercado no disponible para el comparador: %s", e)
                 return None
+        # Una fabrica que devuelve None (o algo sin `precios`) dejaba el veredicto
+        # vacio sin decir por que: se trata como "no hay mercado" y se sigue con
+        # ducados y rareza, que es peor respuesta pero es una respuesta.
+        if self._market is None or not hasattr(self._market, "precios"):
+            log.warning("El comparador no tiene mercado con el que consultar precios")
+            return None
         return self._market.precios
 
     @Slot(list)

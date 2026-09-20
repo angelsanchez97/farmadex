@@ -26,6 +26,11 @@ COLOR_TEXTO = QColor(230, 235, 245)
 COLOR_DOMINADO = QColor(111, 207, 122)
 COLOR_A_MEDIAS = QColor(240, 166, 60)
 COLOR_SIN_DOMINAR = QColor(147, 160, 180)
+# La marca de "esta es la que conviene": dorado vivo si el comparador esta seguro,
+# el mismo tono apagado si solo es la mejor apuesta. Nunca se usa para elegir al azar:
+# sin datos con que decidir, ninguna recompensa la lleva.
+COLOR_MEJOR = QColor(255, 202, 40)
+COLOR_MEJOR_DUDOSO = QColor(190, 165, 100)
 
 _COLORES_MAESTRIA = {"dominado": COLOR_DOMINADO, "a_medias": COLOR_A_MEDIAS, "sin_tocar": COLOR_SIN_DOMINAR}
 
@@ -45,6 +50,7 @@ class EtiquetasRecompensas(QWidget):
         self.setAttribute(Qt.WA_ShowWithoutActivating)
         self.recompensas: list = []
         self.maestria: dict[int, tuple[str, str]] = {}
+        self._seguro = True  # del ultimo veredicto recibido; sin veredicto no marca nada
 
         self._temporizador = QTimer(self)
         self._temporizador.setSingleShot(True)
@@ -54,6 +60,7 @@ class EtiquetasRecompensas(QWidget):
         """`maestria`: item_id -> (texto, clave de estado) para los que dan rango, si hay perfil."""
         self.recompensas = [r for r in recompensas if r.caja]
         self.maestria = maestria or {}
+        self._seguro = True  # se reactiva marca a marca cuando llegue el veredicto nuevo
         if not self.recompensas:
             self.hide()
             return
@@ -66,6 +73,28 @@ class EtiquetasRecompensas(QWidget):
         self._temporizador.start(SEGUNDOS_VISIBLE * 1000)
         if sys.platform.startswith("win"):
             self._hacer_atravesable()
+
+    def marcar_veredicto(self, recompensas: list, veredicto) -> None:
+        """Llega el veredicto del comparador (tarda: precios a ~300 ms por pieza).
+
+        Anade la marca de "mejor" a las etiquetas que ya estan en pantalla, sin
+        retrasar lo que ya se vio. Si lo que llega no encaja con lo que se esta
+        mostrando ahora mismo (pantalla vieja, o ya escondida), se descarta: pintar
+        el veredicto de una reliquia sobre la pantalla de otra seria peor que no
+        pintar nada.
+        """
+        if not self.recompensas:
+            return
+        if {r.item_id for r in self.recompensas} != {r.item_id for r in recompensas}:
+            return
+        actualizadas = {r.item_id: r for r in recompensas}
+        for r in self.recompensas:
+            nuevo = actualizadas.get(r.item_id)
+            if nuevo is None:
+                continue
+            r.valor, r.mejor, r.nota, r.platino = nuevo.valor, nuevo.mejor, nuevo.nota, nuevo.platino
+        self._seguro = veredicto.seguro
+        self.update()
 
     def _hacer_atravesable(self) -> None:
         """Por si el gestor de ventanas ignora WindowTransparentForInput."""
@@ -94,6 +123,13 @@ class EtiquetasRecompensas(QWidget):
             x, y, ancho, alto = r.caja
             # Cada linea lleva su color, para no adivinarlo luego por el texto.
             lineas = [(r.nombre, COLOR_TEXTO)]
+            color_mejor = None
+            if r.mejor:
+                # Se decide en segundos y con el juego de fondo: la marca va justo
+                # bajo el nombre, no al final, para que se vea de un vistazo.
+                color_mejor = COLOR_MEJOR if self._seguro else COLOR_MEJOR_DUDOSO
+                etiqueta_mejor = t("MEJOR OPCION") if self._seguro else t("Probablemente la mejor")
+                lineas.append((etiqueta_mejor, color_mejor))
             detalle = []
             if r.platino is not None:
                 detalle.append(t("{n} platino", n=r.platino))
@@ -108,6 +144,10 @@ class EtiquetasRecompensas(QWidget):
             marca = self.maestria.get(r.item_id)
             if marca:
                 lineas.append((marca[0], _COLORES_MAESTRIA.get(marca[1], COLOR_SIN_DOMINAR)))
+            if r.nota:
+                # Por que falta un dato o por que no se puede afirmar del todo:
+                # la duda se enseña, nunca se esconde detras de una marca segura.
+                lineas.append((r.nota, COLOR_SIN_DOMINAR))
 
             ancho_caja = max(metrica.horizontalAdvance(texto) for texto, _ in lineas) + 18
             alto_caja = metrica.height() * len(lineas) + 12
@@ -115,8 +155,8 @@ class EtiquetasRecompensas(QWidget):
             caja_y = max(0, y - alto_caja - 8)
 
             pintor.setBrush(COLOR_FONDO)
-            borde = COLOR_OBJETIVO if r.objetivo else (COLOR_BOVEDA if r.vaulted else COLOR_BORDE)
-            pintor.setPen(QPen(borde, 2))
+            borde = color_mejor or (COLOR_OBJETIVO if r.objetivo else (COLOR_BOVEDA if r.vaulted else COLOR_BORDE))
+            pintor.setPen(QPen(borde, 3 if color_mejor else 2))
             pintor.drawRoundedRect(caja_x, caja_y, ancho_caja, alto_caja, 8, 8)
 
             for i, (texto, color) in enumerate(lineas):

@@ -417,6 +417,7 @@ class PestanaMundo(QWidget):
     def actualizar(self, mundo: Mundo) -> None:
         self.mundo = mundo
         self._motivo_fallo = None
+        self._motivo_fallo = None
         if self.indice is not None:
             self._eras_necesarias = self._calcular_eras()
         self.aviso.setText("")
@@ -442,6 +443,18 @@ class PestanaMundo(QWidget):
         for tarjeta in self.tarjetas.values():
             tarjeta.limpiar()
         if mundo is None:
+            # Sin datos todavia. Si es porque la consulta fallo, se dice; si no,
+            # se deja el aviso de "consultando" que ya esta arriba.
+            if self._motivo_fallo:
+                seccion = self.tarjetas["fisuras"]
+                seccion.show()
+                seccion.vacia(
+                    t(
+                        "No se ha podido consultar el estado del mundo ({motivo}). "
+                        "Se reintenta solo cada minuto.",
+                        motivo=self._motivo_fallo,
+                    )
+                )
             return
         self._pintar_ahora(mundo)
         abiertas = self._fisuras_abiertas(mundo)
@@ -555,7 +568,18 @@ class PestanaMundo(QWidget):
             if not fisuras:
                 if clave == "fisuras":
                     seccion.show()
-                    seccion.vacia(t("No hay fisuras abiertas con ese filtro"))
+                    # Sin datos por un fallo de la API no es lo mismo que "no hay
+                    # fisuras": decir lo segundo cuando pasa lo primero es mentir.
+                    if self._motivo_fallo and not self.mundo:
+                        seccion.vacia(
+                            t(
+                                "No se ha podido consultar el estado del mundo "
+                                "({motivo}). Se reintenta solo cada minuto.",
+                                motivo=self._motivo_fallo,
+                            )
+                        )
+                    else:
+                        seccion.vacia(t("No hay fisuras abiertas con ese filtro"))
                 else:
                     seccion.hide()
                 continue
