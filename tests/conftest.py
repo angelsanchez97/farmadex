@@ -12,6 +12,16 @@ def pytest_configure(config):
     )
 
 
+@pytest.fixture(autouse=True)
+def _configuracion_limpia():
+    """La configuracion se comparte entre modulos: que no viaje de una prueba a otra."""
+    from farmadex import config
+
+    config._compartida = None
+    yield
+    config._compartida = None
+
+
 @pytest.fixture()
 def con(tmp_path, monkeypatch):
     """Indice vacio en disco temporal, con el esquema y el glosario cargados."""

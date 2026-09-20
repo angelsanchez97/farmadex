@@ -62,8 +62,26 @@ def crear_carpetas() -> None:
         carpeta.mkdir(parents=True, exist_ok=True)
 
 
-def cargar() -> dict:
-    """Devuelve la configuracion, completando con los valores por defecto."""
+# Todos los que piden la configuracion comparten el mismo diccionario.
+#
+# Antes cada uno se hacia su copia -- la ventana, la pestana de Ajustes y el
+# buscador --, y como al guardar se escribe el fichero entero, el ultimo en
+# escribir borraba los cambios de los demas. En la practica: elegias un tema,
+# cerrabas el programa, la ventana guardaba su posicion con el tema de antes, y
+# al volver a abrir estaba todo como al principio.
+_compartida: tuple[Path, dict] | None = None
+
+
+def cargar(recargar: bool = False) -> dict:
+    """Devuelve la configuracion, completando con los valores por defecto.
+
+    Siempre el mismo diccionario mientras no cambie el fichero de destino, para
+    que un cambio hecho desde Ajustes lo vea tambien quien guarde despues.
+    """
+    global _compartida
+    if not recargar and _compartida is not None and _compartida[0] == RUTA_CONFIG:
+        return _compartida[1]
+
     crear_carpetas()
     datos = {}
     if RUTA_CONFIG.exists():
@@ -73,13 +91,19 @@ def cargar() -> dict:
             datos = {}
     config = dict(POR_DEFECTO)
     config.update({c: v for c, v in datos.items() if c in POR_DEFECTO})
+    _compartida = (RUTA_CONFIG, config)
     if datos != config:
         guardar(config)
     return config
 
 
 def guardar(config: dict) -> None:
+    global _compartida
     crear_carpetas()
     tmp = RUTA_CONFIG.with_suffix(".tmp")
     tmp.write_text(json.dumps(config, indent=2, ensure_ascii=False), encoding="utf-8")
     tmp.replace(RUTA_CONFIG)
+    if _compartida is not None and _compartida[1] is not config:
+        # Alguien ha guardado un diccionario suyo: lo que hubiera en memoria ya no
+        # vale, y la proxima lectura vuelve al fichero.
+        _compartida = None

@@ -1,5 +1,16 @@
 # Cambios
 
+## 0.1.7
+
+- **Los ajustes ya se guardan.** El tema, el idioma, la opacidad, la
+  disposicion de Mundo y los atajos volvian a su valor anterior en cuanto
+  cerrabas el programa. La causa: la ventana, la pestana de Ajustes y el
+  buscador pedian la configuracion cada uno por su cuenta y se quedaban con su
+  propia copia; como al guardar se escribe el fichero entero, el ultimo en
+  escribir borraba los cambios de los demas. Y el ultimo siempre era la ventana,
+  guardando su posicion al cerrar con el tema de antes. Ahora hay una sola
+  configuracion compartida.
+
 ## 0.1.6
 
 - **El boton "Comprobar ahora" ya comprueba de verdad.** Solo miraba una carpeta
