@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
 from ..config import cargar, guardar
 from .. import perfil
 from ..datos import eficiencia, indice, items, relaciones
-from ..datos.nodos import nombre_bonito
+from ..datos.nodos import etapa_bonita, nombre_bonito
 from ..idiomas import es_castellano, glosa, nombre as nombre_idioma, t
 from . import glosario
 from .maestria import colores_maestria, estado_con_padre, texto_maestria
@@ -605,7 +605,15 @@ class PestanaBuscador(QWidget):
                 + "</div>"
             )
 
-        if not datos["fuentes"] and not datos["componentes"]:
+        if es_reliquia and not datos["fuentes"]:
+            # Una reliquia sin mision no "puede venir de una mision de historia": esta en
+            # boveda (o acaba de salir de ella) y se compra a otro jugador. Lo mismo que
+            # dicen la vista compacta y Objetivos de esa misma reliquia.
+            texto = t("No cae en ninguna mision activa")
+            if item["vaulted"]:
+                texto += ". " + t("Hay que comprarla a otro jugador.")
+            partes.append(f"<p>{glosario.enlace('boveda', texto, COLOR_BOVEDA if item['vaulted'] else p['suave'])}</p>")
+        elif not datos["fuentes"] and not datos["componentes"]:
             partes.append(
                 f"<p style='color:{p['suave']}'>"
                 + html.escape(t("Sin fuentes registradas: puede venir de una mision de historia, "
@@ -790,7 +798,7 @@ class PestanaBuscador(QWidget):
             if f["rotacion"]:
                 extra.append(_rotacion(self.con, f["rotacion"], p["suave"]))
             if f["etapa"]:
-                extra.append(html.escape(str(f["etapa"])))
+                extra.append(html.escape(etapa_bonita(f["etapa"])))
             if f["standing"]:
                 extra.append(glosario.enlace(
                     "reputacion", t("{standing} de reputacion", standing=f["standing"]), p["suave"]
@@ -884,7 +892,9 @@ MOTIVOS_SIN_ESTIMACION = {
     "por_muerte": "por muerte",
     "reputacion": "reputacion",
     "diaria": "1 al dia",
+    "semanal": "1 a la semana",
     "pvp": "PvP",
+    "evento": "solo en evento",
 }
 
 

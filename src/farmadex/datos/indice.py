@@ -129,6 +129,33 @@ def desfase_con_el_juego(meta: dict, fecha_build) -> list[tuple[str, str]]:
     return atrasadas
 
 
+def texto_desfase(atrasadas, pendientes, build: str, fecha_build, reciente: bool) -> tuple[str, bool]:
+    """El aviso de Ajustes para datos anteriores al parche y si va en tono de alerta.
+
+    `pendientes` es el subconjunto de `atrasadas` con algo mas nuevo publicado y sin
+    descargar (descargas.fuentes_pendientes). Si esta vacio, lo que hay es lo ultimo que
+    WFCD y DE han publicado: no es un fallo nuestro, y solo se dice en tono de aviso los
+    dias siguientes al parche, cuando de verdad puede faltar contenido.
+    """
+    from ..idiomas import t
+
+    if pendientes:
+        detalle = ", ".join(t("{fuente} del {fecha}", fuente=t(f), fecha=fecha) for f, fecha in pendientes)
+        return t(
+            "Warframe se ha actualizado (build {build}) y los datos van por detras: {detalle}. "
+            "Puede faltar lo nuevo del parche; se volveran a descargar cuando WFCD y DE los publiquen.",
+            build=build or "?",
+            detalle=detalle,
+        ), True
+    detalle = ", ".join(t("{fuente} del {fecha}", fuente=t(f), fecha=fecha) for f, fecha in atrasadas)
+    return t(
+        "Tienes lo mas reciente que han publicado WFCD y DE ({detalle}). El juego se actualizo "
+        "despues ({fecha_build}); si ese parche cambio algo, aparecera cuando publiquen sus tablas.",
+        detalle=detalle,
+        fecha_build=fecha_build.isoformat() if fecha_build else "?",
+    ), reciente
+
+
 def traducir(con: sqlite3.Connection, dominio: str, en: str | None) -> str:
     if not en:
         return ""

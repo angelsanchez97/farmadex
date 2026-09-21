@@ -1,5 +1,30 @@
 # Cambios
 
+## 0.2.1
+
+Segunda revision: el codigo nuevo de la 0.2.0, y el programa usado de
+principio a fin como un jugador novato y como uno veterano.
+
+**Actualizacion automatica, mas robusta**
+- Con Farmadex abierto dos veces, la actualizacion fallaba y esa version ya no
+  se volvia a intentar nunca. Ahora espera a que cierres el ultimo.
+- Funciona en carpetas de usuario con acentos o simbolos como "&" o parentesis.
+- Si desactivas "Actualizar automaticamente" despues de que se descargue, ya no
+  se instala sola al cerrar.
+
+**Datos y fichas**
+- La rareza de cada pieza en una reliquia es la real (la del 10 % es la rara),
+  igual en la ficha y en la vista compacta.
+- Las reliquias en boveda dicen que ya no caen y hay que comprarlas, en vez de
+  "puede venir de una mision de historia".
+- Los contratos se leen en tu idioma: "Contratos de Cetus - nivel 10-30 -
+  etapa 4 de 5".
+- Los contratos de evento (Ghoul, Plague Star) y la Archimedea semanal ya no
+  aparecen como la forma mas rapida de conseguir algo.
+- Ajustes ya no avisa en naranja de que los datos van por detras cuando tienes
+  lo ultimo que DE ha publicado: DE puede tardar meses en actualizar sus tablas
+  de drops, y eso no es un fallo.
+
 ## 0.2.0
 
 **Se actualiza solo**

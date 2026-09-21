@@ -265,7 +265,8 @@ class PestanaAjustes(QWidget):
             nota.setStyleSheet(f"color: {p['suave']}; font-size: 12px;")
         self.aviso_hotkey.setStyleSheet(f"color: {p['aviso']};")
         self.estado_datos.setStyleSheet(f"color: {p['suave']};")
-        self.aviso_parche.setStyleSheet(f"color: {p['aviso']};")
+        alerta = getattr(self, "_aviso_parche_es_alerta", True)
+        self.aviso_parche.setStyleSheet(f"color: {p['aviso' if alerta else 'suave']};")
         self.aviso_version.setStyleSheet(f"color: {p[self._color_version]};")
         if self._modo_pantalla is not None:
             self.mostrar_modo_pantalla(self._modo_pantalla)
@@ -307,9 +308,15 @@ class PestanaAjustes(QWidget):
         color = PALETA["aviso"] if modo == "exclusivo" else PALETA["suave"]
         self.estado_juego.setStyleSheet(f"color: {color}; font-size: 12px;")
 
-    def avisar_parche(self, texto: str | None) -> None:
-        """Aviso de que los datos son anteriores al parche del juego; None lo quita."""
+    def avisar_parche(self, texto: str | None, aviso: bool = True) -> None:
+        """Aviso de que los datos son anteriores al parche del juego; None lo quita.
+
+        Con `aviso` en False va en color neutro: los datos son lo ultimo publicado y
+        solo se informa de que DE no ha actualizado sus tablas desde el parche.
+        """
         self._texto_parche = texto
+        self._aviso_parche_es_alerta = aviso
+        self.aviso_parche.setStyleSheet(f"color: {PALETA['aviso' if aviso else 'suave']};")
         self.aviso_parche.setText(texto or "")
         self.aviso_parche.setVisible(bool(texto))
 

@@ -16,7 +16,7 @@ import sqlite3
 import httpx
 
 from ..config import USER_AGENT
-from ..idiomas import glosa
+from ..idiomas import glosa, t
 from ..registro_log import obtener
 from .items import normalizar
 
@@ -298,12 +298,66 @@ def reenlazar_fuentes(con: sqlite3.Connection) -> dict:
     return {"enlazadas": enlazadas, "sin_nodo": sin_nodo}
 
 
+# "Contratos de Cetus Level 10 - 30 Cetus Bounty": la etiqueta la puso drops.py y el resto
+# es el nombre del nivel tal cual viene en las tablas (con dobles espacios en algunos).
+RE_CONTRATO = re.compile(r"^(?P<sitio>.+?)\s+Level\s+(?P<a>\d+)\s*-\s*(?P<b>\d+)\s+(?P<resto>.+)$")
+# Sufijos que solo repiten la zona: no aportan nada al lado de "Contratos de Cetus".
+SUFIJOS_CONTRATO = frozenset({
+    "Cetus Bounty", "Orb Vallis Bounty", "Cambion Drift Bounty", "Entrati Lab Bounty",
+    "Zariman Bounty", "WF1999 Bounty",
+})
+RE_ETAPA = re.compile(r"^Stage\s+(\d+)(?:\s+of\s+(\d+))?$", re.IGNORECASE)
+
+
+def nombre_contrato(origen_texto: str) -> str | None:
+    """'Contratos de Cetus Level 10 - 30 Cetus Bounty' -> 'Contratos de Cetus · nivel 10-30'.
+
+    Lo que distingue un contrato especial (Ghoul, Plague Star, Profit-Taker, Isolation
+    Vault) se conserva detras. None si el texto no es un contrato.
+    """
+    m = RE_CONTRATO.match(origen_texto or "")
+    if not m:
+        return None
+    partes = [t(m["sitio"]), t("nivel {a}-{b}", a=m["a"], b=m["b"])]
+    resto = m["resto"].strip()
+    if resto not in SUFIJOS_CONTRATO:
+        resto = re.sub(r"\s+Bounty$", "", resto)
+        partes.append(resto.title() if resto.isupper() else resto)
+    return " · ".join(partes)
+
+
+def etapa_bonita(etapa: str | None) -> str:
+    """'Stage 4 of 5' -> 'etapa 4 de 5'; 'Final Stage' -> 'etapa final'. Lo desconocido, tal cual."""
+    if not etapa:
+        return ""
+    texto = str(etapa).strip()
+    fijos = {
+        "final stage": t("etapa final"),
+        "first completion": t("primera vez"),
+        "subsequent completions": t("veces siguientes"),
+        "stage 2, stage 3 of 4, and stage 3 of 5": t("etapas 2 y 3"),
+    }
+    if texto.lower() in fijos:
+        return fijos[texto.lower()]
+    m = RE_ETAPA.match(texto)
+    if m and m.group(2):
+        return t("etapa {n} de {total}", n=m.group(1), total=m.group(2))
+    if m:
+        return t("etapa {n}", n=m.group(1))
+    return texto
+
+
 def nombre_bonito(con: sqlite3.Connection, origen_texto: str) -> str:
     """'Venus/Bifrost Echo (Caches)' -> 'Bifrost Echo (Caches), Venus'.
 
     El planeta se traduce con el glosario en castellano; en otro idioma de la
     interfaz se deja el ingles del juego (o la traduccion del catalogo si la hay).
+    Los contratos ("Contratos de Cetus Level 10 - 30 Cetus Bounty") se acortan y
+    traducen aparte.
     """
+    contrato = nombre_contrato(origen_texto)
+    if contrato:
+        return contrato
     if "/" not in (origen_texto or ""):
         return origen_texto
     planeta, _, nodo = origen_texto.partition("/")

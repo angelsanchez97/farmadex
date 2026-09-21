@@ -5,7 +5,10 @@ Sin red: httpx.MockTransport hace de GitHub. Nunca se lanza ningun instalador.
 
 import hashlib
 import json
+import os
 import re
+import subprocess
+import time
 from pathlib import Path
 
 import httpx
@@ -200,8 +203,83 @@ def test_parametros_del_setup_silencioso(tmp_path):
         assert p in params
     assert params[-1] == f"/LOG={tmp_path / 'instalador.log'}"
     orden = instalacion._linea_de_ordenes(setup, tmp_path / "Farmadex.exe")
-    assert orden.startswith('cmd.exe /d /c "') and orden.endswith('"')
+    assert re.match(r'^("[^"]*cmd\.exe"|\S*cmd\.exe) /d /c "', orden) and orden.endswith('"')
     assert "|| start" in orden and str(tmp_path / "Farmadex.exe") in orden
+    # Los parametros del setup van sin comillas, tal y como se probaron de verdad.
+    assert " /VERYSILENT " in orden and '"/VERYSILENT"' not in orden
+
+
+def test_la_orden_entrecomilla_lo_que_cmd_interpretaria(tmp_path, monkeypatch):
+    """Una carpeta de usuario "Ana&Luis" (sin espacios) partia la orden en dos."""
+    carpeta = tmp_path / "Ana&Luis(2)"
+    monkeypatch.setattr(instalacion, "DIR_LOGS", carpeta / "logs")
+    orden = instalacion._linea_de_ordenes(carpeta / "setup.exe", carpeta / "Farmadex.exe")
+    assert f'"{carpeta / "setup.exe"}" /VERYSILENT' in orden
+    assert f'"/LOG={carpeta / "logs" / "instalador.log"}"' in orden
+    assert orden.endswith(f'|| start "" "{carpeta / "Farmadex.exe"}""')
+
+
+@pytest.mark.skipif(os.name != "nt", reason="la orden es para cmd.exe de Windows")
+def test_la_orden_de_cmd_funciona_con_espacios_acentos_y_simbolos(tmp_path, monkeypatch):
+    """Se ejecuta de verdad: un setup falso que falla relanza el "Farmadex" falso.
+
+    Nada de esto abre ventanas: el setup es un .cmd dentro de la consola oculta y el
+    relanzado un .vbs (wscript, sin consola) que deja una marca.
+    """
+    carpeta = tmp_path / "Ana María & Cía (2)"
+    carpeta.mkdir()
+    monkeypatch.setattr(instalacion, "DIR_LOGS", carpeta / "logs")
+    exe = carpeta / "Farmadex.vbs"
+    exe.write_text(
+        'Set fso = CreateObject("Scripting.FileSystemObject")\r\n'
+        'fso.CreateTextFile(fso.GetParentFolderName(WScript.ScriptFullName) & "\\relanzado.txt", True).Close\r\n',
+        encoding="utf-16",
+    )
+    marca = carpeta / "relanzado.txt"
+    argumentos = carpeta / "args.txt"
+
+    def correr(codigo: int) -> None:
+        setup = carpeta / f"setup{codigo}.cmd"
+        setup.write_text(f'@echo %*> "%~dp0args.txt"\r\n@exit /b {codigo}\r\n', encoding="ascii")
+        marca.unlink(missing_ok=True)
+        orden = instalacion._linea_de_ordenes(setup, exe)
+        subprocess.run(orden, timeout=30, creationflags=subprocess.CREATE_NO_WINDOW)  # noqa: S603
+        for _ in range(50):
+            if marca.exists():
+                break
+            time.sleep(0.1)
+
+    correr(1)
+    assert marca.exists(), "el setup fallo y no se relanzo Farmadex"
+    recibido = argumentos.read_text(encoding="utf-8", errors="replace")
+    assert "/VERYSILENT" in recibido and "/AUTOACTUALIZAR=1" in recibido
+    assert re.search(r'"/LOG=.*& C.*\\logs\\instalador\.log"', recibido)
+
+    correr(0)
+    assert not marca.exists(), "el setup fue bien y aun asi se relanzo el Farmadex viejo"
+
+
+@pytest.mark.skipif(os.name != "nt", reason="mutex de Windows")
+def test_se_detecta_otro_farmadex_abierto_y_se_recupera_el_mutex(monkeypatch):
+    import ctypes
+
+    # Con el nombre real, el Farmadex instalado que tenga abierto quien corre las
+    # pruebas contaria como "otro".
+    monkeypatch.setattr(instalacion, "MUTEX", f"FarmadexPrueba{os.getpid()}")
+    monkeypatch.setattr(instalacion, "_mutex", None)
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    k32.CreateMutexW.restype = ctypes.c_void_p
+    k32.CloseHandle.argtypes = [ctypes.c_void_p]
+    instalacion.senalar_en_ejecucion()
+    assert not instalacion.otra_instancia_abierta()
+    otro = k32.CreateMutexW(None, False, instalacion.MUTEX)  # "el otro Farmadex"
+    try:
+        assert instalacion.otra_instancia_abierta()
+    finally:
+        k32.CloseHandle(otro)
+    assert not instalacion.otra_instancia_abierta()
+    # Tras mirar se vuelve a tener el mutex: el instalador seguiria esperandonos.
+    assert instalacion._mutex is not None
 
 
 def test_instalar_silencioso_apunta_la_version_y_no_falla_sin_setup(tmp_path, monkeypatch):
@@ -237,17 +315,45 @@ def test_resultado_de_la_instalacion_anterior(tmp_path, monkeypatch):
     assert instalacion.resultado_instalacion_anterior() == ("instalada", VERSION)
     assert instalacion.version_fallida() is None
 
+    # "v" delante o no, es la misma version.
+    (tmp_path / "pendiente.json").write_text(json.dumps({"version": f"v{VERSION}"}))
+    assert instalacion.resultado_instalacion_anterior() == ("instalada", f"v{VERSION}")
+
+
+def test_un_apunte_viejo_o_ilegible_no_es_un_fallo(tmp_path, monkeypatch):
+    """Se instalo a mano una version mas nueva con un apunte pendiente: ni exito ni
+    fallo, y sobre todo no se veta nada. Un apunte sin version tampoco."""
+    monkeypatch.setattr(instalacion, "RUTA_PENDIENTE", tmp_path / "pendiente.json")
+    monkeypatch.setattr(instalacion, "RUTA_FALLIDA", tmp_path / "fallida.json")
+    for apunte in ({"version": "v0.0.1"}, {"version": ""}, {"version": "beta"}, {}):
+        (tmp_path / "pendiente.json").write_text(json.dumps(apunte))
+        assert instalacion.resultado_instalacion_anterior() is None
+        assert not (tmp_path / "pendiente.json").exists()
+        assert instalacion.version_fallida() is None
+
+
+def test_un_trozo_viejo_que_no_cuadra_se_baja_de_cero(tmp_path):
+    """El adjunto se volvio a subir con otro contenido y quedaba un .parcial de antes:
+    reanudar daba huella mala y se ofrecia el enlace; ahora se baja entero una vez."""
+    peticiones: list = []
+    (tmp_path / "Farmadex-9.9.9-setup.exe.parcial").write_bytes(b"basura" * 200)
+    ruta = descarga.descargar(version(), tmp_path, transporte=transporte_ok(contador=peticiones))
+    assert ruta.read_bytes() == CONTENIDO
+    assert peticiones == ["bytes=1200-", None]
+    assert not list(tmp_path.glob("*.parcial"))
+
 
 # -- la ventana decide -------------------------------------------------------------
 
 
-def _ventana_falsa(monkeypatch, auto=True, instalado=True, fallida=None):
+def _ventana_falsa(monkeypatch, auto=True, instalado=True, fallida=None, otra=False):
     import types
 
     from farmadex.ui.overlay import VentanaOverlay
 
     avisos, ajustes, descargas, lanzados = {}, [], [], []
     monkeypatch.setattr(instalacion, "es_instalacion_por_instalador", lambda *a, **k: instalado)
+    monkeypatch.setattr(instalacion, "otra_instancia_abierta", lambda: otra)
     monkeypatch.setattr(instalacion, "version_fallida", lambda: fallida)
     monkeypatch.setattr(instalacion, "instalar_silencioso", lambda ruta, etiqueta, **k: lanzados.append((ruta, etiqueta)) or True)
     falso = types.SimpleNamespace(
@@ -313,6 +419,28 @@ def test_si_la_descarga_falla_se_sigue_con_la_actual_y_se_dice_por_que(monkeypat
     # Al regenerar el aviso (idioma, tema) se conserva el motivo sin volver a descargar.
     falso._hay_version_nueva(v)
     assert len(descargas) == 1 and "huella SHA-256" in avisos["version"]
+
+
+def test_con_otro_farmadex_abierto_se_deja_la_instalacion_para_el_ultimo(monkeypatch):
+    falso, avisos, _, _, lanzados = _ventana_falsa(monkeypatch, otra=True)
+    v = version()
+    falso._actualizacion_lista(v, Path("C:/x/setup.exe"))
+    assert not falso._lanzar_instalacion_pendiente() and lanzados == []
+    assert "otro Farmadex abierto" in avisos["version"]
+    # La descarga sigue lista: cuando el otro se cierre, este la instala al salir.
+    assert falso.actualizacion_lista == (v, Path("C:/x/setup.exe")) and not falso._instalador_lanzado
+    monkeypatch.setattr(instalacion, "otra_instancia_abierta", lambda: False)
+    assert falso._lanzar_instalacion_pendiente() and len(lanzados) == 1
+
+
+def test_si_se_desactiva_la_casilla_tras_descargar_no_se_instala_al_cerrar(monkeypatch):
+    falso, _, _, _, lanzados = _ventana_falsa(monkeypatch)
+    v = version()
+    falso._actualizacion_lista(v, Path("C:/x/setup.exe"))
+    falso.config["actualizar_automaticamente"] = False
+    assert not falso._lanzar_instalacion_pendiente() and lanzados == []
+    # Pulsar "Reiniciar y actualizar" es una orden expresa: eso si.
+    assert falso._lanzar_instalacion_pendiente(a_mano=True) and len(lanzados) == 1
 
 
 # -- el instalador -----------------------------------------------------------------

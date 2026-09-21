@@ -47,6 +47,28 @@ def _filas(con: sqlite3.Connection, sql: str, parametros: tuple = ()) -> list[di
         con.row_factory = anterior
 
 
+# Las tablas de WFCD traen casi todos los premios de reliquia como "Uncommon" (Neo Z5:
+# seis premios, seis Uncommon; el Axi A7 en boveda marca los Sistemas de Ash Prime al
+# 10 % como poco comunes). La rareza real la fija la probabilidad de cada refinamiento:
+# en Radiante el 10 % es la pieza rara, el 20 % las poco comunes y el 16,7 % las comunes.
+RAREZA_POR_PROBABILIDAD = {
+    "Intact": ((2.0, "Rare"), (11.0, "Uncommon"), (25.33, "Common")),
+    "Exceptional": ((4.0, "Rare"), (13.0, "Uncommon"), (23.33, "Common")),
+    "Flawless": ((6.0, "Rare"), (17.0, "Uncommon"), (20.0, "Common")),
+    "Radiant": ((10.0, "Rare"), (20.0, "Uncommon"), (16.67, "Common")),
+}
+
+
+def rareza_reliquia(refinamiento: str | None, probabilidad, rareza_tabla: str | None = None) -> str | None:
+    """La rareza de un premio de reliquia por su probabilidad; la de la tabla solo si no cuadra."""
+    umbrales = RAREZA_POR_PROBABILIDAD.get(refinamiento or "")
+    if umbrales and probabilidad is not None:
+        for umbral, rareza in umbrales:
+            if abs(float(probabilidad) - umbral) < 0.5:
+                return rareza
+    return rareza_tabla
+
+
 def reliquias_de(con: sqlite3.Connection, item_id: int, incluir_vaulted: bool = True) -> list[dict]:
     """Reliquias que sueltan esa pieza, con sus probabilidades por refinamiento."""
     filas = _filas(
@@ -74,7 +96,7 @@ def reliquias_de(con: sqlite3.Connection, item_id: int, incluir_vaulted: bool = 
         )
         if f["refinamiento"]:
             entrada["probabilidades"][f["refinamiento"]] = f["probabilidad"]
-        entrada["rareza"] = entrada["rareza"] or f["rareza"]
+        entrada["rareza"] = rareza_reliquia(f["refinamiento"], f["probabilidad"], entrada["rareza"] or f["rareza"])
 
     salida = [r for r in agrupadas.values() if incluir_vaulted or not r["vaulted"]]
     # Primero lo que se puede farmear hoy, y dentro, lo mas probable en Radiante.
@@ -223,21 +245,24 @@ def fuentes_de(con: sqlite3.Connection, item_id: int) -> list[dict]:
             if any(float(f["probabilidad"] or 0) >= j["probabilidad"] for f in reales):
                 continue
             filas = [f for f in filas if f not in reales] + [j]
-    vistas: set[tuple] = set()
-    salida: list[dict] = []
-    # Primero lo tipado, para que 'otro' solo entre si no repite nada.
-    for f in sorted(filas, key=lambda f: f["tipo"] == "otro"):
+    for f in filas:
         if f["tipo"] == "otro":
             rotacion = RE_ROTACION.search(f["origen_texto"] or "")
             if rotacion and not f["rotacion"]:
                 f["rotacion"] = rotacion.group(1).upper()
+        _puntuar(f)
+    vistas: set[tuple] = set()
+    salida: list[dict] = []
+    # Primero lo tipado, para que 'otro' solo entre si no repite nada; y dentro, lo
+    # mejor primero: las variantes de un jefe (Raptor y Raptor Mt, ambos en Naamah)
+    # son el mismo sitio y tiene que quedarse la que mas suelta, no la primera.
+    for f in sorted(filas, key=lambda f: (f["tipo"] == "otro", eficiencia.clave_orden(f), -f["puntuacion"])):
         # "Eidolon Hydrolyst (Special)" y "Eidolon Hydrolyst" son el mismo sitio.
         sitio = RE_SUFIJO.sub("", f["donde"]).strip().lower()
         clave = (sitio, (f["rotacion"] or "").upper(), f.get("etapa") or "")
         if clave in vistas:
             continue
         vistas.add(clave)
-        _puntuar(f)
         salida.append(f)
     salida.sort(
         key=lambda f: (
@@ -385,7 +410,7 @@ def _modo_traducido(con: sqlite3.Connection, datos_extra: str | None) -> str:
 
 def contenido_de(con: sqlite3.Connection, reliquia_id: int, refinamiento: str = "Radiant") -> list[dict]:
     """Que sale de una reliquia con un refinamiento dado, de mas raro a mas comun."""
-    return _filas(
+    filas = _filas(
         con,
         """
         SELECT rr.item_id, rr.rareza, rr.probabilidad,
@@ -399,6 +424,9 @@ def contenido_de(con: sqlite3.Connection, reliquia_id: int, refinamiento: str = 
         """,
         (reliquia_id, refinamiento),
     )
+    for f in filas:
+        f["rareza"] = rareza_reliquia(refinamiento, f["probabilidad"], f["rareza"])
+    return filas
 
 
 def mejor_ruta(con: sqlite3.Connection, item_id: int) -> dict | None:

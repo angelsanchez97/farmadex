@@ -120,6 +120,13 @@ TRANSITORIAS = {
 }
 DURACION_TRANSITORIA = 10.0
 RE_VOID_STORM = re.compile(r"^Void Storm", re.I)
+# Archimedea (Deep, Temporal): una tanda a la semana. Estimarla como una partida
+# suelta de 10 minutos la ponia por delante de cualquier mision de verdad.
+RE_SEMANAL = re.compile(r"Archimedea", re.I)
+# Contenido que solo existe durante un evento (Ghoul Purge, Plague Star...). Las
+# tablas de drops lo mantienen todo el ano, y medido como un contrato normal salia
+# como la ruta principal de la Nitaina aunque la mayor parte del ano no se puede hacer.
+RE_EVENTO = re.compile(r"Ghoul Bounty|Plague Star|Galleon Of Ghouls", re.I)
 
 # Jefes de asesinato: donde estan y si sueltan al morir el recurso del planeta.
 # Los datos no traen el nodo del jefe (ni warframe-items ni las tablas de drops de
@@ -195,8 +202,8 @@ def minutos_por_intento(f: dict) -> tuple[float | None, str]:
     """Minutos que cuesta cada oportunidad de que salga el objeto, y un motivo.
 
     El motivo es 'estimado' cuando hay numero; si no, dice por que no lo hay:
-    'por_muerte' (enemigo comun), 'reputacion', 'diaria' (incursion), 'pvp' o
-    'desconocido'.
+    'por_muerte' (enemigo comun), 'reputacion', 'diaria' (incursion), 'semanal'
+    (Archimedea), 'evento' (solo durante un evento), 'pvp' o 'desconocido'.
     """
     tipo = f.get("tipo")
     rotacion = f.get("rotacion")
@@ -208,12 +215,16 @@ def minutos_por_intento(f: dict) -> tuple[float | None, str]:
         return None, "reputacion"
     if tipo == "sortie":
         return None, "diaria"
+    if RE_EVENTO.search(f.get("origen_texto") or ""):
+        return None, "evento"
     if tipo == "bounty":
         return BOUNTY_CICLO * (duracion_bounty(f.get("origen_texto") or "") + CARGA), "estimado"
     if tipo == "transitoria":
         origen = f.get("origen_texto") or ""
         if RE_VOID_STORM.match(origen):
             return UNA_VEZ["Skirmish"] + CARGA, "estimado"
+        if RE_SEMANAL.search(origen):
+            return None, "semanal"
         clase, dato = TRANSITORIAS.get(origen, ("una_vez", DURACION_TRANSITORIA))
         if clase == "sin_fin":
             return _sin_fin(dato, rotacion), "estimado"
@@ -236,7 +247,9 @@ def minutos_medios(minutos_intento: float | None, probabilidad: float | None) ->
     """Tiempo medio hasta que salga: minutos por intento entre la probabilidad (en %)."""
     if minutos_intento is None or not probabilidad or probabilidad <= 0:
         return None
-    return round(minutos_intento / (float(probabilidad) / 100), 1)
+    # Las tablas traen mas del 100 % en cajas que sueltan varias unidades; hasta la
+    # primera no se tarda menos de un intento.
+    return round(minutos_intento / (min(float(probabilidad), 100.0) / 100), 1)
 
 
 def estimar(f: dict) -> None:

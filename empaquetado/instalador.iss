@@ -71,9 +71,10 @@ begin
   Result := ExpandConstant('{param:AUTOACTUALIZAR|0}') = '1';
 end;
 
-// Farmadex se cierra justo despues de lanzar este setup: se le dan hasta 30 s para
-// soltar sus ficheros. Si sigue abierto no se copia nada a medias: se aborta, y el
-// envoltorio que lanzo el setup vuelve a abrir la version que habia.
+// Farmadex se cierra justo despues de lanzar este setup: se le dan hasta 60 s para
+// soltar sus ficheros (cerrar los hilos de captura, comparador y mercado puede
+// llevar varios segundos cada uno). Si sigue abierto no se copia nada a medias: se
+// aborta, y el envoltorio que lanzo el setup vuelve a abrir la version que habia.
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   espera: Integer;
@@ -82,7 +83,7 @@ begin
   if not EsActualizacionAutomatica then
     Exit;
   espera := 0;
-  while CheckForMutexes(MutexFarmadex) and (espera < 60) do
+  while CheckForMutexes(MutexFarmadex) and (espera < 120) do
   begin
     Sleep(500);
     espera := espera + 1;

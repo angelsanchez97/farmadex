@@ -16,6 +16,7 @@ from rapidfuzz import fuzz, process as rf_process
 
 from ..registro_log import obtener
 from .items import _numero, _texto, normalizar
+from .relaciones import rareza_reliquia
 
 log = obtener("drops")
 
@@ -260,11 +261,14 @@ class ImportadorDrops:
                 iid = self.item_id(_nombre(premio, "itemName", "item"))
                 if not iid:
                     continue
+                # La columna "rarity" de WFCD viene casi siempre en "Uncommon": manda la probabilidad.
+                rareza = rareza_reliquia(
+                    refinamiento, _numero(premio.get("chance")), _texto(premio.get("rarity"))
+                )
                 self.con.execute(
                     "INSERT OR IGNORE INTO reliquia_recompensas "
                     "(reliquia_id, refinamiento, item_id, rareza, probabilidad) VALUES (?,?,?,?,?)",
-                    (rid, refinamiento, iid, _texto(premio.get("rarity")),
-                     _numero(premio.get("chance"))),
+                    (rid, refinamiento, iid, rareza, _numero(premio.get("chance"))),
                 )
                 existe = self.con.execute(
                     "SELECT 1 FROM fuentes WHERE item_id=? AND tipo='reliquia' AND origen_id=? "
@@ -278,7 +282,7 @@ class ImportadorDrops:
                         f"{nombre} Relic ({refinamiento})",
                         origen_id=rid,
                         refinamiento=refinamiento,
-                        rareza=premio.get("rarity"),
+                        rareza=rareza,
                         probabilidad=premio.get("chance"),
                     )
 

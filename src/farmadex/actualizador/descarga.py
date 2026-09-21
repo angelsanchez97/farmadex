@@ -117,44 +117,54 @@ def descargar(
         follow_redirects=True,
         transport=transporte,
     )
-    ultimo = "sin intentos"
-    hecho = False
     try:
-        for intento in range(max(1, intentos)):
-            if cancelado.is_set():
-                raise ErrorDescarga("cancelada")
-            try:
-                _bajar(cliente, version.url, parcial, progreso, cancelado)
-                hecho = True
+        while True:
+            # Un trozo de otra sesion que no cuadra con la huella (el adjunto se volvio
+            # a subir mientras tanto) se tira y se baja entero una vez; si lo bajado de
+            # cero tampoco cuadra, ya no es cosa nuestra.
+            reanudada = parcial.exists() and parcial.stat().st_size > 0
+            _con_reintentos(cliente, version.url, parcial, progreso, cancelado, intentos)
+            if sha256_de(parcial) == huella:
                 break
-            except httpx.HTTPStatusError as e:
-                ultimo = f"HTTP {e.response.status_code}"
-                if e.response.status_code == 416:
-                    # El trozo guardado ya no encaja con el servidor: se empieza de cero.
-                    parcial.unlink(missing_ok=True)
-                elif e.response.status_code < 500 and e.response.status_code not in (408, 429):
-                    break
-            except httpx.TimeoutException:
-                ultimo = "el servidor no responde (tiempo agotado)"
-            except httpx.HTTPError as e:
-                ultimo = "no hay conexion con el servidor" if isinstance(e, httpx.ConnectError) else (str(e) or type(e).__name__)
-            except OSError as e:
-                # Disco lleno, carpeta sin permisos...: insistir no lo arregla.
-                raise ErrorDescarga(f"no se pudo escribir en disco ({e.strerror or e})") from e
-            log.info("Intento %d de descarga fallido: %s", intento + 1, ultimo)
-            if intento < intentos - 1 and cancelado.wait(ESPERA_REINTENTO * 2**intento):
-                raise ErrorDescarga("cancelada")
-        if not hecho:
-            raise ErrorDescarga(ultimo)
+            parcial.unlink(missing_ok=True)
+            if not reanudada:
+                raise ErrorDescarga("la huella SHA-256 del instalador no coincide con la publicada")
+            log.info("El trozo reanudado no cuadra con la huella publicada: se vuelve a bajar entero")
     finally:
         cliente.close()
 
-    if sha256_de(parcial) != huella:
-        parcial.unlink(missing_ok=True)
-        raise ErrorDescarga("la huella SHA-256 del instalador no coincide con la publicada")
     parcial.replace(destino)
     log.info("Instalador %s descargado y comprobado: %s", version.etiqueta, destino)
     return destino
+
+
+def _con_reintentos(cliente: httpx.Client, url: str, parcial: Path, progreso, cancelado, intentos: int) -> None:
+    """Hasta `intentos` pasadas de `_bajar`, esperando entre ellas; lanza ErrorDescarga si ninguna acaba."""
+    ultimo = "sin intentos"
+    for intento in range(max(1, intentos)):
+        if cancelado.is_set():
+            raise ErrorDescarga("cancelada")
+        try:
+            _bajar(cliente, url, parcial, progreso, cancelado)
+            return
+        except httpx.HTTPStatusError as e:
+            ultimo = f"HTTP {e.response.status_code}"
+            if e.response.status_code == 416:
+                # El trozo guardado ya no encaja con el servidor: se empieza de cero.
+                parcial.unlink(missing_ok=True)
+            elif e.response.status_code < 500 and e.response.status_code not in (408, 429):
+                break
+        except httpx.TimeoutException:
+            ultimo = "el servidor no responde (tiempo agotado)"
+        except httpx.HTTPError as e:
+            ultimo = "no hay conexion con el servidor" if isinstance(e, httpx.ConnectError) else (str(e) or type(e).__name__)
+        except OSError as e:
+            # Disco lleno, carpeta sin permisos...: insistir no lo arregla.
+            raise ErrorDescarga(f"no se pudo escribir en disco ({e.strerror or e})") from e
+        log.info("Intento %d de descarga fallido: %s", intento + 1, ultimo)
+        if intento < intentos - 1 and cancelado.wait(ESPERA_REINTENTO * 2**intento):
+            raise ErrorDescarga("cancelada")
+    raise ErrorDescarga(ultimo)
 
 
 def _bajar(cliente: httpx.Client, url: str, parcial: Path, progreso, cancelado) -> None:

@@ -98,6 +98,29 @@ class EstadoDatos:
     drops_modified: str = ""
     descargado_en: str = ""
     ficheros: dict = field(default_factory=dict)
+    # Lo ultimo que WFCD y DE tenian publicado la ultima vez que se miro. Comparado con
+    # lo descargado dice si falta algo por bajar o si sencillamente no han publicado
+    # nada mas nuevo (DE puede pasar meses sin tocar sus tablas tras un parche).
+    publicado_items_sha: str = ""
+    publicado_drops_hash: str = ""
+    comprobado_en: str = ""
+
+    # Nombre de cada fuente tal como lo da indice.desfase_con_el_juego.
+    FUENTES = {
+        "catalogo de objetos": ("items_sha", "publicado_items_sha"),
+        "tablas de drops": ("drops_hash", "publicado_drops_hash"),
+    }
+
+    def al_dia_con_lo_publicado(self, fuente: str) -> bool | None:
+        """True si lo descargado es lo ultimo publicado, False si hay algo mas nuevo,
+        None si esa fuente nunca se ha podido comprobar."""
+        claves = self.FUENTES.get(fuente)
+        if not claves:
+            return None
+        nuestro, publicado = getattr(self, claves[0]), getattr(self, claves[1])
+        if not nuestro or not publicado:
+            return None
+        return nuestro == publicado
 
     @classmethod
     def cargar(cls) -> "EstadoDatos":
@@ -113,6 +136,13 @@ class EstadoDatos:
         tmp = RUTA_ESTADO_DATOS.with_suffix(".tmp")
         tmp.write_text(json.dumps(self.__dict__, indent=2), encoding="utf-8")
         tmp.replace(RUTA_ESTADO_DATOS)
+
+
+def fuentes_pendientes(estado: EstadoDatos, atrasadas: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """De las fuentes anteriores al parche, las que ademas tienen algo mas nuevo publicado
+    que no se ha descargado (o que no se ha podido comprobar). Las demas ya son lo ultimo
+    que existe: el parche no las ha cambiado todavia."""
+    return [(f, fecha) for f, fecha in atrasadas if estado.al_dia_con_lo_publicado(f) is not True]
 
 
 class Descargador:
@@ -191,7 +221,9 @@ class Descargador:
         """Devuelve (sha, fecha) del ultimo commit que toco los JSON."""
         try:
             datos = self._pedir_json(ITEMS_COMMITS, {"Accept": "application/vnd.github+json"})
-            return datos[0]["sha"], datos[0]["commit"]["committer"]["date"]
+            sha = str(datos[0]["sha"])
+            self._anotar_publicado("publicado_items_sha", sha)
+            return sha, datos[0]["commit"]["committer"]["date"]
         except Exception as e:  # noqa: BLE001 - sin version se sigue adelante
             log.warning("No se pudo leer la version de warframe-items: %s", e)
             return "", ""
@@ -200,10 +232,24 @@ class Descargador:
         for base in (DROPS_BASE, DROPS_ESPEJO):
             try:
                 info = self._pedir_json(base + "info.json")
-                return str(info.get("hash", "")), str(info.get("modified", ""))
+                hash_drops = str(info.get("hash", ""))
+                self._anotar_publicado("publicado_drops_hash", hash_drops)
+                return hash_drops, str(info.get("modified", ""))
             except Exception as e:  # noqa: BLE001
                 log.warning("No se pudo leer info.json de drop-data en %s: %s", base, e)
         return "", ""
+
+    def _anotar_publicado(self, clave: str, valor: str) -> None:
+        """Deja apuntado que version esta publicada ahora mismo. Se consulta aqui, que es
+        cuando ya se ha pedido; Ajustes lo lee del fichero y no hace ninguna peticion."""
+        if not valor:
+            return
+        setattr(self.estado, clave, valor)
+        self.estado.comprobado_en = time.strftime("%Y-%m-%dT%H:%M:%S")
+        try:
+            self.estado.guardar()
+        except OSError as e:
+            log.warning("No se pudo guardar estado_datos.json: %s", e)
 
     # -- sincronizacion -------------------------------------------------
 

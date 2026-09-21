@@ -19,6 +19,7 @@ from __future__ import annotations
 import ctypes
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -27,7 +28,7 @@ from pathlib import Path
 from .. import VERSION
 from ..config import DIR_LOGS
 from ..registro_log import obtener
-from .app import es_mas_nueva
+from .app import numeros
 from .descarga import DIR_DESCARGAS
 
 log = obtener("actualizador.instalacion")
@@ -43,6 +44,9 @@ PARAMETRO_AUTO = "/AUTOACTUALIZAR=1"
 PARAMETROS = ["/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS", PARAMETRO_AUTO]
 RUTA_PENDIENTE = DIR_DESCARGAS / "pendiente.json"
 RUTA_FALLIDA = DIR_DESCARGAS / "fallida.json"
+ERROR_ALREADY_EXISTS = 183
+# Caracteres que cmd interpreta fuera de comillas: espacios, "&", "^", "(", ")", "|"...
+RE_NECESITA_COMILLAS = re.compile(r'[\s&^()|<>"]')
 
 _mutex = None
 
@@ -103,6 +107,33 @@ def senalar_en_ejecucion() -> None:
         log.debug("Sin mutex de ejecucion: %s", e)
 
 
+def otra_instancia_abierta() -> bool:
+    """True si otro Farmadex tiene el mutex de ejecucion.
+
+    Un mutex con nombre existe mientras algun proceso tenga un handle, y el nuestro
+    cuenta: se suelta el propio, se mira si sigue existiendo y se vuelve a coger.
+    Con dos Farmadex abiertos, el setup esperaria a que se cerrase el otro, se
+    rendiria y ese abandono se apuntaria como fallo de la version: mejor no lanzarlo.
+    """
+    global _mutex
+    if os.name != "nt":
+        return False
+    try:
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        k32.CreateMutexW.restype = ctypes.c_void_p
+        k32.CloseHandle.argtypes = [ctypes.c_void_p]
+        if _mutex:
+            k32.CloseHandle(_mutex)
+            _mutex = None
+        handle = k32.CreateMutexW(None, False, MUTEX)
+        existe = bool(handle) and ctypes.get_last_error() == ERROR_ALREADY_EXISTS
+        _mutex = handle or None
+        return existe
+    except (AttributeError, OSError) as e:  # pragma: no cover - solo fuera de Windows
+        log.debug("No se pudo mirar el mutex de ejecucion: %s", e)
+        return False
+
+
 def parametros_instalador(ruta_setup: Path | str, ruta_log: Path | None = None) -> list[str]:
     """La linea de ordenes del setup en modo actualizacion automatica."""
     if ruta_log is None:
@@ -140,11 +171,20 @@ def instalar_silencioso(ruta_setup: Path | str, etiqueta: str, ejecutable_actual
 def _linea_de_ordenes(ruta_setup: Path, ejecutable_actual: Path) -> str:
     """cmd ejecuta el setup y, solo si devuelve error, vuelve a abrir el Farmadex actual.
 
-    Va como cadena, no como lista: cmd necesita sus propias comillas y `||`.
+    Va como cadena, no como lista: cmd necesita sus propias comillas y `||`. Se
+    entrecomilla cada parte que lleve algo que cmd interprete (espacios, "&", "^",
+    parentesis): `list2cmdline` solo mira espacios, y una carpeta de usuario
+    "Ana&Luis" partia la orden en dos. Los parametros del setup van sin comillas,
+    tal y como se probaron.
     """
-    setup = subprocess.list2cmdline(parametros_instalador(ruta_setup))
-    exe = subprocess.list2cmdline([str(ejecutable_actual)])
-    return f'cmd.exe /d /c "{setup} || start "" {exe}"'
+    setup = " ".join(_comillas(p) for p in parametros_instalador(ruta_setup))
+    exe = _comillas(str(ejecutable_actual))
+    cmd = _comillas(os.environ.get("ComSpec") or "cmd.exe")
+    return f'{cmd} /d /c "{setup} || start "" {exe}"'
+
+
+def _comillas(texto: str) -> str:
+    return f'"{texto}"' if RE_NECESITA_COMILLAS.search(texto) else texto
 
 
 def resultado_instalacion_anterior() -> tuple[str, str] | None:
@@ -156,7 +196,7 @@ def resultado_instalacion_anterior() -> tuple[str, str] | None:
     intentar instalarla otra vez sola.
     """
     pendiente = _leer(RUTA_PENDIENTE)
-    if not pendiente:
+    if pendiente is None:
         return None
     RUTA_PENDIENTE.unlink(missing_ok=True)
     etiqueta = str(pendiente.get("version") or "")
@@ -166,10 +206,19 @@ def resultado_instalacion_anterior() -> tuple[str, str] | None:
             Path(setup).unlink(missing_ok=True)
         except OSError:
             pass
-    if etiqueta and not es_mas_nueva(etiqueta, VERSION):
+    pedida, actual = numeros(etiqueta), numeros(VERSION)
+    if not pedida or not actual:
+        log.warning("Apunte de actualizacion ilegible (%r): se descarta", etiqueta)
+        return None
+    if pedida == actual:
         RUTA_FALLIDA.unlink(missing_ok=True)
         log.info("Actualizacion a %s completada", etiqueta)
         return ("instalada", etiqueta)
+    if pedida < actual:
+        # Un apunte de otra epoca (se instalo a mano una version mas nueva): ni
+        # exito ni fallo, y desde luego no hay que vetar nada.
+        log.info("Apunte de actualizacion a %s anterior a la %s que corre: se descarta", etiqueta, VERSION)
+        return None
     log.warning("La actualizacion a %s no llego a instalarse; Farmadex sigue en %s", etiqueta, VERSION)
     _escribir(RUTA_FALLIDA, {"version": etiqueta, "momento": time.time()})
     return ("fallida", etiqueta)

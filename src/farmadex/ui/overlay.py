@@ -455,22 +455,20 @@ class VentanaOverlay(QWidget):
             self.ajustes.avisar_parche(None)
             return
         build = getattr(self.cabecera_juego, "build", "") or "?"
-        detalle = ", ".join(t("{fuente} del {fecha}", fuente=t(fuente), fecha=fecha) for fuente, fecha in atrasadas)
-        texto = t(
-            "Warframe se ha actualizado (build {build}) y los datos van por detras: {detalle}. "
-            "Puede faltar lo nuevo del parche; se volveran a descargar cuando WFCD y DE los publiquen.",
-            build=build,
-            detalle=detalle,
-        )
-        # En Ajustes queda siempre; el banner solo los dias siguientes al parche, que es
-        # cuando de verdad falta contenido. Meses despues, si DE no ha tocado las tablas,
-        # es que ese parche no cambio los drops.
-        if indice.parche_reciente(fecha_build):
+        # Si lo descargado ya es lo ultimo publicado, no es un fallo: DE puede pasar meses
+        # sin tocar sus tablas tras un parche. Solo suena a aviso los dias siguientes al
+        # parche, que es cuando de verdad puede faltar contenido; despues queda como dato.
+        from ..datos.descargas import EstadoDatos, fuentes_pendientes
+
+        pendientes = fuentes_pendientes(EstadoDatos.cargar(), atrasadas)
+        reciente = indice.parche_reciente(fecha_build)
+        texto, aviso = indice.texto_desfase(atrasadas, pendientes, build, fecha_build, reciente)
+        if reciente:
             log.warning("Datos anteriores al parche del juego: build %s, %s", build, atrasadas)
             self._aviso("parche", texto)
         else:
             self._aviso("parche", None)
-        self.ajustes.avisar_parche(texto)
+        self.ajustes.avisar_parche(texto, aviso=aviso)
 
     def _refrescar_modo_pantalla(self) -> str:
         modo = pantalla.modo_pantalla()
@@ -759,15 +757,34 @@ class VentanaOverlay(QWidget):
             QDesktopServices.openUrl(QUrl(href))
 
     def _reiniciar_y_actualizar(self) -> None:
-        if self._lanzar_instalacion_pendiente():
+        if self._lanzar_instalacion_pendiente(a_mano=True):
             self.estado.setText(t("Instalando... Farmadex se va a cerrar."))
             QTimer.singleShot(500, self.cerrar_programa.emit)
 
-    def _lanzar_instalacion_pendiente(self) -> bool:
-        """Lanza el setup silencioso si hay una actualizacion lista; una sola vez."""
+    def _lanzar_instalacion_pendiente(self, a_mano: bool = False) -> bool:
+        """Lanza el setup silencioso si hay una actualizacion lista; una sola vez.
+
+        Al cerrar (`a_mano` False) solo si la casilla sigue activada: quien la
+        desactiva despues de la descarga no quiere que se instale sola.
+        """
         if not self.actualizacion_lista or self._instalador_lanzado:
             return False
+        if not a_mano and not self.config.get("actualizar_automaticamente", True):
+            return False
         version, ruta = self.actualizacion_lista
+        if instalacion.otra_instancia_abierta():
+            # El setup esperaria a un Farmadex que no se va a cerrar, se rendiria y
+            # ese abandono quedaria apuntado como fallo de la version. Se deja la
+            # descarga tal cual: la instala el ultimo Farmadex que se cierre.
+            log.info("Hay otro Farmadex abierto: la actualizacion %s se instalara mas tarde", version.etiqueta)
+            self._aviso(
+                "version",
+                t(
+                    "Hay otro Farmadex abierto: la actualizacion {version} se instalara al cerrar el ultimo.",
+                    version=version.etiqueta,
+                ),
+            )
+            return False
         if instalacion.instalar_silencioso(ruta, version.etiqueta):
             self._instalador_lanzado = True
             return True

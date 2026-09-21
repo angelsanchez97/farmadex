@@ -149,6 +149,39 @@ def test_fuentes_de_ordena_por_tiempo_y_completa_a_los_jefes(con):
     assert ruta["mision"]["donde"] == "Alad V (Temisto, Jupiter)" and ruta["minutos_medios"] == 9.8
 
 
+def test_entre_filas_del_mismo_sitio_se_queda_la_que_mas_suelta(con):
+    """"Eidolon Hydrolyst (Special)" y "Eidolon Hydrolyst" son el mismo sitio: solo
+    entra uno, y tiene que ser el que mas suelta aunque las tablas lo traigan detras
+    (mismo porcentaje de objeto, distinto porcentaje de que suelte algo)."""
+    con.execute(
+        "INSERT INTO items (unique_name, nombre_en, nombre_es, categoria, descripcion_es) VALUES "
+        "('/Lotus/Types/Arcanes/Grace', 'Arcane Grace', 'Gracia arcana', 'Arcanes', '')"
+    )
+    iid = con.execute("SELECT id FROM items WHERE nombre_en = 'Arcane Grace'").fetchone()[0]
+    con.executemany(
+        "INSERT INTO fuentes (item_id, tipo, origen_texto, probabilidad, probabilidad_enemigo) VALUES (?,?,?,?,?)",
+        [(iid, "enemigo", "Eidolon Hydrolyst (Special)", 5.0, 10.0), (iid, "enemigo", "Eidolon Hydrolyst", 5.0, 100.0)],
+    )
+    fuentes = relaciones.fuentes_de(con, iid)
+    assert [(f["origen_texto"], f["probabilidad_efectiva"]) for f in fuentes] == [("Eidolon Hydrolyst", 5.0)]
+
+
+def test_mas_del_cien_por_cien_no_tarda_menos_de_un_intento():
+    """Las cajas de las tablas traen 303 %: hasta la primera unidad es un intento."""
+    assert eficiencia.minutos_medios(10.0, 303.52) == 10.0
+    assert eficiencia.minutos_medios(10.0, 100.0) == 10.0
+    assert eficiencia.minutos_medios(10.0, 0) is None and eficiencia.minutos_medios(10.0, None) is None
+
+
+def test_archimedea_es_semanal_y_no_se_estima():
+    """Una tanda a la semana; como partida de 10 min se colaba por delante de todo."""
+    for origen in ("Deep Archimedea Legendary Rewards", "Temporal Archimedea Silver Rewards"):
+        f = _fuente(tipo="transitoria", origen_texto=origen, probabilidad=25.0)
+        eficiencia.estimar(f)
+        assert (f["minutos_medios"], f["motivo"]) == (None, "semanal")
+        assert eficiencia.clave_orden(f) > eficiencia.clave_orden({"minutos_medios": 9999.0})
+
+
 def test_recurso_de_planeta_dice_donde_farmearlo(con):
     iid = _nodos_y_recurso(con)
     datos = relaciones.recurso_de_planeta(con, iid)
@@ -220,3 +253,25 @@ def test_las_filas_de_conclave_van_juntas_en_una_linea(con):
         pb.nombre_bonito = original
     assert html_tabla.count("Conclave") == 1
     assert "8" in html_tabla and "Formido" in html_tabla
+
+
+def test_los_contratos_de_evento_no_salen_como_ruta_principal():
+    """La Nitaina recomendaba el contrato de Ghoul, que solo existe durante un evento."""
+    from farmadex.datos import eficiencia
+
+    ghoul = {"tipo": "bounty", "origen_texto": "Earth/Cetus (Level 15 - 25 Ghoul Bounty), Rotation A",
+             "probabilidad": 30.0, "rotacion": "A"}
+    minutos, motivo = eficiencia.minutos_por_intento(ghoul)
+    assert minutos is None and motivo == "evento"
+
+
+def test_todo_motivo_sin_estimacion_tiene_su_etiqueta():
+    """"semanal" se anadio al calculo y no a la ficha: la columna de tiempo salia vacia."""
+    import re
+    from pathlib import Path
+
+    from farmadex.ui.pestana_buscador import MOTIVOS_SIN_ESTIMACION
+
+    codigo = Path(__file__).resolve().parents[1].joinpath("src/farmadex/datos/eficiencia.py").read_text(encoding="utf-8")
+    motivos = set(re.findall(r'return None, "(\w+)"', codigo)) - {"desconocido"}
+    assert motivos <= set(MOTIVOS_SIN_ESTIMACION), motivos - set(MOTIVOS_SIN_ESTIMACION)
