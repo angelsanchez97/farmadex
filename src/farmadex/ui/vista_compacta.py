@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import html
 
-from PySide6.QtCore import QEvent, Qt, Signal
+from PySide6.QtCore import QEvent, Qt, QTimer, Signal
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QVBoxLayout, QWidget
 
 from ..datos import indice, items, relaciones
@@ -74,7 +74,14 @@ class VistaCompacta(QWidget):
         caja.addWidget(self.resumen, 1)
         caja.addLayout(pie)
 
-        self.caja.textChanged.connect(self._buscar)
+        # Misma espera que la pestana Buscar: sin ella cada tecla buscaba y pedia precio al
+        # mercado, y "ash prime systems" escrito a mano encolaba 13 consultas de red seguidas
+        # (medido); el precio del objeto bueno llegaba el ultimo, varios segundos despues.
+        self._temporizador = QTimer(self)
+        self._temporizador.setSingleShot(True)
+        self._temporizador.setInterval(180)
+        self._temporizador.timeout.connect(lambda: self._buscar(self.caja.text()))
+        self.caja.textChanged.connect(lambda _: self._temporizador.start())
         self.retraducir()
 
     # -- idioma y tema --------------------------------------------------------

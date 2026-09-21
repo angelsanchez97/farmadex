@@ -150,3 +150,46 @@ def test_baro_cubre_objetivos(datos, traductor):
     assert [o.nombre for o in cubiertos] == ["Primed Smite Grineer"]
     assert baro.objetivos() == cubiertos
     assert worldstate.marcar_objetivos(None, ["x"]) == []
+
+
+@pytest.mark.parametrize(
+    "cuerpo",
+    [
+        {"message": "WorldState Not Found", "error": "Not Found", "statusCode": 404},
+        {"statusCode": 500, "message": "boom"},
+        [],
+        "texto",
+        {"fisuras": []},
+    ],
+)
+def test_un_error_con_codigo_200_no_pasa_por_estado_del_mundo(cuerpo):
+    """La API ha contestado 200 con un error dentro: no se puede pintar la pestana vacia."""
+    with pytest.raises(worldstate.ErrorMundo):
+        worldstate.comprobar_respuesta(cuerpo)
+
+
+def test_un_estado_del_mundo_de_verdad_pasa(datos):
+    assert worldstate.comprobar_respuesta(datos) is datos
+
+
+def test_el_servicio_avisa_del_fallo_y_conserva_lo_ultimo_bueno(datos, traductor, monkeypatch):
+    from PySide6.QtWidgets import QApplication
+
+    QApplication.instance() or QApplication([])
+    servicio = worldstate.ServicioMundo(None)
+    servicio.traductor = traductor
+    buenos, fallos = [], []
+    servicio.actualizado.connect(buenos.append)
+    servicio.fallo.connect(fallos.append)
+    monkeypatch.setattr(servicio.cliente, "json", lambda *a, **k: datos)
+    servicio.refrescar()
+    assert len(buenos) == 1 and servicio.ultimo is buenos[0]
+    # Ahora la API contesta 200 con un error dentro.
+    monkeypatch.setattr(
+        servicio.cliente, "json", lambda *a, **k: {"message": "WorldState Not Found", "statusCode": 404}
+    )
+    servicio.refrescar()
+    assert len(buenos) == 1
+    assert fallos and "WorldState Not Found" in fallos[-1]
+    assert servicio.ultimo is buenos[0]
+    servicio.cerrar()

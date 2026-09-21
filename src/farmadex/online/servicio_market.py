@@ -6,7 +6,7 @@ from PySide6.QtCore import QObject, Signal, Slot
 
 from ..idiomas import t
 from ..registro_log import obtener
-from .market import Market, Precios
+from .market import Market, Precios, compartido
 
 log = obtener("servicio_market")
 
@@ -23,11 +23,28 @@ class ServicioMarket(QObject):
 
     @Slot()
     def iniciar(self) -> None:
-        self.market = Market()
+        # El mismo Market que usa el comparador: un solo limitador y una sola cache.
+        self.market = compartido()
 
     @Slot(str)
+    def anotar(self, slug: str) -> None:
+        """Apunta cual es la peticion mas reciente, en el hilo de quien la hace.
+
+        Se conecta en directo (no en cola), asi que se entera en el acto aunque el
+        hilo del servicio siga ocupado con una peticion anterior. Asignar una
+        cadena es atomico en Python: no hace falta cerrojo.
+        """
+        self._pendiente = slug
+
     def pedir(self, slug: str) -> None:
         if not slug:
+            return
+        # Las peticiones llegan en cola. Si mientras se atendia otra el usuario ha
+        # seguido escribiendo o ha cambiado de objeto, esta ya no la quiere nadie:
+        # antes se pedian todas igual, una detras de otra, al ritmo del limitador,
+        # y el precio que si interesaba llegaba el ultimo.
+        pendiente = getattr(self, "_pendiente", None)
+        if pendiente is not None and slug != pendiente:
             return
         self._ultima_peticion = slug
         if self.market is None:

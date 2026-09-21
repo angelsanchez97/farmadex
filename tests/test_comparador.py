@@ -286,3 +286,134 @@ def test_iniciar_sin_mercado_no_revienta():
     servicio = ServicioComparador(escuadra=True, crear_market=lambda: (_ for _ in ()).throw(OSError("sin red")))
     servicio.iniciar()  # solo se registra; la primera reliquia se puntua con ducados y rareza
     assert servicio._precios_de() is None
+
+
+# -- precarga de precios por las pistas de EE.log ---------------------------------
+
+
+def _servicio_precarga(tmp_path, monkeypatch, con, pedidos: list):
+    """Servicio con un mercado falso que apunta cada slug que se le pide, sobre `con`."""
+    from farmadex.captura.comparador import ServicioComparador
+    from farmadex.datos import indice
+
+    monkeypatch.setattr(indice, "hay_indice", lambda: True)
+    monkeypatch.setattr(indice, "conectar", lambda: sqlite3.connect(f"file:{con.execute('PRAGMA database_list').fetchone()[2]}", uri=True))
+
+    def precios_de(slug):
+        pedidos.append(slug)
+        return _precios([10])
+
+    servicio = ServicioComparador(escuadra=True, crear_market=lambda: SimpleNamespace(precios=precios_de, cerrar=lambda: None))
+    servicio.iniciar()
+    return servicio
+
+
+from types import SimpleNamespace  # noqa: E402
+
+
+@pytest.fixture()
+def indice_reliquia(indice):
+    """Axi Z9 suelta Systems (rara), Barrel (comun), Link (poco comun) y Forma (sin slug)."""
+    indice.execute("UPDATE items SET unique_name = 'RELIQUIA/Axi Z9' WHERE id = 6")
+    for item, rareza in ((1, "Rare"), (2, "Common"), (3, "Uncommon"), (4, "Uncommon")):
+        for refinamiento in ("Intact", "Radiant"):
+            indice.execute(
+                "INSERT OR IGNORE INTO reliquia_recompensas VALUES (?, ?, ?, ?, ?)",
+                (6, refinamiento, item, rareza, 10.0),
+            )
+    indice.commit()
+    return indice
+
+
+def _vaciar(servicio):
+    """Corre los pasos programados a mano, como haria el bucle de eventos del hilo."""
+    vueltas = 0
+    while servicio._cola and vueltas < 50:
+        servicio._precarga_programada = False
+        servicio._precargar_siguiente()
+        vueltas += 1
+
+
+def test_la_reliquia_equipada_precarga_sus_recompensas_de_la_rara_a_la_comun(tmp_path, monkeypatch, indice_reliquia):
+    pedidos = []
+    servicio = _servicio_precarga(tmp_path, monkeypatch, indice_reliquia, pedidos)
+    servicio.precargar("reliquia", "Axi Z9")
+    assert servicio._cola == ["ash_prime_systems", "nikana_prime_link", "braton_prime_barrel"]
+    _vaciar(servicio)
+    assert pedidos == ["ash_prime_systems", "nikana_prime_link", "braton_prime_barrel"]
+    assert servicio._cola == []
+
+
+def test_la_recompensa_vista_en_el_log_se_pide_antes_que_las_posibles(tmp_path, monkeypatch, indice_reliquia):
+    pedidos = []
+    servicio = _servicio_precarga(tmp_path, monkeypatch, indice_reliquia, pedidos)
+    servicio.precargar("reliquia", "Axi Z9")
+    servicio.precargar("recompensa", "/Lotus/B/Barrel")  # ya estaba en la cola: pasa delante
+    assert servicio._cola[0] == "braton_prime_barrel"
+    assert servicio._cola.count("braton_prime_barrel") == 1
+    servicio.precargar("recompensa", "/Lotus/D/Forma")  # sin slug: no se pide nada
+    servicio.precargar("recompensa", "/Lotus/No/Existe")
+    assert len(servicio._cola) == 3
+
+
+def test_al_abrirse_la_reliquia_se_refrescan_los_precios_de_la_equipada(tmp_path, monkeypatch, indice_reliquia):
+    pedidos = []
+    servicio = _servicio_precarga(tmp_path, monkeypatch, indice_reliquia, pedidos)
+    servicio.evento("reliquia_abierta")  # sin reliquia conocida no hay nada que refrescar
+    assert servicio._cola == []
+    servicio.precargar("reliquia", "Axi Z9")
+    _vaciar(servicio)
+    servicio.evento("reliquia_abierta")
+    assert len(servicio._cola) == 3
+    servicio.precargar("reliquia", "Lith Q1")  # desconocida: olvida la anterior, no encola nada
+    assert servicio._slugs_reliquia == []
+
+
+def test_un_paso_de_precarga_pide_un_solo_slug_y_deja_el_siguiente_programado(tmp_path, monkeypatch, indice_reliquia):
+    """Un `comparar` que llegue en mitad de la precarga solo espera una peticion."""
+    pedidos = []
+    servicio = _servicio_precarga(tmp_path, monkeypatch, indice_reliquia, pedidos)
+    servicio.precargar("reliquia", "Axi Z9")
+    assert servicio._precarga_programada
+    servicio._precarga_programada = False
+    servicio._precargar_siguiente()
+    assert pedidos == ["ash_prime_systems"]
+    assert servicio._precarga_programada and len(servicio._cola) == 2
+
+
+def test_el_bucle_de_eventos_agota_la_cola_solo(tmp_path, monkeypatch, indice_reliquia):
+    # QApplication y no QCoreApplication: las pruebas de widgets que corran despues
+    # en el mismo proceso reutilizan la instancia y con una de consola revientan.
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance() or QApplication([])
+    pedidos = []
+    servicio = _servicio_precarga(tmp_path, monkeypatch, indice_reliquia, pedidos)
+    servicio.precargar("reliquia", "Axi Z9")
+    for _ in range(20):
+        app.processEvents()
+        if not servicio._cola:
+            break
+    assert len(pedidos) == 3
+
+
+def test_sin_mercado_la_precarga_se_cancela_sin_reventar(tmp_path, monkeypatch, indice_reliquia):
+    from farmadex.captura.comparador import ServicioComparador
+    from farmadex.datos import indice as modulo_indice
+
+    monkeypatch.setattr(modulo_indice, "hay_indice", lambda: True)
+    monkeypatch.setattr(modulo_indice, "conectar", lambda: sqlite3.connect(f"file:{indice_reliquia.execute('PRAGMA database_list').fetchone()[2]}", uri=True))
+    servicio = ServicioComparador(escuadra=True, crear_market=lambda: None)
+    servicio.precargar("reliquia", "Axi Z9")
+    _vaciar(servicio)
+    assert servicio._cola == []
+
+
+def test_sin_indice_la_precarga_no_hace_nada(monkeypatch):
+    from farmadex.captura.comparador import ServicioComparador
+    from farmadex.datos import indice as modulo_indice
+
+    monkeypatch.setattr(modulo_indice, "hay_indice", lambda: False)
+    servicio = ServicioComparador(escuadra=True, crear_market=lambda: None)
+    servicio.precargar("reliquia", "Axi Z9")
+    assert servicio._cola == [] and not servicio._precarga_programada

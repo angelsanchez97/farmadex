@@ -217,6 +217,10 @@ class Seccion(QFrame):
             return
         prefijo, expira = self.extra_expira
         texto = _restante(expira)
+        if _terminado(expira):
+            # "se va en terminado" no es una frase: cuando ya ha pasado, solo la palabra.
+            self.extra.setText(texto)
+            return
         self.extra.setText(f"{html.escape(prefijo)} {texto}".strip() if texto else html.escape(prefijo))
 
     def linea(self, texto_html: str, expira=None, marcada: bool = False) -> QLabel:

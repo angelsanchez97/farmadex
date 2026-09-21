@@ -192,6 +192,8 @@ class PestanaObjetivos(QWidget):
     # -- pintado ---------------------------------------------------------------
 
     def refrescar(self) -> None:
+        # Tambien se llama al cambiar de tema: el resumen lleva el color en su hoja.
+        self.resumen.setStyleSheet(f"color: {PALETA['suave']};")
         if self.indice is not None:
             try:
                 self.indice.execute("SELECT 1")

@@ -251,3 +251,62 @@ def test_emparejar_nombre_ambiguo_no_se_empareja(con):
     assert market.emparejar(con) == 0
     assert _market_slug(con, comp_id) is None
     assert _market_slug(con, otro_id) is None
+
+
+# -- instancia compartida --------------------------------------------------
+
+
+def test_compartido_es_el_mismo_desde_varios_hilos():
+    """El buscador y el comparador tienen que compartir limitador y cache."""
+    import threading
+
+    from farmadex.online import market
+
+    market.cerrar_compartido()
+    vistos = []
+
+    def coger():
+        vistos.append(market.compartido())
+
+    hilos = [threading.Thread(target=coger) for _ in range(6)]
+    for h in hilos:
+        h.start()
+    for h in hilos:
+        h.join()
+    try:
+        assert len({id(m) for m in vistos}) == 1
+        assert vistos[0] is market.compartido()
+        # Un solo Cliente detras: un solo limitador de peticiones por segundo.
+        assert vistos[0].cliente.limitador.intervalo == 1 / market.POR_SEGUNDO
+    finally:
+        market.cerrar_compartido()
+
+
+def test_cerrar_uno_no_deja_al_otro_sin_mercado():
+    from farmadex.online import market
+
+    market.cerrar_compartido()
+    m = market.compartido()
+    try:
+        m.cerrar()  # lo que hace ServicioMarket al parar su hilo
+        assert not m.cliente.cliente.is_closed
+        assert market.compartido() is m
+    finally:
+        market.cerrar_compartido()
+    assert m.cliente.cliente.is_closed
+    assert market.compartido() is not m
+    market.cerrar_compartido()
+
+
+def test_servicio_market_usa_el_compartido():
+    from farmadex.online import market
+    from farmadex.online.servicio_market import ServicioMarket
+
+    market.cerrar_compartido()
+    servicio = ServicioMarket()
+    servicio.iniciar()
+    try:
+        assert servicio.market is market.compartido()
+    finally:
+        servicio.cerrar()
+        market.cerrar_compartido()

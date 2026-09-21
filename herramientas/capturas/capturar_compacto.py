@@ -99,6 +99,8 @@ def main(codigos: list[str]) -> None:
         ventana.aplicar_modo("compacto")
         for nombre, texto in BUSQUEDAS:
             ventana.compacta.caja.setText(texto)
+            ventana.compacta._temporizador.stop()
+            ventana.compacta._buscar(texto)
             if ventana.compacta._slug_actual:
                 ventana.compacta.mostrar_precios(ventana.compacta._slug_actual, PreciosDePrueba())
             app.processEvents()
@@ -106,6 +108,8 @@ def main(codigos: list[str]) -> None:
             ventana.grab().save(str(ruta))
             print(ruta)
         ventana.compacta.caja.setText("como consigo rhino")
+        ventana.compacta._temporizador.stop()
+        ventana.compacta._buscar("como consigo rhino")
         app.processEvents()
         ruta = DESTINO / f"compacto_sin_resultados_{codigo}.png"
         ventana.grab().save(str(ruta))

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import re
+from html import unescape
+
 from PySide6.QtCore import QEvent, QPoint, QRect, QSize, Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QColor, QCursor, QGuiApplication, QKeySequence, QPainter, QPixmap, QShortcut
 from PySide6.QtWidgets import (
@@ -233,6 +236,12 @@ class VentanaOverlay(QWidget):
         )
         self.banner.hide()
         self._avisos: dict[str, str] = {}
+        # Lo que la ventana compacta ha crecido para hacerle sitio al banner (0 sin aviso).
+        self._alto_banner_compacto = 0
+        # De que version se ha avisado (y si es local), para volver a escribir el aviso
+        # al cambiar de idioma o de tema: el texto va traducido y con colores dentro.
+        self._version_avisada: tuple[object, bool] | None = None
+        self._desfase_comprobado = False
 
         self.progreso = BarraProgreso()
         self.estado = QLabel("")
@@ -306,23 +315,27 @@ class VentanaOverlay(QWidget):
         self.progreso.ocultar()
         self.ajustes.refrescar_estado()
         if ok:
-            self.buscador.habilitar(True)
             self.estado.setText(mensaje)
             log.info("Datos listos: %s", mensaje)
-            self.objetivos.conectar_indice(indice.conectar())
-            self.perfil.conectar_indice(indice.conectar())
-            self.mundo.conectar_objetivos(indice.conectar(), self.objetivos.usuario)
-            self._arrancar_mundo()
-            self._arrancar_captura()
-            self._arrancar_comparador()
-            self._arrancar_actualizador()
-            self._comprobar_desfase()
         elif indice.hay_indice():
-            self.buscador.habilitar(True)
+            # La descarga ha fallado (sin red, WFCD caido...) pero el indice anterior sigue
+            # ahi: se trabaja con el. Antes solo se reactivaba el buscador y el resto de
+            # pestanas (Objetivos, Perfil, Mundo) y el OCR se quedaban muertos hasta reiniciar.
             self.estado.setText(t("Datos sin actualizar: {mensaje}", mensaje=mensaje))
+            log.warning("Datos sin actualizar, se sigue con el indice anterior: %s", mensaje)
         else:
             self.estado.setText(t("Error preparando los datos"))
             QMessageBox.critical(self, f"{NOMBRE_APP}", mensaje)
+            return
+        self.buscador.habilitar(True)
+        self.objetivos.conectar_indice(indice.conectar())
+        self.perfil.conectar_indice(indice.conectar())
+        self.mundo.conectar_objetivos(indice.conectar(), self.objetivos.usuario)
+        self._arrancar_mundo()
+        self._arrancar_captura()
+        self._arrancar_comparador()
+        self._arrancar_actualizador()
+        self._comprobar_desfase()
 
     def _anadir_objetivo(self, item_id: int, set_completo: bool) -> None:
         creados = self.objetivos.anadir_item(item_id, set_completo)
@@ -349,9 +362,12 @@ class VentanaOverlay(QWidget):
         self.servicio_market = ServicioMarket()
         self.servicio_market.moveToThread(self.hilo_market)
         self.hilo_market.started.connect(self.servicio_market.iniciar)
-        self.buscador.pedir_precios.connect(self.servicio_market.pedir)
+        for origen in (self.buscador, self.compacta):
+            # En directo, para que el servicio sepa ya cual es la ultima peticion y
+            # se salte las que se queden viejas en la cola.
+            origen.pedir_precios.connect(self.servicio_market.anotar, Qt.DirectConnection)
+            origen.pedir_precios.connect(self.servicio_market.pedir)
         self.servicio_market.listo.connect(self.buscador.mostrar_precios)
-        self.compacta.pedir_precios.connect(self.servicio_market.pedir)
         self.servicio_market.listo.connect(self.compacta.mostrar_precios)
         self.hilo_market.start()
 
@@ -395,6 +411,12 @@ class VentanaOverlay(QWidget):
         self.hilo_comparador.started.connect(self.servicio_comparador.iniciar)
         self.lector_recompensas.leidas.connect(self.servicio_comparador.comparar)
         self.servicio_comparador.veredicto.connect(self._veredicto_recompensas)
+        # EE.log dice que reliquia llevas unos minutos antes de abrirla, y que le ha
+        # tocado a cada companero al abrirse: con eso los precios se piden antes de
+        # que haga falta ensenarlos. El vigilante lo crea _arrancar_captura, que va antes.
+        if self.vigilante is not None:
+            self.vigilante.pista.connect(self.servicio_comparador.precargar)
+            self.vigilante.evento.connect(self.servicio_comparador.evento)
         self.hilo_comparador.start()
 
     # -- el juego: version y modo de pantalla ---------------------------------
@@ -411,6 +433,7 @@ class VentanaOverlay(QWidget):
 
     def _comprobar_desfase(self) -> None:
         """Compara la fecha del build del juego con la de los datos descargados."""
+        self._desfase_comprobado = True
         fecha_build = getattr(self.cabecera_juego, "fecha_build", None)
         atrasadas = indice.desfase_con_el_juego(indice.leer_meta(), fecha_build)
         if not atrasadas:
@@ -460,11 +483,72 @@ class VentanaOverlay(QWidget):
             self._avisos[clave] = texto
         else:
             self._avisos.pop(clave, None)
-        if self._avisos:
-            self.banner.setText("<br>".join(self._avisos.values()))
-            self.banner.show()
-        else:
+        self._pintar_banner()
+
+    def _pintar_banner(self) -> None:
+        """En la vista completa, el banner entero. En la compacta, una sola linea recortada
+        (el texto entero queda en el tooltip) y la ventana crece lo que mide el banner:
+        con 190 px de alto, dos lineas de aviso se comian el resultado de la busqueda."""
+        if not self._avisos:
             self.banner.hide()
+            self.banner.setToolTip("")
+            self._reservar_banner_compacto(False)
+            return
+        if self.modo == "compacto":
+            self.banner.setTextFormat(Qt.PlainText)
+            self.banner.setWordWrap(False)
+            self.banner.setToolTip(self._banner_plano())
+            self._elidir_banner()
+        else:
+            self.banner.setTextFormat(Qt.RichText)
+            self.banner.setWordWrap(True)
+            self.banner.setToolTip("")
+            self.banner.setText("<br>".join(self._avisos.values()))
+        self.banner.show()
+        self._reservar_banner_compacto(self.modo == "compacto")
+
+    def _banner_plano(self) -> str:
+        return " · ".join(_texto_plano(a) for a in self._avisos.values())
+
+    def _elidir_banner(self) -> None:
+        """La linea unica de la compacta, recortada al ancho real del banner."""
+        # Margenes del marco (10+10), padding del banner (8+8) y sus bordes.
+        ancho = self.banner.contentsRect().width() if self.banner.isVisible() else self.width() - 40
+        ancho = max(60, ancho - 16)
+        self.banner.setText(self.banner.fontMetrics().elidedText(self._banner_plano(), Qt.ElideRight, ancho))
+
+    def _reservar_banner_compacto(self, reservar: bool) -> None:
+        """Hace crecer (o encoger) la ventana compacta lo que ocupa el banner, para que el
+        aviso no le quite sitio al resultado. En la completa no hace falta: hay espacio."""
+        if self.modo != "compacto":
+            reservar = False
+        alto = (self.banner.sizeHint().height() + self.marco.layout().spacing()) if reservar else 0
+        delta = alto - self._alto_banner_compacto
+        self._alto_banner_compacto = alto
+        if self.modo == "compacto":
+            self.setMinimumHeight(ALTO_MINIMO_COMPACTO + alto)
+        if delta:
+            self.resize(self.width(), max(self.minimumHeight(), self.height() + delta))
+
+    def _regenerar_avisos(self) -> None:
+        """Tras cambiar de idioma o de tema: los avisos se escriben ya traducidos y con
+        los colores del tema dentro del HTML, asi que hay que volver a generarlos."""
+        if self._version_avisada is not None:
+            version, local = self._version_avisada
+            if local:
+                self._hay_version_local(version)
+            else:
+                self._hay_version_nueva(version)
+        if self._desfase_comprobado:
+            self._comprobar_desfase()
+        if "exclusivo" in self._avisos:
+            self._refrescar_modo_pantalla()
+        self._pintar_banner()
+
+    def resizeEvent(self, evento):  # noqa: N802 - firma de Qt
+        super().resizeEvent(evento)
+        if self.modo == "compacto" and self._avisos:
+            self._elidir_banner()
 
     def _pantalla_libre(self) -> QRect | None:
         """Geometria de un monitor que no sea el del juego, si lo hay."""
@@ -543,6 +627,7 @@ class VentanaOverlay(QWidget):
         salia y desaparecia sin que diera tiempo a leerlo.
         """
         self.nueva_version = version
+        self._version_avisada = (version, False)
         self._aviso(
             "version",
             t(
@@ -576,6 +661,7 @@ class VentanaOverlay(QWidget):
 
     def _hay_version_local(self, version) -> None:
         self._version_encontrada = version
+        self._version_avisada = (version, True)
         self.ajustes.estado_version(t("Hay una version nueva: {version}", version=version.etiqueta))
         self._aviso(
             "version",
@@ -680,6 +766,8 @@ class VentanaOverlay(QWidget):
         self.pista.setVisible(not compacto)
         self._pintar_boton_modo()
         self.setMaximumSize(16777215, 16777215)
+        # El sitio del banner se vuelve a reservar mas abajo, sobre la geometria del modo nuevo.
+        self._alto_banner_compacto = 0
         if compacto:
             self.setMinimumSize(ANCHO_MINIMO_COMPACTO, ALTO_MINIMO_COMPACTO)
         else:
@@ -696,6 +784,7 @@ class VentanaOverlay(QWidget):
                 g = self.config.get("overlay_geometria")
                 if g and len(g) == 4:
                     self.move(g[0] + g[2] - ANCHO_COMPACTO, g[1])
+        self._pintar_banner()
         self._asegurar_en_pantalla()
         if guardar_config:
             self.config["overlay_modo"] = modo
@@ -761,7 +850,9 @@ class VentanaOverlay(QWidget):
 
     def _guardar_geometria(self) -> None:
         g = self.geometry()
-        self.config[self._clave_geometria()] = [g.x(), g.y(), g.width(), g.height()]
+        # Lo que la compacta crecio por el banner no es tamano elegido por el usuario.
+        alto = g.height() - (self._alto_banner_compacto if self.modo == "compacto" else 0)
+        self.config[self._clave_geometria()] = [g.x(), g.y(), g.width(), alto]
         self.config["overlay_modo"] = self.modo
         guardar(self.config)
 
@@ -795,6 +886,7 @@ class VentanaOverlay(QWidget):
         self.estado.setText("")
         for pestana in (self.buscador, self.objetivos, self.mundo, self.perfil, self.ajustes, self.compacta):
             pestana.retraducir()
+        self._regenerar_avisos()
 
     def _cambiar_diseno_mundo(self, diseno: str) -> None:
         """Cambio al vuelo: rehace Mundo con la disposicion nueva sin perder lo que ya se sabia."""
@@ -848,10 +940,18 @@ class VentanaOverlay(QWidget):
         self.aplicar_opacidad(getattr(self, "_opacidad", 0.94))
         self._pintar_cabecera()
         self.estado.setStyleSheet(f"color: {PALETA['suave']};")
+        self.banner.setStyleSheet(
+            f"color: {PALETA['aviso']}; border: 1px solid {PALETA['aviso']};"
+            " border-radius: 6px; padding: 4px 8px;"
+        )
         self.buscador.repintar()
         self.objetivos.refrescar()
         self.perfil.repintar()
         self.compacta.repintar()
+        self.ajustes.repintar()
+        # Mundo genera su HTML con la paleta dentro; retraducir lo vuelve a pintar entero.
+        self.mundo.retraducir()
+        self._regenerar_avisos()
 
     # -- arrastre de la ventana ----------------------------------------------
 
@@ -964,7 +1064,17 @@ class VentanaOverlay(QWidget):
         if self.tarea and self.tarea.isRunning():
             self.tarea.requestInterruption()
             self.tarea.wait(3000)
+        # La conexion con warframe.market la comparten el buscador, el comparador y el
+        # indice: se cierra la ultima, cuando ya no queda nadie que la use.
+        from ..online import market
+
+        market.cerrar_compartido()
         super().close()
+
+
+def _texto_plano(html_aviso: str) -> str:
+    """El aviso sin etiquetas HTML, para la linea unica de la compacta y su tooltip."""
+    return " ".join(unescape(re.sub(r"<[^>]+>", " ", html_aviso)).split())
 
 
 def _a_logicas(recompensas: list) -> list:

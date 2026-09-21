@@ -33,6 +33,32 @@ def _texto(valor) -> str | None:
     return str(valor)
 
 
+# "<ARCHWING> Agkuza", "<Shard_red_simple> Crimson Archon Shard": el juego mete etiquetas
+# de icono en 75 nombres del catalogo. Sin quitarlas la ficha las ensena tal cual y las
+# tablas de drops ("Crimson Archon Shard") no casan.
+RE_ETIQUETA = re.compile(r"<[^<>]*>\s*")
+
+
+def _nombre(valor) -> str | None:
+    texto = _texto(valor)
+    if not texto:
+        return texto
+    limpio = RE_ETIQUETA.sub("", texto).strip()
+    return limpio or texto
+
+
+def _numero(valor) -> float | None:
+    """chance/standing: numero, o texto con el numero ("25.33", "25%"), o basura (None)."""
+    if valor is None or isinstance(valor, bool):
+        return None
+    if isinstance(valor, str):
+        valor = valor.strip().rstrip("%").replace(",", ".")
+    try:
+        return float(valor)
+    except (TypeError, ValueError):
+        return None
+
+
 def _bandera(valor) -> int | None:
     """vaulted/tradable llegan como bool, pero un volcado los ha traido como texto."""
     if valor is None:
@@ -124,12 +150,14 @@ class ImportadorItems:
         self.variantes_reliquia: dict[str, tuple[int, str]] = {}
         # uniqueName de cada componente -> ids de las recetas que lo piden
         self.recetas_por_ingrediente: dict[str, set[int]] = {}
+        # nombre de componente -> ids, para dar alias propio a los que no se repiten
+        self.componentes_por_nombre: dict[str, list[int]] = {}
 
     # -- utilidades -----------------------------------------------------
 
     def _es(self, unique_name: str) -> tuple[str | None, str | None]:
         trad = self.i18n.get(unique_name) or {}
-        return _texto(trad.get("name")), _texto(trad.get("description"))
+        return _nombre(trad.get("name")), _texto(trad.get("description"))
 
     def _registrar_alias(self, nombre: str, item_id: int) -> None:
         clave = normalizar(nombre)
@@ -179,7 +207,7 @@ class ImportadorItems:
         categorias_vistas: set[str] = set()
         for obj in _lista(objetos):
             unico = _texto(obj.get("uniqueName"))
-            nombre = _texto(obj.get("name"))
+            nombre = _nombre(obj.get("name"))
             if not unico or not nombre:
                 continue
             categoria = _texto(obj.get("category")) or ruta.stem
@@ -231,7 +259,7 @@ class ImportadorItems:
         self, comp: dict, padre_id: int, padre_en: str, padre_es: str | None, categoria: str
     ) -> None:
         unico = _texto(comp.get("uniqueName"))
-        nombre = _texto(comp.get("name"))
+        nombre = _nombre(comp.get("name"))
         if not unico or not nombre:
             return
         nombre_es, desc_es = self._es(unico)
@@ -239,6 +267,8 @@ class ImportadorItems:
         recetas = self.recetas_por_ingrediente.setdefault(unico, set())
         primera_vez = not recetas
         recetas.add(padre_id)
+        if primera_vez:
+            self.componentes_por_nombre.setdefault(nombre, [])
         item_id = self._insertar(
             {
                 "unique_name": unico,
@@ -255,6 +285,8 @@ class ImportadorItems:
                 "ducados": _entero(comp.get("ducats") or comp.get("primeSellingPrice")),
             }
         )
+        if primera_vez:
+            self.componentes_por_nombre[nombre].append(item_id)
         # Alias con los que drop-data nombra las piezas: "Ash Prime Chassis Blueprint".
         self._registrar_alias(f"{padre_en} {nombre}", item_id)
         if not nombre.lower().endswith("blueprint"):
@@ -300,12 +332,38 @@ class ImportadorItems:
                 " tipo = ? WHERE id = ?",
                 ("Resource" if tipo == "Componente" else tipo, item_id),
             )
+            # Su plano (Orokin Cell Blueprint) se quedaba en Misc mientras el recurso
+            # pasaba a Resources: la busqueda lo ponia en otro grupo que a su padre.
+            self.con.execute(
+                "UPDATE items SET categoria = 'Resources' WHERE padre_id = ?", (item_id,)
+            )
             cambiados += 1
         return cambiados
 
+    def registrar_piezas_con_nombre_propio(self) -> int:
+        """Alias a secas para las piezas cuyo nombre ya identifica al objeto.
+
+        Las tablas de drops dicen "Kavasa Prime Band" o "War Blade", no "Kavasa Prime
+        Kubrow Collar Kavasa Prime Band" ni "Broken War War Blade", que es el unico
+        alias que tenian. Solo se da a los nombres de mas de una palabra que no repite
+        ninguna otra pieza ("Upper Limb" lo tienen todos los arcos) y que ningun objeto
+        con ficha propia use ya. Se llama al terminar todos los catalogos y devuelve
+        cuantos alias ha anadido.
+        """
+        anadidos = 0
+        for nombre, ids in self.componentes_por_nombre.items():
+            if len(ids) != 1 or " " not in nombre.strip():
+                continue
+            for texto in (nombre, f"{nombre} Blueprint"):
+                clave = normalizar(texto)
+                if clave and clave not in self.alias:
+                    self.alias[clave] = ids[0]
+                    anadidos += 1
+        return anadidos
+
     def _importar_reliquia(self, obj: dict) -> None:
         """Las 4 variantes de refinamiento se colapsan en un unico objeto 'reliquia'."""
-        partido = nombre_canonico_reliquia(_texto(obj.get("name")) or "")
+        partido = nombre_canonico_reliquia(_nombre(obj.get("name")) or "")
         if not partido:
             return
         canonico, refinamiento = partido
@@ -351,8 +409,8 @@ class ImportadorItems:
                 (
                     item_id,
                     refinamiento,
-                    premio.get("rarity"),
-                    premio.get("chance"),
+                    _texto(premio.get("rarity")),
+                    _numero(premio.get("chance")),
                     info["uniqueName"],
                 ),
             )
@@ -373,8 +431,8 @@ class ImportadorItems:
                     item_id,
                     lugar,
                     (m.group(3) or "Intact").title(),
-                    drop.get("rarity"),
-                    drop.get("chance"),
+                    _texto(drop.get("rarity")),
+                    _numero(drop.get("chance")),
                     json.dumps({"reliquia": canonico}),
                 ),
             )
@@ -382,7 +440,8 @@ class ImportadorItems:
         self.con.execute(
             "INSERT INTO fuentes (item_id, tipo, origen_texto, rotacion, rareza, probabilidad) "
             "VALUES (?, 'otro', ?, ?, ?, ?)",
-            (item_id, lugar, drop.get("rotation"), drop.get("rarity"), drop.get("chance")),
+            (item_id, lugar, _texto(drop.get("rotation")), _texto(drop.get("rarity")),
+             _numero(drop.get("chance"))),
         )
 
     def _importar_nodo(self, obj: dict) -> None:

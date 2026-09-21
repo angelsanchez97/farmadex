@@ -184,3 +184,11 @@ def test_rapidez_de_misiones():
     assert pestana_mundo.rapidez("Espionaje") < pestana_mundo.rapidez("Supervivencia")
     assert pestana_mundo.rapidez("Excavación") == pestana_mundo.rapidez("Excavation")
     assert pestana_mundo.rapidez("Algo raro") == 6
+
+
+def test_baro_que_ya_se_ha_ido_no_dice_se_va_en_terminado(mundo):
+    m = _mundo()
+    m.baro_detalle.expira = _en(-5)
+    mundo.actualizar(m)
+    texto = mundo.tarjetas["baro"].extra.text()
+    assert "se va en" not in texto and "terminado" in texto

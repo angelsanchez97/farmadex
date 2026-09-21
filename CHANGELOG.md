@@ -1,5 +1,51 @@
 # Cambios
 
+## 0.1.9
+
+Revision completa del programa, parte por parte.
+
+**Reliquias**
+- Farmadex sabe que reliquia llevas equipada (lo escribe el propio juego en su
+  registro unos minutos antes de abrirla) y consulta los precios de sus
+  recompensas durante la mision. Al abrirse, la marca de "mejor opcion" sale a
+  la vez que las etiquetas, en vez de 1,5 s despues.
+- Cuando el juego anota que le ha tocado a un companero, ese precio se pide
+  antes incluso de leer la pantalla.
+
+**Busqueda y datos**
+- Los nombres ya no muestran etiquetas internas del juego (`<ARCHWING>`,
+  `<Shard_red_simple>`), y los fragmentos de Arconte tienen ahora sus fuentes.
+- La busqueda entiende "chasis de mesa prime", "plano del rhino" o "wu kong".
+- Las piezas de adornos que salen de reliquias (Kavasa Prime) aparecen donde
+  toca, y el plano de un recurso va en la misma categoria que el recurso.
+- Si un parche trae probabilidades escritas como texto, las fichas ya no se
+  rompen.
+- El indice cambia de version: la primera vez que abras esta version se
+  reconstruye solo.
+
+**Interfaz**
+- Si al arrancar no hay conexion, Farmadex sigue funcionando entero con los
+  datos anteriores. Antes Objetivos, Mundo, Perfil y la lectura de pantalla se
+  quedaban apagados hasta reiniciar.
+- El aviso de version nueva ya no tapa el resultado en la vista compacta:
+  ocupa una linea y la ventana le hace sitio.
+- Al cambiar de idioma o de tema se actualizan tambien los avisos, la linea de
+  version y varios paneles que se quedaban con el color o el idioma anterior.
+- Mientras escribes, el precio que llega es el de lo que buscas: antes se
+  pedian todos los intermedios, uno por tecla, y el bueno llegaba el ultimo.
+- Mundo ya no dice "se va en terminado" cuando Baro se ha ido.
+
+**Red, ajustes e instalacion**
+- El buscador, el comparador y el indice comparten la conexion con
+  warframe.market: la mitad de peticiones y nunca por encima del limite.
+- Cuando una web falla, el aviso dice el motivo en claro, y no se insiste en
+  errores que no van a cambiar.
+- Los ajustes ya no se pueden corromper al guardarse desde varios sitios a la
+  vez.
+- Si un atajo de teclado global lo tiene otro programa, se avisa con el motivo.
+- El instalador incluye siempre el runtime de Visual C++: en un Windows recien
+  instalado el programa podia no llegar a abrir.
+
 ## 0.1.8
 
 - **El aviso de version nueva ya se ve.** Se comprobaba al arrancar desde la

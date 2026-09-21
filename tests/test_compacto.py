@@ -122,3 +122,62 @@ def test_sin_indice_la_compacta_no_rompe(ventana):
     ventana.alternar_modo()
     ventana.compacta.caja.setText("ash prime")
     assert "Escribe" in ventana.compacta.resumen.text()
+
+
+class _Version:
+    etiqueta = "9.9.9"
+    url = "https://example.invalid/farmadex"
+
+
+def test_el_banner_en_la_compacta_es_una_linea_y_no_tapa_el_resultado(ventana):
+    from farmadex.config import cargar
+
+    ventana.alternar_modo()
+    alto_sin_aviso = ventana.height()
+    alto_resumen = ventana.compacta.resumen.height()
+    ventana._hay_version_nueva(_Version())
+    QApplication.processEvents()
+    assert ventana.banner.isVisibleTo(ventana)
+    # Una linea sola, sin HTML, con el texto entero en el tooltip.
+    assert "<" not in ventana.banner.text() and "9.9.9" in ventana.banner.toolTip()
+    assert ventana.banner.height() <= ventana.banner.fontMetrics().height() + 14
+    # La ventana ha crecido lo que mide el banner: el resultado conserva su sitio.
+    assert ventana.height() > alto_sin_aviso
+    assert ventana.compacta.resumen.height() >= alto_resumen - 2
+    # Lo que crecio por el banner no se guarda como tamano elegido.
+    ventana._guardar_geometria()
+    assert cargar()["overlay_geometria_compacto"][3] == alto_sin_aviso
+    # Sin aviso, vuelve a su tamano.
+    ventana._aviso("version", None)
+    assert not ventana.banner.isVisibleTo(ventana)
+    assert ventana.height() == alto_sin_aviso
+    # En la completa, el banner entero con su enlace.
+    ventana._hay_version_nueva(_Version())
+    ventana.alternar_modo()
+    assert "<a " in ventana.banner.text() and ventana.banner.wordWrap()
+
+
+def test_los_avisos_se_reescriben_al_cambiar_de_idioma_y_de_tema(ventana):
+    from farmadex.ui import widgets
+
+    ventana._hay_version_nueva(_Version())
+    assert "version nueva" in ventana.banner.text()
+    ventana.cambiar_idioma("en")
+    assert "new version" in ventana.banner.text() and "9.9.9" in ventana.banner.text()
+    ventana.cambiar_tema("tenno")
+    assert widgets.PALETA["acento"] in ventana.banner.text()
+    assert widgets.PALETA["aviso"] in ventana.banner.styleSheet()
+    assert widgets.PALETA["aviso"] in ventana.ajustes.aviso_version.styleSheet()
+
+
+def test_la_compacta_espera_a_que_se_termine_de_escribir(ventana, monkeypatch):
+    """Cada tecla no busca ni pide precio: se espera un momento, como en Buscar."""
+    busquedas = []
+    monkeypatch.setattr(ventana.compacta, "_buscar", busquedas.append)
+    ventana.alternar_modo()
+    for i in range(1, 6):
+        ventana.compacta.caja.setText("rhino"[:i])
+    assert busquedas == [] and ventana.compacta._temporizador.isActive()
+    ventana.compacta._temporizador.stop()
+    ventana.compacta._temporizador.timeout.emit()
+    assert busquedas == ["rhino"]

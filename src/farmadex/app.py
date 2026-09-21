@@ -156,10 +156,17 @@ def main(argv: list[str] | None = None) -> int:
     if "--probar-ocr" in argumentos:
         return probar_ocr()
 
-    aplicacion = Aplicacion(argumentos)
+    # El gancho va antes de construir nada: un fallo al montar la ventana tiene que
+    # quedar en el log aunque el ejecutable no tenga consola. Si aun no hay
+    # QApplication, el dialogo falla y el propio gancho lo traga; el log queda.
     instalar_gancho_excepciones(
         lambda texto: QMessageBox.critical(None, f"{NOMBRE_APP}: error", texto)
     )
+    try:
+        aplicacion = Aplicacion(argumentos)
+    except Exception:
+        log.exception("No se pudo arrancar %s", NOMBRE_APP)
+        raise
     return aplicacion.ejecutar()
 
 

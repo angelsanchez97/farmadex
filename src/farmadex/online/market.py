@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import sqlite3
 import statistics
+import threading
 from dataclasses import dataclass, field
 
 from .. import NOMBRE_APP, URL_CONTACTO, VERSION
@@ -216,7 +217,40 @@ class Market:
         return rango_maximo_de(datos)
 
     def cerrar(self) -> None:
+        if self is _instancia:
+            # La comparte el buscador y el comparador: que uno se cierre no puede
+            # dejar al otro sin mercado. Se cierra con `cerrar_compartido()`.
+            return
         self.cliente.cerrar()
+
+
+# -- instancia compartida ------------------------------------------------------
+#
+# El buscador y el comparador consultan warframe.market cada uno desde su hilo.
+# Con un Market por cabeza tenian dos limitadores (hasta 4 peticiones/s entre
+# los dos, por encima del limite publicado) y dos caches (la misma pieza se
+# pedia dos veces). httpx.Client, el limitador y la cache ya son seguros entre
+# hilos, asi que basta con que todos usen el mismo objeto.
+_instancia: Market | None = None
+_cerrojo = threading.Lock()
+
+
+def compartido(idioma: str = "es") -> Market:
+    """El Market comun a toda la aplicacion; se crea la primera vez que se pide."""
+    global _instancia
+    with _cerrojo:
+        if _instancia is None:
+            _instancia = Market(idioma)
+        return _instancia
+
+
+def cerrar_compartido() -> None:
+    """Cierra de verdad la instancia comun (al salir del programa o en las pruebas)."""
+    global _instancia
+    with _cerrojo:
+        instancia, _instancia = _instancia, None
+    if instancia is not None:
+        instancia.cliente.cerrar()
 
 
 def _completo(precios: Precios) -> bool:

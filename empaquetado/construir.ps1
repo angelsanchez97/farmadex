@@ -53,6 +53,20 @@ $zip = "dist\Farmadex-$version-portable.zip"
 Compress-Archive -Path "dist\Farmadex\*" -DestinationPath $zip -Force
 
 Write-Host "`n[5/5] Instalador" -ForegroundColor Cyan
+# Qt y ONNX Runtime necesitan el runtime de Visual C++ 2015-2022. El instalador lo
+# mete solo si el fichero esta aqui; si no esta, se descarga de Microsoft. Sin el,
+# en un Windows recien instalado el programa no llega ni a abrir la ventana.
+$redist = Join-Path $raiz "empaquetado\vc_redist.x64.exe"
+if (-not (Test-Path $redist)) {
+    Write-Host "  Descargando vc_redist.x64.exe (runtime de Visual C++)..." -ForegroundColor Yellow
+    try {
+        Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.x64.exe" -OutFile $redist -UseBasicParsing
+    } catch {
+        Remove-Item $redist -Force -ErrorAction SilentlyContinue
+        Write-Host "  No se pudo descargar: el instalador saldra SIN el runtime de Visual C++." -ForegroundColor Red
+        Write-Host "  Bajalo a mano de https://aka.ms/vs/17/release/vc_redist.x64.exe y dejalo en empaquetado\." -ForegroundColor Red
+    }
+}
 $iscc = @(
     "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
     "$env:ProgramFiles\Inno Setup 6\ISCC.exe",

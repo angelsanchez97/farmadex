@@ -19,6 +19,8 @@ CATALOGO = [
     ("/w/Excalibur", "Excalibur", "Excalibur", "Warframes", None, False),
     ("/w/Excalibur/Chs", "Chassis", "Chasis", "Warframes", "/w/Excalibur", True),
     ("/w/ExcaliburUmbra", "Excalibur Umbra", "Excalibur Umbra", "Warframes", None, False),
+    ("/w/Wukong", "Wukong", "Wukong", "Warframes", None, False),
+    ("/w/Wukong/Chs", "Chassis", "Chasis", "Warframes", "/w/Wukong", True),
     ("/p/BratonPrime", "Braton Prime", "Braton Prime", "Primary", None, False),
     ("/p/BratonPrime/Bar", "Barrel", "Canon", "Primary", "/p/BratonPrime", True),
     ("/p/Argonak", "Argonak", "Argonak", "Primary", None, True),
@@ -53,6 +55,9 @@ CATALOGO = [
     ("/g/AGlyph", "A Glyph", "Glifo A", "Glyphs", None, False),
     ("/sig/Forma", "Forma Sigil", "Sigilo Forma", "Sigils", None, False),
     ("/h/Honoria", "Honoria Orokin Cell", "Honoria de celula orokin", "Honoria", None, False),
+    # Un "adorno" que sale de reliquias: se farmea como cualquier pieza.
+    ("/s/Kavasa", "Kavasa Prime Kubrow Collar", "Collar Kavasa Prime de Kubrow", "Skins", None, False),
+    ("/s/Kavasa/Band", "Kavasa Prime Band", "Banda Kavasa Prime", "Skins", "/s/Kavasa", True),
 ]
 
 # Busquedas escritas como las escribe el usuario -> lo que tiene que salir primero.
@@ -82,6 +87,15 @@ BUSQUEDAS = [
     ("canon braton prime", "Braton Prime Canon"),
     ("kuva", "Kuva"),
     ("energize", "Arcano Energizar"),
+    # Particulas del espanol y del ingles que los nombres indexados no llevan.
+    ("chasis de ash prime", "Ash Prime Chasis"),
+    ("plano del forma", "Plano de Forma"),
+    ("the forma", "Forma"),
+    # Escrito separado lo que el catalogo escribe junto.
+    ("wu kong", "Wukong"),
+    ("chasis wu kong", "Wukong Chasis"),
+    ("kavasa prime band", "Collar Kavasa Prime de Kubrow Banda Kavasa Prime"),
+    ("banda kavasa", "Collar Kavasa Prime de Kubrow Banda Kavasa Prime"),
 ]
 
 
@@ -213,6 +227,7 @@ def _catalogo_con_ingredientes(tmp_path):
     (tmp_path / "Warframes.json").write_text(json.dumps(recetas), encoding="utf-8")
     (tmp_path / "Misc.json").write_text(json.dumps([{
         "uniqueName": "/r/Neurodes", "name": "Neurodes", "category": "Misc", "type": "Misc",
+        "components": [{"uniqueName": "/r/Neurodes/Bp", "name": "Blueprint", "itemCount": 1}],
     }]), encoding="utf-8")
 
 
@@ -238,6 +253,10 @@ def test_ingrediente_de_muchas_recetas_es_recurso_aunque_no_tenga_ficha(con, tmp
     assert con.execute(
         "SELECT categoria, padre_id, tipo FROM items WHERE unique_name = '/r/Neurodes'"
     ).fetchone() == ("Resources", None, "Misc")
+    # Y su plano se va con el, no se queda en Misc.
+    assert con.execute(
+        "SELECT categoria FROM items WHERE unique_name = '/r/Neurodes/Bp'"
+    ).fetchone() == ("Resources",)
 
 
 def test_las_piezas_de_verdad_siguen_teniendo_padre(con, tmp_path):

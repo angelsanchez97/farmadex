@@ -77,6 +77,16 @@ def parsear(combinacion: str) -> tuple[int, int]:
     return modificadores | MOD_NOREPEAT, codigo
 
 
+ERROR_HOTKEY_ALREADY_REGISTERED = 1409
+
+
+def motivo_registro(codigo_error: int, combinacion: str) -> str:
+    """Texto para el usuario segun el GetLastError que dejo RegisterHotKey."""
+    if codigo_error == ERROR_HOTKEY_ALREADY_REGISTERED:
+        return f"la combinacion {combinacion} ya la usa otro programa"
+    return f"Windows no acepta la combinacion {combinacion} (error {codigo_error})"
+
+
 class GestorHotkeys(QThread):
     """Registra las combinaciones y emite su nombre cuando se pulsan."""
 
@@ -93,7 +103,9 @@ class GestorHotkeys(QThread):
         if not sys.platform.startswith("win"):
             log.warning("Los atajos globales solo estan implementados en Windows")
             return
-        user32 = ctypes.windll.user32
+        # use_last_error: sin esto GetLastError se pisa entre llamadas de ctypes y no
+        # se sabe si el atajo lo tiene otro programa o Windows lo rechaza por otra cosa.
+        user32 = ctypes.WinDLL("user32", use_last_error=True)
         self._id_hilo = ctypes.windll.kernel32.GetCurrentThreadId()
 
         siguiente = 1
@@ -108,8 +120,11 @@ class GestorHotkeys(QThread):
                 log.info("Atajo registrado: %s = %s", nombre, combinacion)
                 siguiente += 1
             else:
-                self.fallo.emit(nombre, f"la combinacion {combinacion} ya la usa otro programa")
-                log.warning("No se pudo registrar %s (%s)", nombre, combinacion)
+                motivo = motivo_registro(ctypes.get_last_error(), combinacion)
+                self.fallo.emit(nombre, motivo)
+                log.warning("No se pudo registrar %s (%s): %s", nombre, combinacion, motivo)
+        if not self._ids and self.combinaciones:
+            log.error("Ningun atajo global quedo registrado; el overlay solo se abre desde la bandeja")
 
         mensaje = wintypes.MSG()
         while user32.GetMessageW(ctypes.byref(mensaje), None, 0, 0) > 0:

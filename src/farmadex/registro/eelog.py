@@ -15,6 +15,21 @@ Marcadores comprobados contra un EE.log real (Warframe, septiembre de 2026):
 Importante: el juego NO escribe en el log que objeto te has llevado, asi que de
 aqui no se puede deducir el progreso de un objetivo. Solo sirve para saber
 CUANDO mirar la pantalla; lo que hay en ella lo lee el OCR.
+
+Pistas (`VigilanteEELog.pista`), tambien comprobadas contra un EE.log real:
+
+    Dialog.lua: Dialog::CreateOkCancel(description=¿Seguro que quieres equipar
+        Reliquia Lith K5 [PERFECTA] para esta mision? ...       -> ("reliquia", "Lith K5")
+    Dialog.lua: ...¿Refinar Reliquia Lith S18 a RADIANTE? ...   -> ("reliquia", "Lith S18")
+    VoidProjections: <id> gets reward /Lotus/StoreItems/Types/Recipes/Weapons/
+        WeaponParts/AkboltoPrimeBarrel                          -> ("recompensa", "/Lotus/Types/...")
+
+La reliquia equipada se sabe unos 3 minutos antes de abrirse (lo que dura la
+mision), y sirve para pedir los precios de sus recompensas con tiempo. Las
+lineas "gets reward" salen en el mismo instante que "Got rewards", solo para
+algunos jugadores de la escuadra (no siempre el propio), y dan el objeto exacto
+sin esperar al OCR. El texto del dialogo esta en el idioma del juego, pero el
+nombre de la reliquia ("Lith K5") no se traduce. El id de jugador no se copia.
 """
 
 from __future__ import annotations
@@ -110,8 +125,32 @@ def clasificar(linea: str) -> str | None:
     return None
 
 
-def leer_eventos(ruta: Path, posicion: int) -> tuple[list[str], int]:
-    """Eventos en las lineas completas escritas desde `posicion`, y hasta donde se leyo.
+# Nombre de reliquia dentro de un dialogo del juego (equipar, refinar). Solo en
+# lineas de Dialog.lua: en el chat o en nombres de jugador podria salir cualquier cosa.
+SCRIPT_DIALOGO = "Dialog.lua:"
+RE_RELIQUIA = re.compile(r"\b(Lith|Meso|Neo|Axi|Requiem) ([A-Z]\d{1,2})\b")
+# Recompensa que le ha tocado a un jugador de la escuadra, con la ruta del objeto.
+RE_RECOMPENSA = re.compile(r"VoidProjections: [0-9a-f]+ gets reward (/Lotus/\S+)")
+# El juego nombra las recompensas como articulo de tienda; el indice, como objeto.
+PREFIJO_TIENDA = "/Lotus/StoreItems/"
+
+
+def pista(linea: str) -> tuple[str, str] | None:
+    """("reliquia", "Lith K5") o ("recompensa", unique_name); None si la linea no trae nada."""
+    if SCRIPT_DIALOGO in linea:
+        m = RE_RELIQUIA.search(linea)
+        return ("reliquia", f"{m.group(1)} {m.group(2)}") if m else None
+    m = RE_RECOMPENSA.search(linea)
+    if m:
+        ruta = m.group(1)
+        if ruta.startswith(PREFIJO_TIENDA):
+            ruta = "/Lotus/" + ruta[len(PREFIJO_TIENDA):]
+        return ("recompensa", ruta)
+    return None
+
+
+def leer_lineas(ruta: Path, posicion: int) -> tuple[list[str], int]:
+    """Lineas completas escritas desde `posicion`, y hasta donde se leyo.
 
     Se lee en binario: en modo texto, `tell()` tras iterar lineas lanza OSError y
     la posicion no avanzaba, con lo que cada evento se repetia en cada pasada.
@@ -124,14 +163,20 @@ def leer_eventos(ruta: Path, posicion: int) -> tuple[list[str], int]:
     if fin < 0:
         return [], posicion
     texto = datos[: fin + 1].decode("utf-8", errors="replace")
-    eventos = [e for e in (clasificar(linea) for linea in texto.splitlines()) if e]
-    return eventos, posicion + fin + 1
+    return texto.splitlines(), posicion + fin + 1
+
+
+def leer_eventos(ruta: Path, posicion: int) -> tuple[list[str], int]:
+    """Eventos en las lineas completas escritas desde `posicion`, y hasta donde se leyo."""
+    lineas, posicion = leer_lineas(ruta, posicion)
+    return [e for e in (clasificar(linea) for linea in lineas) if e], posicion
 
 
 class VigilanteEELog(QThread):
     """Sigue el final del fichero y avisa de los eventos reconocidos."""
 
     evento = Signal(str)  # nombre del evento
+    pista = Signal(str, str)  # ("reliquia", "Lith K5") o ("recompensa", unique_name)
     arranque = Signal(object)  # Cabecera: al ver el fichero y cada vez que el juego arranca
 
     INTERVALO = 0.5
@@ -163,14 +208,25 @@ class VigilanteEELog(QThread):
                     time.sleep(1)
                     self._anunciar_cabecera()
                 if tamano > posicion:
-                    eventos, posicion = leer_eventos(self.ruta, posicion)
-                    for evento in eventos:
-                        log.info("EE.log: %s", evento)
-                        self.evento.emit(evento)
+                    lineas, posicion = leer_lineas(self.ruta, posicion)
+                    self._procesar(lineas)
             except OSError as e:
                 log.warning("No se pudo leer EE.log: %s", e)
                 time.sleep(2)
             time.sleep(self.INTERVALO)
+
+    def _procesar(self, lineas: list[str]) -> None:
+        """Emite, en el orden del fichero, los eventos y las pistas de las lineas nuevas."""
+        for linea in lineas:
+            evento = clasificar(linea)
+            if evento:
+                log.info("EE.log: %s", evento)
+                self.evento.emit(evento)
+                continue
+            encontrada = pista(linea)
+            if encontrada:
+                log.info("EE.log: pista %s = %s", *encontrada)
+                self.pista.emit(*encontrada)
 
     def _anunciar_cabecera(self) -> None:
         cabecera = leer_cabecera(self.ruta)

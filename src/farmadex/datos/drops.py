@@ -15,7 +15,7 @@ from pathlib import Path
 from rapidfuzz import fuzz, process as rf_process
 
 from ..registro_log import obtener
-from .items import normalizar
+from .items import _numero, _texto, normalizar
 
 log = obtener("drops")
 
@@ -24,7 +24,15 @@ RE_SUFIJO_PLANETA = re.compile(r"\s+\([^)]*\)$")
 RE_CANTIDAD = re.compile(r"^\d+\s*X\s+", re.IGNORECASE)
 RE_PARENTESIS = re.compile(r"\s*\([^)]*\)$")
 # Recompensas que no son objetos del catalogo y no tiene sentido intentar casar.
-RE_NO_ES_OBJETO = re.compile(r"^([\d,.]+\s*(Endo|Credits( Cache)?|Kuva)|Region Resource)$", re.IGNORECASE)
+RE_NO_ES_OBJETO = re.compile(
+    r"^(\d+X\s+)?("
+    r"[\d,.]+\s*(Endo|Credits( Cache)?|Kuva|H.llars( Cache)?)"  # "2X 3,000 Credits Cache"
+    r"|Region Resource"
+    r"|Return:\s*[\d,.]+"  # el credito que devuelve el Circuito
+    r"|(\d+\s*Day\s+)?\w+(\s+Drop\s+Chance)?\s+Booster"  # "3 Day Affinity Booster"
+    r")$",
+    re.IGNORECASE,
+)
 # "Lith Q3 Relic (Radiant)": el nombre del objeto lleva pegado el refinamiento.
 RE_RELIQUIA_REFINADA = re.compile(
     r"^(.*\bRelic)\s*\((Intact|Exceptional|Flawless|Radiant)\)$", re.IGNORECASE
@@ -174,7 +182,17 @@ class ImportadorDrops:
             """
         )
 
+    # Columnas numericas y de texto de 'fuentes': un "25%" o una lista donde se espera
+    # un numero no debe colarse tal cual, porque la ficha hace float() sobre ello.
+    _NUMERICAS = frozenset({"probabilidad", "probabilidad_enemigo", "standing"})
+    _TEXTUALES = frozenset({"refinamiento", "rotacion", "etapa", "rareza"})
+
     def _fuente(self, item_id: int, tipo: str, origen_texto: str, **campos) -> None:
+        for clave in list(campos):
+            if clave in self._NUMERICAS:
+                campos[clave] = _numero(campos[clave])
+            elif clave in self._TEXTUALES:
+                campos[clave] = _texto(campos[clave])
         columnas = ["item_id", "tipo", "origen_texto", *campos]
         valores = [item_id, tipo, origen_texto, *campos.values()]
         marcas = ", ".join("?" for _ in columnas)
@@ -245,7 +263,8 @@ class ImportadorDrops:
                 self.con.execute(
                     "INSERT OR IGNORE INTO reliquia_recompensas "
                     "(reliquia_id, refinamiento, item_id, rareza, probabilidad) VALUES (?,?,?,?,?)",
-                    (rid, refinamiento, iid, premio.get("rarity"), premio.get("chance")),
+                    (rid, refinamiento, iid, _texto(premio.get("rarity")),
+                     _numero(premio.get("chance"))),
                 )
                 existe = self.con.execute(
                     "SELECT 1 FROM fuentes WHERE item_id=? AND tipo='reliquia' AND origen_id=? "

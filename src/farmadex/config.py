@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from pathlib import Path
 
 from . import NOMBRE_APP, URL_CONTACTO, VERSION
@@ -70,6 +71,12 @@ def crear_carpetas() -> None:
 # cerrabas el programa, la ventana guardaba su posicion con el tema de antes, y
 # al volver a abrir estaba todo como al principio.
 _compartida: tuple[Path, dict] | None = None
+# El diccionario lo tocan varios hilos (la ventana, los comprobadores de version,
+# el buscador): sin cerrojo, dos `guardar` a la vez escribian el mismo .tmp y el
+# `replace` del segundo fallaba en Windows, o json.dumps se encontraba el
+# diccionario cambiando de tamano a mitad de recorrido. Reentrante porque
+# `cargar` llama a `guardar`.
+_cerrojo = threading.RLock()
 
 
 def cargar(recargar: bool = False) -> dict:
@@ -79,31 +86,38 @@ def cargar(recargar: bool = False) -> dict:
     que un cambio hecho desde Ajustes lo vea tambien quien guarde despues.
     """
     global _compartida
-    if not recargar and _compartida is not None and _compartida[0] == RUTA_CONFIG:
-        return _compartida[1]
+    with _cerrojo:
+        if not recargar and _compartida is not None and _compartida[0] == RUTA_CONFIG:
+            return _compartida[1]
 
-    crear_carpetas()
-    datos = {}
-    if RUTA_CONFIG.exists():
-        try:
-            datos = json.loads(RUTA_CONFIG.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
+        crear_carpetas()
+        datos = {}
+        if RUTA_CONFIG.exists():
+            try:
+                datos = json.loads(RUTA_CONFIG.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                datos = {}
+        if not isinstance(datos, dict):
             datos = {}
-    config = dict(POR_DEFECTO)
-    config.update({c: v for c, v in datos.items() if c in POR_DEFECTO})
-    _compartida = (RUTA_CONFIG, config)
-    if datos != config:
-        guardar(config)
-    return config
+        config = dict(POR_DEFECTO)
+        config.update({c: v for c, v in datos.items() if c in POR_DEFECTO})
+        _compartida = (RUTA_CONFIG, config)
+        if datos != config:
+            guardar(config)
+        return config
 
 
 def guardar(config: dict) -> None:
     global _compartida
-    crear_carpetas()
-    tmp = RUTA_CONFIG.with_suffix(".tmp")
-    tmp.write_text(json.dumps(config, indent=2, ensure_ascii=False), encoding="utf-8")
-    tmp.replace(RUTA_CONFIG)
-    if _compartida is not None and _compartida[1] is not config:
-        # Alguien ha guardado un diccionario suyo: lo que hubiera en memoria ya no
-        # vale, y la proxima lectura vuelve al fichero.
-        _compartida = None
+    with _cerrojo:
+        crear_carpetas()
+        # Copia bajo el cerrojo: lo que se escribe es una foto coherente aunque
+        # otro hilo siga tocando el diccionario compartido.
+        texto = json.dumps(dict(config), indent=2, ensure_ascii=False)
+        tmp = RUTA_CONFIG.with_suffix(".tmp")
+        tmp.write_text(texto, encoding="utf-8")
+        tmp.replace(RUTA_CONFIG)
+        if _compartida is not None and _compartida[1] is not config:
+            # Alguien ha guardado un diccionario suyo: lo que hubiera en memoria ya no
+            # vale, y la proxima lectura vuelve al fichero.
+            _compartida = None

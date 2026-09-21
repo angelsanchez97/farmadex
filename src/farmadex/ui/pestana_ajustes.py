@@ -51,6 +51,9 @@ class PestanaAjustes(QWidget):
         # Textos fijos que hay que volver a escribir al cambiar de idioma:
         # (funcion que pone el texto, clave en castellano).
         self._fijos: list[tuple[Callable[[str], None], str]] = []
+        self._notas: list[QLabel] = []
+        # Color de la linea de version ("suave" normal, "aviso" si hay version nueva).
+        self._color_version = "suave"
 
         # -- atajos --------------------------------------------------------------
         self.campos_hotkey = {
@@ -242,7 +245,20 @@ class PestanaAjustes(QWidget):
         nota.setWordWrap(True)
         nota.setStyleSheet(f"color: {PALETA['suave']}; font-size: 12px;")
         self._fijo(nota.setText, clave)
+        self._notas.append(nota)
         return nota
+
+    def repintar(self) -> None:
+        """Tras cambiar de tema: las etiquetas llevan el color puesto a mano en su hoja."""
+        p = PALETA
+        for nota in self._notas:
+            nota.setStyleSheet(f"color: {p['suave']}; font-size: 12px;")
+        self.aviso_hotkey.setStyleSheet(f"color: {p['aviso']};")
+        self.estado_datos.setStyleSheet(f"color: {p['suave']};")
+        self.aviso_parche.setStyleSheet(f"color: {p['aviso']};")
+        self.aviso_version.setStyleSheet(f"color: {p[self._color_version]};")
+        if self._modo_pantalla is not None:
+            self.mostrar_modo_pantalla(self._modo_pantalla)
 
     def _fila(self, formulario: QFormLayout, clave: str, campo: QWidget) -> None:
         etiqueta = QLabel()
@@ -342,6 +358,7 @@ class PestanaAjustes(QWidget):
     def estado_version(self, texto: str) -> None:
         """Lo escribe quien hace la comprobacion: 'Estas en la ultima version', etc."""
         self.aviso_version.setText(texto)
+        self._color_version = "suave"
         self.aviso_version.setStyleSheet(f"color: {PALETA['suave']};")
 
     def anunciar_version(self, version, local: bool = False) -> None:
@@ -362,6 +379,7 @@ class PestanaAjustes(QWidget):
                 f'{cabecera} <a style="color:{PALETA["acento"]}" href="{version.url}">'
                 f"{t('Descargarla')}</a>"
             )
+        self._color_version = "aviso"
         self.aviso_version.setStyleSheet(f"color: {PALETA['aviso']};")
 
     # -- datos ------------------------------------------------------------------

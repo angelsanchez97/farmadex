@@ -23,7 +23,9 @@ log = obtener("indice")
 # 3: los recursos dejan de ser "piezas" de la primera warframe que los usaba.
 # 4: ingrediente de 3+ recetas = recurso aunque no tenga ficha propia; los de Misc pasan a Resources.
 # 5: nodos que DE no publica (Railjack, eventos, Duviri, retirados) desde solNodes.json de WFCD.
-VERSION_ESQUEMA = "5"
+# 6: nombres sin etiquetas de icono, alias propio de las piezas con nombre unico, el plano de
+#    un recurso va en su categoria, y probabilidades siempre numericas.
+VERSION_ESQUEMA = "6"
 
 def conectar(ruta: Path = RUTA_INDICE) -> sqlite3.Connection:
     con = sqlite3.connect(ruta)
@@ -209,6 +211,9 @@ def construir(progreso=None, forzar: bool = False) -> dict:
             objetos += importador.importar_categoria(ruta)
         recursos = importador.promocionar_ingredientes()
         log.info("Ingredientes de receta tratados como recurso: %d", recursos)
+        log.info(
+            "Piezas con alias propio: %d", importador.registrar_piezas_con_nombre_propio()
+        )
         con.commit()
 
         avisar("Enlazando reliquias", 0, 0)
@@ -239,11 +244,11 @@ def construir(progreso=None, forzar: bool = False) -> dict:
 
         avisar("Emparejando con warframe.market", 0, 0)
         try:
-            from ..online.market import Market
+            # La instancia compartida: el catalogo /items queda en cache para el
+            # buscador y el comparador, y no se cierra aqui porque ellos la usan.
+            from ..online.market import compartido
 
-            mercado = Market()
-            mercado.emparejar(con)
-            mercado.cerrar()
+            compartido().emparejar(con)
         except Exception:  # noqa: BLE001 - sin precios la aplicacion sigue entera
             log.exception("No se pudo emparejar con warframe.market")
 
@@ -313,6 +318,10 @@ ORDEN_CATEGORIA = {
 # Por debajo de esto un resultado difuso es ruido ("erra" para "serracion").
 CORTE_DIFUSO = 72
 
+# "chasis de mesa prime", "plano del rhino": los nombres indexados no llevan estas
+# particulas, y con ellas la busqueda caia en el difuso y devolvia el chasis de otra.
+PALABRAS_VACIAS = frozenset({"de", "del", "la", "el", "los", "las", "of", "the"})
+
 
 def _nivel(normal: str, palabras: list[str], texto: str) -> int:
     """0 exacto, 1 empieza por lo escrito, 2 tiene todas las palabras enteras,
@@ -339,10 +348,12 @@ def buscar(con: sqlite3.Connection, texto: str, limite: int = 40) -> list[dict]:
     La busqueda difusa entra siempre que FTS no de nada bueno (exacto o que
     empiece por lo escrito), y las dos listas se fusionan.
     """
-    normal = normalizar(texto)
-    palabras = normal.split()
+    palabras = normalizar(texto).split()
     if not palabras:
         return []
+    # Las particulas se quitan salvo que sean todo lo escrito ("the", "de").
+    palabras = [p for p in palabras if p not in PALABRAS_VACIAS] or palabras
+    normal = " ".join(palabras)
 
     # candidatos: item_id -> (mejor nivel, mejor parecido, texto, idioma)
     candidatos: dict[int, tuple[int, float, str, str]] = {}
@@ -360,6 +371,16 @@ def buscar(con: sqlite3.Connection, texto: str, limite: int = 40) -> list[dict]:
         """,
         (consulta, max(200, limite * 5)),
     ).fetchall()
+    if not filas and len(palabras) > 1:
+        # "wu kong" por "wukong": el difuso ordena las palabras y no lo ve.
+        pegado = "".join(palabras)
+        filas = con.execute(
+            "SELECT b.item_id, b.idioma, b.texto FROM busqueda b WHERE busqueda MATCH ?"
+            " ORDER BY bm25(busqueda) LIMIT ?",
+            (f'"{pegado}"*', max(200, limite * 5)),
+        ).fetchall()
+        if filas:
+            normal, palabras = pegado, [pegado]
     for item_id, idioma, texto_indexado in filas:
         nivel = _nivel(normal, palabras, texto_indexado)
         # Cuanto menos texto sobre, mas se parece: "forma" antes que "forma plano".
@@ -396,11 +417,14 @@ def buscar(con: sqlite3.Connection, texto: str, limite: int = 40) -> list[dict]:
          imagen) in filas:
         nivel, parecido, texto_indexado, idioma = candidatos[iid]
         grupo = GRUPO_CATEGORIA.get(categoria, 1)
-        if grupo == GRUPO_COSMETICO:
-            # Un adorno solo gana a lo farmeable si lo escrito es exactamente su
-            # nombre y ningun objeto farmeable contiene esas palabras.
-            nivel = min(nivel + 2, 4)
         tiene_fuentes = iid in con_fuentes or (padre_id in con_fuentes if padre_id else False)
+        if grupo == GRUPO_COSMETICO and not (padre_id and tiene_fuentes):
+            # Un adorno solo gana a lo farmeable si lo escrito es exactamente su
+            # nombre y ningun objeto farmeable contiene esas palabras. La pieza de un
+            # adorno que se farmea (Kavasa Prime Band sale de reliquias) no se castiga;
+            # el adorno entero si, porque 625 tienen alguna fuente (paletas, sigilos)
+            # y "orokin" volvia a dar la paleta de colores antes que la celula.
+            nivel = min(nivel + 2, 4)
         salida.append({
             "item_id": iid,
             "peso": (nivel, grupo, 0 if tiene_fuentes else 1, ORDEN_CATEGORIA.get(categoria, 4),

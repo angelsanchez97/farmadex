@@ -278,6 +278,12 @@ class PestanaBuscador(QWidget):
 
     def repintar(self) -> None:
         """Tras cambiar de tema: la ficha lleva los colores dentro del HTML."""
+        p = PALETA
+        self.aviso.setStyleSheet(f"color: {p['suave']};")
+        self.precios.setStyleSheet(
+            f"color: {p['texto']}; background: {p['panel2']}; border: 1px solid {p['borde']};"
+            " border-radius: 8px; padding: 6px 10px;"
+        )
         self.lista.viewport().update()
         if self._datos_actuales:
             self.ficha.setHtml(self._html(self._datos_actuales))

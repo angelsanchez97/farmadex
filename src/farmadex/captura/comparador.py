@@ -53,6 +53,13 @@ pantalla sintetica de 1920x1080 con cuatro piezas):
                                                          (antes ~2.5 s)
     veredicto                                            +1.6 s en frio, +0 con cache
 
+Precarga (2026-09-21): EE.log dice que reliquia se equipa unos 3 minutos antes
+de abrirse (ver `registro/eelog.py`), y `ServicioComparador.precargar` pide
+entonces los precios de sus recompensas posibles. Medido con el indice real y
+Lith K5: la precarga de 5 slugs tarda 2080 ms (en segundo plano, con la mision
+en marcha) y despues `puntuar` de 4 piezas da el veredicto en 0 ms (precios 0)
+frente a 1565 ms en frio. El veredicto sale con las etiquetas, no 1,6 s despues.
+
 Queda margen, pero por si la red se atasca `puntuar` lleva un plazo
 (`PLAZO_PRECIOS_S`): cuando se agota deja de pedir precios y da el veredicto con
 lo que tiene, marcando las que quedaron sin precio. Cada `Veredicto` trae sus
@@ -66,7 +73,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from PySide6.QtCore import QObject, Signal, Slot
+from PySide6.QtCore import QObject, QTimer, Signal, Slot
 
 from ..idiomas import t
 from ..registro_log import obtener
@@ -365,6 +372,119 @@ class ServicioComparador(QObject):
         self.ruta_usuario = ruta_usuario
         self._crear_market = crear_market
         self._market = None
+        # Precarga de precios (ver `precargar`): slugs pendientes, los de la ultima
+        # reliquia equipada (para refrescarlos al abrirse) y el paso programado.
+        self._cola: list[str] = []
+        self._slugs_reliquia: list[str] = []
+        self._precarga_programada = False
+        self._precarga_inicio = 0.0
+        self._precarga_hechos = 0
+
+    # -- precarga de precios ---------------------------------------------------
+    #
+    # EE.log dice que reliquia se equipa unos minutos antes de abrirse, y en el
+    # instante de abrirse que objeto le ha tocado a algun companero. Con eso se piden
+    # los precios por adelantado: cuando el OCR termina, `puntuar` los encuentra en la
+    # cache de 10 min del cliente HTTP y el veredicto sale con las etiquetas, no 1,5 s
+    # despues. El limitador de 2 peticiones/s no se toca: solo se adelanta el momento.
+    #
+    # Se pide UN slug por vuelta del bucle de eventos del hilo, reprogramando el
+    # siguiente paso: asi un `comparar` que llegue en mitad de la precarga espera como
+    # mucho una peticion (~0,5 s), no la cola entera.
+
+    @Slot(str, str)
+    def precargar(self, tipo: str, valor: str) -> None:
+        """Pista de EE.log: ("reliquia", "Lith K5") o ("recompensa", unique_name)."""
+        slugs = self._slugs_de(tipo, valor)
+        if tipo == "reliquia":
+            self._slugs_reliquia = slugs
+        if not slugs:
+            log.info("Precarga: nada que pedir para %s %s", tipo, valor)
+            return
+        log.info("Precarga por %s %s: %s", tipo, valor, ", ".join(slugs))
+        # Lo que ya se sabe que esta en pantalla va delante de lo que solo es posible.
+        self._encolar(slugs, delante=(tipo == "recompensa"))
+
+    @Slot(str)
+    def evento(self, nombre: str) -> None:
+        """Al abrirse la reliquia se vuelven a pedir sus precios: si la cache sigue
+        viva no cuesta nada, y si caduco (mision larga) se refrescan 1,5 s antes."""
+        if nombre == "reliquia_abierta" and self._slugs_reliquia:
+            self._encolar(self._slugs_reliquia)
+
+    def _slugs_de(self, tipo: str, valor: str) -> list[str]:
+        from ..datos import indice
+
+        if not indice.hay_indice():
+            return []
+        try:
+            con = indice.conectar()
+        except Exception as e:  # noqa: BLE001 - sin indice no hay precarga, y ya esta
+            log.warning("Precarga sin indice: %s", e)
+            return []
+        try:
+            if tipo == "reliquia":
+                filas = con.execute(
+                    "SELECT i.market_slug FROM reliquia_recompensas rr "
+                    "JOIN items i ON i.id = rr.item_id JOIN items r ON r.id = rr.reliquia_id "
+                    "WHERE r.unique_name = ? AND i.market_slug IS NOT NULL AND i.market_slug != '' "
+                    "GROUP BY i.market_slug ORDER BY MIN(CASE rr.rareza "
+                    "WHEN 'Rare' THEN 0 WHEN 'Uncommon' THEN 1 ELSE 2 END)",
+                    (f"RELIQUIA/{valor}",),
+                ).fetchall()
+            elif tipo == "recompensa":
+                filas = con.execute(
+                    "SELECT market_slug FROM items WHERE unique_name = ? "
+                    "AND market_slug IS NOT NULL AND market_slug != ''",
+                    (valor,),
+                ).fetchall()
+            else:
+                filas = []
+        finally:
+            con.close()
+        return [f[0] for f in filas]
+
+    def _encolar(self, slugs: list[str], delante: bool = False) -> None:
+        if not slugs:
+            return
+        if not self._cola:
+            self._precarga_inicio = time.perf_counter()
+            self._precarga_hechos = 0
+        if delante:
+            # Lo que esta en pantalla adelanta aunque ya estuviera en la cola.
+            resto = [s for s in self._cola if s not in slugs]
+            self._cola = list(dict.fromkeys(slugs)) + resto
+        else:
+            self._cola += [s for s in dict.fromkeys(slugs) if s not in self._cola]
+        self._programar_paso()
+
+    def _programar_paso(self) -> None:
+        if self._precarga_programada or not self._cola:
+            return
+        self._precarga_programada = True
+        QTimer.singleShot(0, self._precargar_siguiente)
+
+    @Slot()
+    def _precargar_siguiente(self) -> None:
+        """Pide el precio de un slug y deja programado el siguiente."""
+        self._precarga_programada = False
+        if not self._cola:
+            return
+        slug = self._cola.pop(0)
+        precios_de = self._precios_de()
+        if precios_de is None:
+            log.info("Precarga cancelada: sin mercado")
+            self._cola.clear()
+            return
+        _pedir(precios_de, slug)
+        self._precarga_hechos += 1
+        if self._cola:
+            self._programar_paso()
+        else:
+            log.info(
+                "Precarga terminada: %d precios en %.0f ms",
+                self._precarga_hechos, (time.perf_counter() - self._precarga_inicio) * 1000,
+            )
 
     @Slot()
     def iniciar(self) -> None:
@@ -377,9 +497,11 @@ class ServicioComparador(QObject):
                 if self._crear_market is not None:
                     self._market = self._crear_market()
                 else:
-                    from ..online.market import Market
+                    # La misma instancia que el buscador: una sola cache y un solo
+                    # limitador, asi entre los dos no se pasan de 2 peticiones/s.
+                    from ..online.market import compartido
 
-                    self._market = Market()
+                    self._market = compartido()
             except Exception as e:  # noqa: BLE001 - sin mercado se puntua con ducados y rareza
                 log.warning("Mercado no disponible para el comparador: %s", e)
                 return None
