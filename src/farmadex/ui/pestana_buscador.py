@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (
 
 from ..config import cargar, guardar
 from .. import perfil
-from ..datos import indice, items, relaciones
+from ..datos import eficiencia, indice, items, relaciones
 from ..datos.nodos import nombre_bonito
 from ..idiomas import es_castellano, glosa, nombre as nombre_idioma, t
 from . import glosario
@@ -584,15 +584,26 @@ class PestanaBuscador(QWidget):
         if item["categoria"] == "Relics":
             partes.append(self._bloque_contenido(item["id"]))
 
+        partes.append(self._bloque_planeta(item["id"]))
         agrupadas: dict[str, list[dict]] = {}
-        for f in datos["fuentes"]:
-            if f["tipo"] != "reliquia":
-                agrupadas.setdefault(f["tipo"], []).append(f)
+        for f in relaciones.fuentes_de(con, item["id"]):
+            agrupadas.setdefault(f["tipo"], []).append(f)
+        hay_estimacion = False
         for tipo in ORDEN_TIPOS:
             grupo = agrupadas.get(tipo)
             if grupo:
                 partes.append(_seccion(_glosa(con, "tipo_fuente", tipo)))
                 partes.append(self._tabla_fuentes(grupo))
+                hay_estimacion = hay_estimacion or any(f["minutos_medios"] is not None for f in grupo)
+        if hay_estimacion:
+            partes.append(
+                f"<div style='color:{p['suave']};font-size:12px;margin:2px 0 8px 4px'>"
+                + html.escape(t("Los tiempos son una estimacion para un jugador medio: lo que suele "
+                                "durar la mision dividido por la probabilidad. Los enemigos comunes "
+                                "(probabilidad por muerte), los sindicatos y las incursiones no se "
+                                "pueden estimar asi."))
+                + "</div>"
+            )
 
         if not datos["fuentes"] and not datos["componentes"]:
             partes.append(
@@ -646,6 +657,7 @@ class PestanaBuscador(QWidget):
                         html.escape(m["mision"]),
                         _rotacion(self.con, m["rotacion"], p["texto"]),
                         f"{m['probabilidad']:.1f}%" if m["probabilidad"] else "",
+                        _tiempo(m.get("minutos_medios"), p["texto"]),
                     )
                     if x
                 )
@@ -670,7 +682,11 @@ class PestanaBuscador(QWidget):
         prob = ruta.get("probabilidad")
         if prob:
             trozos.append(f"<b>{prob:.1f}%</b>")
+        if ruta.get("minutos_medios") is not None:
+            trozos.append(_tiempo(ruta["minutos_medios"], p["texto"], negrita=True))
         tipo = _glosa(self.con, "tipo_fuente", ruta.get("tipo"))
+        if m.get("recurso_planeta"):
+            tipo = t("Jefe: suelta un recurso del planeta al morir")
         cuerpo = [
             f"<div style='color:{p['acento']};font-size:12px;font-weight:bold'>"
             f"{html.escape(t('Por donde empezar')).upper()}</div>",
@@ -708,6 +724,7 @@ class PestanaBuscador(QWidget):
                 + (f" &middot; {html.escape(m['mision'])}" if m["mision"] else "")
                 + (f" &middot; {_rotacion(self.con, m['rotacion'], p['suave'])}" if m["rotacion"] else "")
                 + (f" &middot; {m['probabilidad']:.1f}%" if m["probabilidad"] else "")
+                + (f" &middot; {_tiempo(m['minutos_medios'], p['suave'])}" if m["minutos_medios"] is not None else "")
                 + "</div>"
                 for m in misiones
             ) or f"<div style='color:{p['suave']}'>{html.escape(t('No cae en ninguna mision activa'))}</div>"
@@ -750,9 +767,16 @@ class PestanaBuscador(QWidget):
     def _tabla_fuentes(self, grupo: list[dict]) -> str:
         p = PALETA
         filas = []
+        # Cada modo de Conclave es una fila con un 0,2 %: ocho filas iguales que
+        # tapaban lo farmeable. Van juntas en una sola linea al final.
+        pvp = [f for f in grupo if f.get("motivo") == "pvp"]
+        grupo = [f for f in grupo if f.get("motivo") != "pvp"]
         sobran = max(0, len(grupo) - MAX_FILAS_POR_TIPO)
         for f in grupo[:MAX_FILAS_POR_TIPO]:
-            if f["nodo_en"]:
+            if f.get("jefe"):
+                # "Alad V (Temisto, Jupiter) - Asesinato": el nodo lo pone relaciones.
+                donde = f["donde"] + (f" - {f['mision']}" if f.get("mision") else "")
+            elif f["nodo_en"]:
                 planeta = nombre_idioma(f, "planeta")
                 mision = _glosa(self.con, "mision", f["mision_en"])
                 donde = f"{nombre_idioma(f, 'nodo')}, {planeta}".strip(", ")
@@ -761,6 +785,8 @@ class PestanaBuscador(QWidget):
             else:
                 donde = nombre_bonito(self.con, f["origen_texto"])
             extra = []
+            if f.get("recurso_planeta"):
+                extra.append(html.escape(t("recurso del planeta")))
             if f["rotacion"]:
                 extra.append(_rotacion(self.con, f["rotacion"], p["suave"]))
             if f["etapa"]:
@@ -773,19 +799,52 @@ class PestanaBuscador(QWidget):
                 extra.append(html.escape(t("tabla {prob}%", prob=f"{f['probabilidad_enemigo']:.1f}")))
             prob = f"{f['probabilidad']:.1f}%" if f["probabilidad"] is not None else ""
             color = color_rareza(f["rareza"])
+            tiempo = _tiempo(f.get("minutos_medios"), p["texto"]) or _sin_estimacion(f.get("motivo"), p["suave"])
             filas.append(
                 f"<tr><td width='6' style='background:{color}'></td>"
                 f"<td><b>{html.escape(donde)}</b></td>"
                 f"<td style='color:{p['suave']}'>{', '.join(extra)}</td>"
                 f"<td>{glosario.enlace('rareza', _glosa(self.con, 'rareza', f['rareza']), color)}</td>"
-                f"<td align='right'><b>{prob}</b></td></tr>"
+                f"<td align='right'><b>{prob}</b></td>"
+                f"<td align='right'>{tiempo}</td></tr>"
             )
         if sobran:
             filas.append(
-                f"<tr><td colspan='5' style='color:{p['suave']}'>"
-                f"{html.escape(t('y {n} sitios mas, con menos probabilidad', n=sobran))}</td></tr>"
+                f"<tr><td colspan='6' style='color:{p['suave']}'>"
+                f"{html.escape(t('y {n} sitios mas, con mas tiempo o menos probabilidad', n=sobran))}</td></tr>"
+            )
+        if pvp:
+            maxima = max((f["probabilidad"] or 0) for f in pvp)
+            filas.append(
+                f"<tr><td colspan='6' style='color:{p['suave']}'>"
+                + html.escape(t("Conclave (PvP): {n} modos, hasta un {prob}% por partida",
+                                n=len(pvp), prob=f"{maxima:.1f}"))
+                + "</td></tr>"
             )
         return _envolver(filas)
+
+    def _bloque_planeta(self, item_id: int) -> str:
+        """Recurso de planeta: cae en cualquier mision de esos planetas, sin porcentaje."""
+        datos = relaciones.recurso_de_planeta(self.con, item_id)
+        if not datos:
+            return ""
+        p = PALETA
+        planetas = ", ".join(html.escape(nombre_idioma(x, "planeta")) for x in datos["planetas"])
+        cuerpo = [
+            f"<div style='color:{p['acento']};font-size:12px;font-weight:bold'>"
+            f"{html.escape(t('Recurso de planeta')).upper()}</div>",
+            f"<div style='margin-top:2px'>{html.escape(t('Cae en cualquier mision de'))} "
+            f"<b>{planetas}</b>: {html.escape(t('lo sueltan los enemigos y los contenedores, sin porcentaje conocido.'))}</div>",
+        ]
+        if datos["nodos"]:
+            rapidas = " &middot; ".join(
+                f"<span style='color:{p['texto']}'>{html.escape(n['donde'])}</span> "
+                f"({html.escape(n['mision'])}, ~{n['minutos']:.0f} min)"
+                for n in datos["nodos"]
+            )
+            cuerpo.append(f"<div style='color:{p['suave']};margin-top:2px'>"
+                          f"{html.escape(t('Misiones rapidas para farmearlo:'))} {rapidas}</div>")
+        return _tarjeta("".join(cuerpo), p["acento"])
 
 
 def _con_padre(nombre: str, padre: str | None) -> str:
@@ -811,6 +870,27 @@ def _etiqueta(texto: str, fondo: str, color: str, clave_glosario: str | None = N
         f"<span style='background:{fondo};color:{color};font-size:12px;"
         f"padding:2px 8px'>&nbsp;{cuerpo}&nbsp;</span>"
     )
+
+
+def _tiempo(minutos: float | None, color: str, negrita: bool = False) -> str:
+    """'~35 min' con la explicacion de la estimacion al pasar el raton; vacio si no hay."""
+    texto = eficiencia.texto_minutos(minutos)
+    if not texto:
+        return ""
+    return glosario.enlace("tiempo_medio", texto, color, negrita)
+
+
+MOTIVOS_SIN_ESTIMACION = {
+    "por_muerte": "por muerte",
+    "reputacion": "reputacion",
+    "diaria": "1 al dia",
+    "pvp": "PvP",
+}
+
+
+def _sin_estimacion(motivo: str | None, color: str) -> str:
+    texto = MOTIVOS_SIN_ESTIMACION.get(motivo or "")
+    return glosario.enlace("tiempo_medio", t(texto), color) if texto else ""
 
 
 def _rotacion(con, rotacion: str | None, color: str) -> str:

@@ -172,7 +172,12 @@ def test_la_version_nueva_se_avisa_en_el_banner_no_en_la_linea_de_estado():
         estado=types.SimpleNamespace(setText=estado.append),
         ajustes=types.SimpleNamespace(anunciar_version=lambda *a, **k: None),
         nueva_version=None,
+        actualizacion_lista=None,
+        _fallo_actualizacion=None,
+        config={"actualizar_automaticamente": False},
     )
+    falso._avisar_descarga_manual = lambda v, motivo=None: VentanaOverlay._avisar_descarga_manual(falso, v, motivo)
+    falso._conviene_autoactualizar = lambda v: VentanaOverlay._conviene_autoactualizar(falso, v)
     version = Version(etiqueta="v9.9.9", url="https://ejemplo/Farmadex-setup.exe", notas="")
 
     VentanaOverlay._hay_version_nueva(falso, version)

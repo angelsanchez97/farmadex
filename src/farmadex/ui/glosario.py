@@ -43,6 +43,13 @@ TERMINOS: dict[str, tuple[str, str]] = {
         "En las misiones sin fin (Supervivencia, Defensa...) las recompensas van en ciclos "
         "A, A, B, C. La rotacion C es la cuarta recompensa: el minuto 20 o la oleada 20.",
     ),
+    "tiempo_medio": (
+        "Tiempo medio estimado",
+        "Lo que suele durar la mision dividido por la probabilidad: un 10 % en una mision "
+        "de 10 minutos son ~100 minutos de media, mejor que un 20 % en una de 40 (~200). "
+        "En las misiones sin fin cuenta llegar a la rotacion. Las duraciones son una "
+        "estimacion para un jugador medio, no un dato del juego.",
+    ),
     "boveda": (
         "Boveda",
         "Lo que esta en boveda ya no sale en ninguna reliquia que se pueda farmear: "

@@ -173,14 +173,24 @@ class PestanaAjustes(QWidget):
         self.boton_instalar = self._boton("Instalar la version nueva")
         self.boton_instalar.setObjectName("principal")
         self.boton_instalar.setVisible(False)
+        # Para la actualizacion ya descargada y comprobada por la propia app.
+        self.boton_reiniciar = self._boton("Reiniciar y actualizar")
+        self.boton_reiniciar.setObjectName("principal")
+        self.boton_reiniciar.setVisible(False)
+        self.auto_actualizar = QCheckBox()
+        self._fijo(self.auto_actualizar.setText, "Actualizar automaticamente (se instala al cerrar Farmadex)")
+        self.auto_actualizar.setChecked(bool(self.config.get("actualizar_automaticamente", True)))
+        self.auto_actualizar.toggled.connect(lambda v: self._guardar("actualizar_automaticamente", v))
         botones_version = QHBoxLayout()
         botones_version.addWidget(self.boton_comprobar)
         botones_version.addWidget(self.boton_instalar)
+        botones_version.addWidget(self.boton_reiniciar)
         botones_version.addStretch(1)
         version = QVBoxLayout()
         version.setSpacing(8)
         version.addWidget(self.etiqueta_version)
         version.addWidget(self.aviso_version)
+        version.addWidget(self.auto_actualizar)
         version.addStretch(1)
         version.addLayout(botones_version)
         grupo_version = self._grupo("Version")
@@ -361,10 +371,29 @@ class PestanaAjustes(QWidget):
         self._color_version = "suave"
         self.aviso_version.setStyleSheet(f"color: {PALETA['suave']};")
 
-    def anunciar_version(self, version, local: bool = False) -> None:
-        """Avisa de una version nueva. Instalar lo decide el usuario, nunca la app."""
+    def anunciar_version(self, version, local: bool = False, lista: bool = False) -> None:
+        """Avisa de una version nueva.
+
+        `local`: compilacion en la carpeta del PC, se instala con el boton.
+        `lista`: ya descargada y comprobada por la app; se instala al cerrar o con
+        "Reiniciar y actualizar". Sin ninguna de las dos, solo el enlace de descarga.
+        """
         cabecera = t("Hay una version nueva: <b>{version}</b>.", version=version.etiqueta)
-        if local:
+        self.boton_reiniciar.setVisible(lista)
+        if lista:
+            self.aviso_version.setText(
+                cabecera + " " + t(
+                    "Ya esta descargada y comprobada: se instala sola al cerrar Farmadex, "
+                    "o ahora mismo con el boton. Tus objetivos y ajustes se conservan."
+                )
+            )
+            self.boton_instalar.setVisible(False)
+            try:
+                self.boton_reiniciar.clicked.disconnect()
+            except RuntimeError:
+                pass
+            self.boton_reiniciar.clicked.connect(lambda: self.instalar_version.emit(version))
+        elif local:
             self.aviso_version.setText(
                 cabecera + " " + t("Al instalarla se cierra Farmadex; tus objetivos y ajustes se conservan.")
             )

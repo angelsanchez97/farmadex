@@ -140,7 +140,8 @@ def _claves_del_codigo() -> set[str]:
         pestana_mundo.ERAS, pestana_mundo.MODOS, pestana_mundo.TITULOS.values(),
         # Glosario: titulo y explicacion de cada termino.
         (texto for par in glosario.TERMINOS.values() for texto in par),
-        pestana_buscador.CATEGORIAS_ES.values(), (tema["titulo"] for tema in widgets.TEMAS.values()),
+        pestana_buscador.CATEGORIAS_ES.values(), pestana_buscador.MOTIVOS_SIN_ESTIMACION.values(),
+        (tema["titulo"] for tema in widgets.TEMAS.values()),
         PestanaAjustes.MODOS_PANTALLA.values(), worldstate.CICLOS.values(),
         worldstate.ESTADOS_CICLO.values(), (reliquias.AVISO_DATOS, reliquias.AVISO_MOTOR),
         # Titulos de las pestanas (VentanaOverlay._titulos_pestanas los pasa por t()).

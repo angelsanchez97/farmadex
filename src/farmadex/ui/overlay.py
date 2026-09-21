@@ -5,8 +5,10 @@ from __future__ import annotations
 import re
 from html import unescape
 
-from PySide6.QtCore import QEvent, QPoint, QRect, QSize, Qt, QThread, QTimer, Signal
-from PySide6.QtGui import QColor, QCursor, QGuiApplication, QKeySequence, QPainter, QPixmap, QShortcut
+from PySide6.QtCore import QEvent, QPoint, QRect, QSize, Qt, QThread, QTimer, QUrl, Signal
+from PySide6.QtGui import (
+    QColor, QCursor, QDesktopServices, QGuiApplication, QKeySequence, QPainter, QPixmap, QShortcut,
+)
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -25,8 +27,10 @@ from ..idiomas import t
 from ..registro.eelog import VigilanteEELog
 from ..registro_log import obtener
 from ..tareas import TareaDatos
+from ..actualizador import descarga, instalacion
 from ..actualizador.app import ComprobadorApp
 from ..actualizador.datos import ComprobadorDatos
+from ..actualizador.descarga import DescargadorApp
 from ..actualizador.local import ComprobadorLocal, instalar
 from ..captura import pantalla
 from ..captura.comparador import ServicioComparador
@@ -229,7 +233,10 @@ class VentanaOverlay(QWidget):
         self.banner = QLabel()
         self.banner.setWordWrap(True)
         self.banner.setTextFormat(Qt.RichText)
-        self.banner.setOpenExternalLinks(True)
+        # Los enlaces normales se abren en el navegador; "farmadex:actualizar" es el
+        # boton de "Reiniciar y actualizar" del aviso de actualizacion lista.
+        self.banner.setOpenExternalLinks(False)
+        self.banner.linkActivated.connect(self._enlace_banner)
         self.banner.setStyleSheet(
             f"color: {PALETA['aviso']}; border: 1px solid {PALETA['aviso']};"
             " border-radius: 6px; padding: 4px 8px;"
@@ -242,6 +249,13 @@ class VentanaOverlay(QWidget):
         # al cambiar de idioma o de tema: el texto va traducido y con colores dentro.
         self._version_avisada: tuple[object, bool] | None = None
         self._desfase_comprobado = False
+        # Actualizacion automatica: la descarga en curso, la que ya esta lista para
+        # instalar (Version, ruta del setup) y el ultimo fallo (etiqueta, motivo).
+        self.nueva_version = None
+        self.descargador: DescargadorApp | None = None
+        self.actualizacion_lista: tuple[object, object] | None = None
+        self._fallo_actualizacion: tuple[str, str] | None = None
+        self._instalador_lanzado = False
 
         self.progreso = BarraProgreso()
         self.estado = QLabel("")
@@ -612,8 +626,39 @@ class VentanaOverlay(QWidget):
         self.comprobador_app.nueva_version.connect(self._hay_version_nueva)
         self.comprobador_app.sin_novedades.connect(self._no_hay_version_nueva)
         self.comprobador_app.fallo.connect(self._fallo_al_comprobar_version)
+        self.descargador = DescargadorApp(parent=self)
+        self.descargador.progreso.connect(self._progreso_descarga)
+        self.descargador.lista.connect(self._actualizacion_lista)
+        self.descargador.fallo.connect(self._fallo_descarga)
+        # El instalador espera a que este mutex se suelte antes de sustituir los ficheros.
+        instalacion.senalar_en_ejecucion()
+        self._contar_instalacion_anterior()
         if self.config.get("comprobar_actualizaciones_app", True):
             QTimer.singleShot(5000, self.comprobador_app.comprobar)
+
+    def _contar_instalacion_anterior(self) -> None:
+        """Si la sesion anterior lanzo una actualizacion automatica, decir como acabo."""
+        try:
+            resultado = instalacion.resultado_instalacion_anterior()
+        except Exception as e:  # noqa: BLE001 - un apunte ilegible no puede tumbar el arranque
+            log.warning("No se pudo leer el resultado de la actualizacion anterior: %s", e)
+            return
+        if not resultado:
+            return
+        estado, etiqueta = resultado
+        if estado == "instalada":
+            self.estado.setText(t("Farmadex se ha actualizado a la version {version}", version=etiqueta))
+            # El setup que nos acaba de abrir aun puede estar cerrandose: se barre luego.
+            QTimer.singleShot(60_000, descarga.limpiar)
+        else:
+            self._aviso(
+                "version",
+                t(
+                    "La actualizacion {version} no llego a instalarse; sigues en la {actual}. "
+                    "El detalle esta en logs/instalador.log.",
+                    version=etiqueta, actual=VERSION,
+                ),
+            )
 
     def _hay_datos_nuevos(self, motivo: str) -> None:
         self.estado.setText(t("Actualizando datos ({motivo})...", motivo=motivo))
@@ -628,15 +673,107 @@ class VentanaOverlay(QWidget):
         """
         self.nueva_version = version
         self._version_avisada = (version, False)
+        lista = self.actualizacion_lista
+        if lista and lista[0].etiqueta == version.etiqueta:
+            # Ya descargada (se vuelve a pasar por aqui al cambiar de idioma o tema).
+            self._actualizacion_lista(*lista)
+            return
+        fallo = self._fallo_actualizacion
+        if fallo and fallo[0] == version.etiqueta:
+            self._avisar_descarga_manual(version, motivo=fallo[1])
+            return
+        if self._conviene_autoactualizar(version):
+            self._descargar_actualizacion(version)
+        else:
+            self._avisar_descarga_manual(version)
+
+    def _avisar_descarga_manual(self, version, motivo: str | None = None) -> None:
+        """El aviso de siempre: enlace de descarga (con el motivo si la automatica fallo)."""
+        enlace = f'<a style="color:{PALETA["acento"]}" href="{version.url}">{t("Descargala")}</a>'
+        if motivo:
+            texto = t(
+                "No se pudo preparar la actualizacion {version} ({motivo}). {enlace}",
+                version=version.etiqueta, motivo=motivo, enlace=enlace,
+            )
+        else:
+            texto = t(
+                "Hay una version nueva de Farmadex ({version}). {enlace}, o instalala desde Ajustes.",
+                version=version.etiqueta, enlace=enlace,
+            )
+        self._aviso("version", texto)
+        self.ajustes.anunciar_version(version)
+
+    def _conviene_autoactualizar(self, version) -> bool:
+        """Solo si el usuario lo quiere, corre la version instalada con el setup (no el
+        portable ni el codigo) y esa misma version no fallo ya al instalarse sola."""
+        if not self.config.get("actualizar_automaticamente", True):
+            return False
+        if not instalacion.es_instalacion_por_instalador():
+            return False
+        return instalacion.version_fallida() != version.etiqueta
+
+    def _descargar_actualizacion(self, version) -> None:
+        self._aviso(
+            "version",
+            t("Descargando la actualizacion {version} en segundo plano...", version=version.etiqueta),
+        )
+        self.ajustes.estado_version(t("Descargando la version {version}...", version=version.etiqueta))
+        if self.descargador is not None:
+            self.descargador.descargar(version)
+
+    def _progreso_descarga(self, pct: int) -> None:
+        version = self.nueva_version
+        if version is None or self.actualizacion_lista or pct < 0:
+            return
         self._aviso(
             "version",
             t(
-                'Hay una version nueva de Farmadex ({version}). '
-                '<a style="color:{color}" href="{url}">Descargala</a>, o instalala desde Ajustes.',
-                version=version.etiqueta, color=PALETA["acento"], url=version.url,
+                "Descargando la actualizacion {version} en segundo plano... {pct}%",
+                version=version.etiqueta, pct=pct,
             ),
         )
-        self.ajustes.anunciar_version(version)
+
+    def _actualizacion_lista(self, version, ruta) -> None:
+        """Descargada y con la huella comprobada: se instala al cerrar, o ahora si se pulsa."""
+        self.actualizacion_lista = (version, ruta)
+        self._fallo_actualizacion = None
+        self._aviso(
+            "version",
+            t(
+                'Actualizacion {version} lista. <a style="color:{color}" href="farmadex:actualizar">'
+                "Reiniciar y actualizar</a> (si no, se instala sola al cerrar Farmadex).",
+                version=version.etiqueta, color=PALETA["acento"],
+            ),
+        )
+        self.ajustes.anunciar_version(version, lista=True)
+
+    def _fallo_descarga(self, version, motivo: str) -> None:
+        """Sin red, sin huella, huella que no cuadra, disco...: se sigue con la actual."""
+        self._fallo_actualizacion = (version.etiqueta, motivo)
+        self._avisar_descarga_manual(version, motivo=motivo)
+
+    def _enlace_banner(self, href: str) -> None:
+        if href == "farmadex:actualizar":
+            self._reiniciar_y_actualizar()
+        elif href:
+            QDesktopServices.openUrl(QUrl(href))
+
+    def _reiniciar_y_actualizar(self) -> None:
+        if self._lanzar_instalacion_pendiente():
+            self.estado.setText(t("Instalando... Farmadex se va a cerrar."))
+            QTimer.singleShot(500, self.cerrar_programa.emit)
+
+    def _lanzar_instalacion_pendiente(self) -> bool:
+        """Lanza el setup silencioso si hay una actualizacion lista; una sola vez."""
+        if not self.actualizacion_lista or self._instalador_lanzado:
+            return False
+        version, ruta = self.actualizacion_lista
+        if instalacion.instalar_silencioso(ruta, version.etiqueta):
+            self._instalador_lanzado = True
+            return True
+        self.actualizacion_lista = None
+        self._fallo_descarga(version, t("no se pudo lanzar el instalador"))
+        return False
 
     def _comprobar_version(self) -> None:
         """Comprobacion a mano desde Ajustes: siempre contesta algo.
@@ -671,6 +808,10 @@ class VentanaOverlay(QWidget):
         self.ajustes.anunciar_version(version, local=True)
 
     def _instalar_version(self, version) -> None:
+        lista = self.actualizacion_lista
+        if lista and lista[0].etiqueta == getattr(version, "etiqueta", None):
+            self._reiniciar_y_actualizar()
+            return
         if instalar(version):
             self.estado.setText(t("Instalando... Farmadex se va a cerrar."))
             QTimer.singleShot(500, self.cerrar_programa.emit)
@@ -1045,6 +1186,11 @@ class VentanaOverlay(QWidget):
         if getattr(self, "comprobador_datos", None):
             self.comprobador_datos.parar()
             self.comprobador_app.cerrar()
+            if self.descargador is not None:
+                self.descargador.cancelar()
+            # La actualizacion descargada se instala al salir: el setup espera a que
+            # este proceso termine y vuelve a abrir Farmadex al acabar.
+            self._lanzar_instalacion_pendiente()
         if self.vigilante:
             self.vigilante.parar()
         if self.hilo_captura:

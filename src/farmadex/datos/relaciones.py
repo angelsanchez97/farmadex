@@ -12,6 +12,8 @@ import re
 import sqlite3
 
 from ..idiomas import glosa, nombre
+from . import eficiencia
+from .items import normalizar
 from .nodos import nombre_bonito
 
 REFINAMIENTOS = ("Intact", "Exceptional", "Flawless", "Radiant")
@@ -95,9 +97,19 @@ _SQL_FUENTES = """
 
 
 def _decorar(con: sqlite3.Connection, filas: list[dict]) -> list[dict]:
-    """Anade 'donde' y 'mision' legibles a filas de la tabla de fuentes."""
+    """Anade 'donde', 'mision' y 'modo' legibles a filas de la tabla de fuentes.
+
+    Un enemigo que es jefe de asesinato (Alad V, el Chacal) se completa con su nodo:
+    las tablas de drops solo traen el nombre, y sin el nodo no se sabe donde matarlo.
+    """
     for f in filas:
-        if f["nodo_en"]:
+        f["modo"] = _extra(f).get("modo") or f.get("mision_en") or ""
+        f["jefe"] = False
+        if f["tipo"] == "enemigo":
+            _completar_jefe(con, f)
+        if f.get("jefe"):
+            f["donde"] = f"{f['origen_texto']} ({nombre(f, 'nodo')}, {nombre(f, 'planeta')})"
+        elif f["nodo_en"]:
             # Nodo y planeta siguen al idioma de la interfaz (castellano o ingles).
             f["donde"] = f"{nombre(f, 'nodo')}, {nombre(f, 'planeta')}".strip(", ")
         else:
@@ -108,6 +120,33 @@ def _decorar(con: sqlite3.Connection, filas: list[dict]) -> list[dict]:
             # mision se recupera del gameMode que guardo la tabla de drops.
             f["mision"] = _modo_traducido(con, f.get("datos_extra"))
     return filas
+
+
+def _nodo_por_nombre(con: sqlite3.Connection, nombre_en: str) -> dict | None:
+    filas = _filas(
+        con,
+        """
+        SELECT nombre_en AS nodo_en, nombre_es AS nodo_es, planeta_en, planeta_es, mision_en,
+               nivel_min, nivel_max,
+               (SELECT es FROM glosario WHERE dominio='mision' AND en = nodos.mision_en) AS mision_es
+          FROM nodos WHERE nombre_en = ? AND planeta_en NOT IN ('', 'Event') LIMIT 1
+        """,
+        (nombre_en,),
+    )
+    return filas[0] if filas else None
+
+
+def _completar_jefe(con: sqlite3.Connection, f: dict) -> None:
+    """Si el enemigo es un jefe conocido, la fila pasa a llevar su nodo y su mision."""
+    jefe = eficiencia.JEFES.get(RE_SUFIJO.sub("", f["origen_texto"] or "").strip())
+    if not jefe:
+        return
+    nodo = _nodo_por_nombre(con, jefe[0])
+    if not nodo:
+        return
+    f.update(nodo)
+    f["jefe"] = True
+    f["modo"] = nodo["mision_en"] or "Assassination"
 
 
 def _extra(f: dict) -> dict:
@@ -136,7 +175,18 @@ def misiones_de(con: sqlite3.Connection, reliquia_id: int) -> list[dict]:
         _SQL_FUENTES.format(tipos="'mision','llave','bounty','transitoria'"),
         (reliquia_id,),
     )
-    return _decorar(con, filas)
+    _decorar(con, filas)
+    for f in filas:
+        _puntuar(f)
+    # De menos a mas tiempo medio; a igual tiempo, mas probable y de nivel mas bajo.
+    filas.sort(
+        key=lambda f: (
+            eficiencia.clave_orden(f),
+            -f["puntuacion"],
+            f["nivel_min"] if f["nivel_min"] is not None else 999,
+        )
+    )
+    return filas
 
 
 def fuentes_de(con: sqlite3.Connection, item_id: int) -> list[dict]:
@@ -144,9 +194,12 @@ def fuentes_de(con: sqlite3.Connection, item_id: int) -> list[dict]:
 
     Cada fila trae lo mismo que `misiones_de` mas `probabilidad_efectiva` (en un
     enemigo, probabilidad de que suelte algo por probabilidad de que sea esto),
-    `grado` (0 = se farmea en el mapa ... 3 = Conclave y rarezas) y `puntuacion`,
-    que es por lo que van ordenadas. Las filas de tipo 'otro' que repiten una
-    mision ya conocida se quitan.
+    `grado` (0 = se farmea en el mapa ... 3 = Conclave y rarezas), `puntuacion`,
+    y la estimacion de `eficiencia`: `minutos_medios` (None si no se puede
+    estimar) y `motivo`. Van ordenadas por grado y, dentro, por tiempo medio; lo
+    que no tiene estimacion va detras, por puntuacion. Las filas de tipo 'otro'
+    que repiten una mision ya conocida se quitan. Si el objeto es un recurso de
+    planeta, entran tambien los jefes de esos planetas que lo sueltan al morir.
     """
     filas = _filas(
         con,
@@ -156,6 +209,20 @@ def fuentes_de(con: sqlite3.Connection, item_id: int) -> list[dict]:
         (item_id,),
     )
     _decorar(con, filas)
+    planeta = recurso_de_planeta(con, item_id)
+    if planeta:
+        # Si el jefe ya esta en las tablas de este objeto con mas probabilidad (el
+        # Raptor con Sensores neuronales al 50 %), manda la tabla; si esta con menos
+        # (Sargas Ruk con Celula orokin al 2.58 %, aparte del recurso del planeta),
+        # la fila del recurso del planeta sustituye a esa.
+        for j in planeta["jefes"]:
+            reales = [
+                f for f in filas
+                if f["tipo"] == "enemigo" and RE_SUFIJO.sub("", f["origen_texto"] or "").strip() == j["origen_texto"]
+            ]
+            if any(float(f["probabilidad"] or 0) >= j["probabilidad"] for f in reales):
+                continue
+            filas = [f for f in filas if f not in reales] + [j]
     vistas: set[tuple] = set()
     salida: list[dict] = []
     # Primero lo tipado, para que 'otro' solo entre si no repite nada.
@@ -175,6 +242,7 @@ def fuentes_de(con: sqlite3.Connection, item_id: int) -> list[dict]:
     salida.sort(
         key=lambda f: (
             f["grado"],
+            eficiencia.clave_orden(f),
             -f["puntuacion"],
             f["nivel_min"] if f["nivel_min"] is not None else 999,
             f["donde"],
@@ -193,6 +261,111 @@ def _puntuar(f: dict) -> None:
         factor *= FACTOR_EVENTO
     f["grado"] = grado
     f["puntuacion"] = round(prob * factor, 4)
+    eficiencia.estimar(f)
+
+
+# Palabras que pueden acompanar a los planetas en "Ubicacion: Ceres, Saturno y Deimos"
+# o "Misiones en el Vacio" sin que deje de ser una lista de planetas.
+_RELLENO_UBICACION = {"y", "e", "o", "el", "la", "los", "las", "de", "del", "en", "misiones", "mision"}
+RE_UBICACION = re.compile(r"Ubicaci[o\u00f3]n\s*:\s*(.+)", re.IGNORECASE)
+MISIONES_RAPIDAS = ("Capture", "Exterminate", "Extermination", "Sabotage", "Rescue")
+
+
+def planetas_de_descripcion(con: sqlite3.Connection, descripcion: str | None) -> list[str]:
+    """Planetas (nombre en ingles) de la linea "Ubicacion: ..." de un recurso.
+
+    Solo vale si la linea es una lista de planetas: "Ubicacion: Madrigueras de kubrow
+    en la Tierra" no convierte al huevo en recurso de planeta.
+    """
+    m = RE_UBICACION.search(descripcion or "")
+    if not m:
+        return []
+    texto = normalizar(m.group(1).rstrip("."))
+    planetas = _filas(con, "SELECT en, es FROM glosario WHERE dominio = 'planeta'")
+    encontrados: list[tuple[int, str]] = []
+    for p in planetas:
+        for candidato in {p["es"], p["en"]}:
+            clave = normalizar(candidato)
+            hit = re.search(rf"\b{re.escape(clave)}\b", texto)
+            if hit:
+                encontrados.append((hit.start(), p["en"]))
+                texto = texto.replace(clave, " " * len(clave))
+                break
+    if not encontrados:
+        return []
+    if any(palabra not in _RELLENO_UBICACION for palabra in texto.split()):
+        return []
+    vistos: list[str] = []
+    for _, en in sorted(encontrados):
+        if en not in vistos:
+            vistos.append(en)
+    return vistos
+
+
+def recurso_de_planeta(con: sqlite3.Connection, item_id: int) -> dict | None:
+    """Si el objeto cae en cualquier mision de ciertos planetas, donde farmearlo.
+
+    Claves: `planetas` (filas con planeta_en/planeta_es), `nodos` (las misiones mas
+    cortas de esos planetas, con 'donde', 'mision' y 'minutos') y `jefes` (fuentes
+    de tipo 'enemigo' con `jefe`, una por jefe de esos planetas cuyo recurso raro es
+    este objeto; la probabilidad sale de las tablas de WFCD, el planeta -> recurso
+    raro de `eficiencia.RECURSO_RARO`).
+    """
+    fila = con.execute("SELECT descripcion_es, nombre_en FROM items WHERE id = ?", (item_id,)).fetchone()
+    if not fila:
+        return None
+    planetas = planetas_de_descripcion(con, fila[0])
+    nombre_en = fila[1]
+    if not planetas:
+        return None
+    marcas = ",".join("?" * len(planetas))
+    rapidas = ",".join("?" * len(MISIONES_RAPIDAS))
+    nodos = _filas(
+        con,
+        f"""
+        SELECT nombre_en AS nodo_en, nombre_es AS nodo_es, planeta_en, planeta_es, mision_en,
+               nivel_min, nivel_max,
+               (SELECT es FROM glosario WHERE dominio='mision' AND en = nodos.mision_en) AS mision_es
+          FROM nodos WHERE planeta_en IN ({marcas}) AND mision_en IN ({rapidas})
+        """,
+        (*planetas, *MISIONES_RAPIDAS),
+    )
+    for n in nodos:
+        n["donde"] = f"{nombre(n, 'nodo')}, {nombre(n, 'planeta')}"
+        n["mision"] = glosa(n["mision_es"], n["mision_en"]) if n["mision_es"] else n["mision_en"]
+        n["minutos"] = eficiencia.UNA_VEZ.get(n["mision_en"], eficiencia.DURACION_DESCONOCIDA)
+    nodos.sort(key=lambda n: (n["minutos"], n["nivel_min"] if n["nivel_min"] is not None else 999))
+    jefes: list[dict] = []
+    for enemigo, (nodo_en, probabilidad) in eficiencia.JEFES.items():
+        if not probabilidad:
+            continue
+        nodo = _nodo_por_nombre(con, nodo_en)
+        if not nodo or nodo["planeta_en"] not in planetas:
+            continue
+        # Solo si este objeto es el recurso raro de ese planeta: es el que suelta el jefe.
+        if eficiencia.RECURSO_RARO.get(nodo["planeta_en"]) != nombre_en:
+            continue
+        f = {
+            "tipo": "enemigo", "origen_texto": enemigo, "rotacion": None, "etapa": None,
+            "probabilidad": probabilidad, "rareza": None, "refinamiento": None,
+            "probabilidad_enemigo": None, "standing": None,
+            "datos_extra": json.dumps({"recurso_planeta": True}),
+            "nodo_en": None, "nodo_es": None, "planeta_en": None, "planeta_es": None,
+            "mision_en": None, "nivel_min": None, "nivel_max": None, "mision_es": None,
+        }
+        _decorar(con, [f])
+        f["recurso_planeta"] = True
+        jefes.append(f)
+    return {
+        "planetas": [{"planeta_en": p, "planeta_es": _glosa_planeta(con, p)} for p in planetas],
+        "nodos": nodos[:4],
+        "jefes": jefes,
+    }
+
+
+def _glosa_planeta(con: sqlite3.Connection, en: str) -> str:
+    fila = con.execute("SELECT es FROM glosario WHERE dominio = 'planeta' AND en = ?", (en,)).fetchone()
+    return fila[0] if fila else en
 
 
 def _modo_traducido(con: sqlite3.Connection, datos_extra: str | None) -> str:
@@ -241,7 +414,9 @@ def mejor_ruta(con: sqlite3.Connection, item_id: int) -> dict | None:
     `reliquia` (None si no es de reliquia), `solo_en_boveda`, `mision` (el sitio
     elegido, con 'donde', 'mision', 'rotacion', 'probabilidad'), `misiones` (los
     cinco mejores sitios), `probabilidad` (la de la ruta: Radiante en reliquia,
-    efectiva en el resto) y `alternativas` (los otros sitios, sin el elegido).
+    efectiva en el resto), `minutos_medios` (tiempo medio estimado hasta que caiga
+    en el sitio elegido: el de la reliquia, sin contar abrirla) y `alternativas`
+    (los otros sitios, sin el elegido).
     """
     reliquias = reliquias_de(con, item_id)
     if reliquias:
@@ -256,6 +431,7 @@ def mejor_ruta(con: sqlite3.Connection, item_id: int) -> dict | None:
             "misiones": misiones[:5],
             "probabilidad": mejor["probabilidades"].get("Radiant")
             or max(list(mejor["probabilidades"].values()) or [0]),
+            "minutos_medios": misiones[0]["minutos_medios"] if misiones else None,
             "alternativas": misiones[1:5],
         }
     fuentes = fuentes_de(con, item_id)
@@ -269,5 +445,6 @@ def mejor_ruta(con: sqlite3.Connection, item_id: int) -> dict | None:
         "mision": mejor,
         "misiones": fuentes[:5],
         "probabilidad": mejor["probabilidad_efectiva"],
+        "minutos_medios": mejor["minutos_medios"],
         "alternativas": fuentes[1:5],
     }

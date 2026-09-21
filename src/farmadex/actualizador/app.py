@@ -2,7 +2,9 @@
 
 Mientras el repositorio sea privado, la peticion devuelve 404 y no se dice
 nada: el usuario no tiene por que ver un error por algo que aun no existe.
-Nunca se instala nada solo; solo se avisa y se abre la pagina de descarga.
+Aqui solo se mira y se avisa; descargar e instalar lo hacen `descarga` e
+`instalacion`, y solo cuando el usuario tiene activada la actualizacion
+automatica y el programa esta instalado con el instalador.
 """
 
 from __future__ import annotations
@@ -31,6 +33,11 @@ class Version:
     etiqueta: str
     url: str
     notas: str
+    # Del adjunto elegido: nombre, tamano y huella "sha256:..." que da la API de
+    # GitHub. Sin huella no se autoinstala nada; solo se ofrece el enlace.
+    nombre: str = ""
+    tamano: int = 0
+    digest: str = ""
 
 
 def numeros(texto: str) -> tuple[int, int, int] | None:
@@ -54,18 +61,25 @@ def analizar_release(datos: dict) -> Version | None:
     # El instalador antes que el zip: GitHub los devuelve por orden alfabetico y
     # el portable iba primero, asi que se ofrecia un zip a quien solo quiere
     # pulsar dos veces. Si no hay ninguno de los dos, la pagina de la release.
-    adjuntos = [
-        (str(a.get("name", "")).lower(), a.get("browser_download_url"))
-        for a in datos.get("assets") or []
-    ]
-    instalador = next(
-        (url for nombre, url in adjuntos if nombre.endswith(".exe")),
-        next(
-            (url for nombre, url in adjuntos if nombre.endswith(".zip")),
-            datos.get("html_url", ""),
-        ),
+    adjuntos = [a for a in datos.get("assets") or [] if isinstance(a, dict)]
+    elegido = next(
+        (a for a in adjuntos if str(a.get("name", "")).lower().endswith(".exe")),
+        next((a for a in adjuntos if str(a.get("name", "")).lower().endswith(".zip")), None),
     )
-    return Version(etiqueta=etiqueta, url=instalador, notas=datos.get("body") or "")
+    if elegido is None:
+        return Version(etiqueta=etiqueta, url=datos.get("html_url", ""), notas=datos.get("body") or "")
+    try:
+        tamano = int(elegido.get("size") or 0)
+    except (TypeError, ValueError):
+        tamano = 0
+    return Version(
+        etiqueta=etiqueta,
+        url=str(elegido.get("browser_download_url") or ""),
+        notas=datos.get("body") or "",
+        nombre=str(elegido.get("name") or ""),
+        tamano=tamano,
+        digest=str(elegido.get("digest") or ""),
+    )
 
 
 class ComprobadorApp(QObject):

@@ -1,5 +1,33 @@
 # Cambios
 
+## 0.2.0
+
+**Se actualiza solo**
+- Cuando sale una version nueva, Farmadex la descarga en segundo plano,
+  comprueba que es la autentica (su huella SHA-256 contra la que publica
+  GitHub) y la instala al cerrar el programa, o cuando pulses "Reiniciar y
+  actualizar". Se instala en silencio y se vuelve a abrir sola. Nunca en mitad
+  de una partida.
+- Ajuste "Actualizar automaticamente", activado por defecto. Desactivado, o en
+  la version portable, sigue avisando con un enlace como hasta ahora.
+- Si la descarga o la instalacion fallan, se sigue con la version actual y el
+  aviso dice el motivo.
+
+**Donde farmear, ordenado por lo que de verdad cuesta**
+- Las fuentes de cada objeto se ordenan por el tiempo medio estimado hasta
+  conseguirlo, no por el porcentaje: un 10 % en una mision de 10 minutos va
+  antes que un 20 % en una de 40. Cuenta las rotaciones de las misiones sin
+  fin (una recompensa de rotacion C en Supervivencia cuesta 20 minutos, no 5).
+- Los jefes de asesinato dicen donde estan (Alad V en Temisto, Jupiter) y
+  cuentan como una mision mas. Buscar "Sensores neuronales" ya lleva a Temisto,
+  no a un "Raptor 50 %" sin sitio.
+- Los recursos de planeta dicen en que planeta caen y que misiones rapidas
+  hacer alli.
+- Lo que no se puede medir en tiempo (enemigos comunes, sindicatos,
+  incursiones, Conclave) lo dice en vez de fingir, y va al final. Los modos de
+  Conclave ocupan una sola linea.
+- Las duraciones son estimaciones para un jugador medio, y la ficha lo avisa.
+
 ## 0.1.9
 
 Revision completa del programa, parte por parte.

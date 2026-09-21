@@ -53,6 +53,9 @@ POR_DEFECTO = {
     # "auto" = el idioma de Windows si lo tenemos traducido; si no, espanol.
     "idioma_ui": "auto",
     "comprobar_actualizaciones_app": True,
+    # Descargar la version nueva sola e instalarla al cerrar Farmadex (o al pulsar
+    # "Reiniciar y actualizar"). Apagado, solo se avisa con el enlace de descarga.
+    "actualizar_automaticamente": True,
     "carpeta_actualizaciones": str(DIR_ACTUALIZACIONES),
     "ruta_eelog": str(Path(os.environ.get("LOCALAPPDATA", Path.home())) / "Warframe" / "EE.log"),
 }
