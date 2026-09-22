@@ -160,6 +160,9 @@ def main(argv: list[str] | None = None) -> int:
 
     argumentos = argv if argv is not None else sys.argv
     if "--probar-ocr" in argumentos:
+        # Que en el registro se distinga de una sesion de verdad: esto escribe dos
+        # lineas y sale, y ya se ha leido como "el programa se quedo mudo".
+        log.info("Modo --probar-ocr: solo se prueba el lector de pantalla y se sale; no es una sesion")
         return probar_ocr()
 
     # El gancho va antes de construir nada: un fallo al montar la ventana tiene que

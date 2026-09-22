@@ -1,5 +1,17 @@
 # Cambios
 
+## 0.2.4
+
+- **Si una actualizacion automatica falla, ahora se sabe por que.** El aviso
+  dice el motivo, leido del registro del propio instalador. Y si no llego a
+  instalarse porque habia otro Farmadex abierto, ya no se da por fallida: se
+  guarda y se reintenta al cerrar el ultimo. Antes esa version quedaba
+  descartada y habia que instalarla a mano.
+- **Registro a prueba de fallos**, para poder diagnosticar lo que reporta la
+  gente: cualquier problema del propio registro se apunta aparte en
+  `logsegistro_errores.txt`, la primera linea dice la version y donde se esta
+  escribiendo, y avisa si Windows lo esta redirigiendo a otra carpeta.
+
 ## 0.2.3
 
 Arreglos de la pantalla de recompensas, a partir del video de un usuario que

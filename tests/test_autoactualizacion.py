@@ -457,3 +457,113 @@ def test_el_instalador_relanza_farmadex_solo_en_actualizaciones_automaticas():
     automatica = next(e for e in entradas if "EsActualizacionAutomatica" in e)
     assert "skipifsilent" in manual
     assert "skipifsilent" not in automatica and "postinstall" not in automatica
+
+
+# -- que paso con la instalacion anterior: motivo claro, veto por version, aplazamiento --
+
+
+def _log_instalador(ruta: Path, momento: float, *textos: str, antes: bool = False) -> None:
+    """Un instalador.log con lineas fechadas justo despues (o antes) de `momento`."""
+    base = momento - 600 if antes else momento + 3
+    lineas = [
+        f"{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(base + i))}.{100 + i:03d}   {texto}"
+        for i, texto in enumerate(textos)
+    ]
+    ruta.parent.mkdir(parents=True, exist_ok=True)
+    ruta.write_text("\n".join(lineas) + "\n", encoding="utf-8")
+
+
+def _apunte(tmp_path, momento: float) -> Path:
+    setup = tmp_path / "Farmadex-9.9.9-setup.exe"
+    setup.write_bytes(b"x")
+    (tmp_path / "pendiente.json").write_text(json.dumps({"version": "v9.9.9", "setup": str(setup), "momento": momento}))
+    return setup
+
+
+@pytest.fixture()
+def rutas_instalacion(tmp_path, monkeypatch):
+    monkeypatch.setattr(instalacion, "RUTA_PENDIENTE", tmp_path / "pendiente.json")
+    monkeypatch.setattr(instalacion, "RUTA_FALLIDA", tmp_path / "fallida.json")
+    monkeypatch.setattr(instalacion, "DIR_LOGS", tmp_path / "logs")
+    return tmp_path
+
+
+def test_si_el_setup_no_dejo_rastro_el_motivo_lo_dice(rutas_instalacion):
+    """El caso del 21/09: instalador descargado, fallida.json 33 s despues y ni una
+    linea del setup en instalador.log de esa hora."""
+    momento = time.time() - 40
+    setup = _apunte(rutas_instalacion, momento)
+    _log_instalador(rutas_instalacion / "logs" / "instalador.log", momento, "Log opened.", "Log closed.", antes=True)
+    assert instalacion.resultado_instalacion_anterior() == ("fallida", "v9.9.9")
+    assert instalacion.version_fallida() == "v9.9.9"
+    assert instalacion.motivo_fallida() == instalacion.MOTIVO_SIN_RASTRO
+    assert not setup.exists()
+    # Sin instalador.log en absoluto, lo mismo.
+    _apunte(rutas_instalacion, momento)
+    (rutas_instalacion / "logs" / "instalador.log").unlink()
+    assert instalacion.resultado_instalacion_anterior() == ("fallida", "v9.9.9")
+    assert instalacion.motivo_fallida() == instalacion.MOTIVO_SIN_RASTRO
+
+
+def test_si_el_setup_se_detuvo_el_motivo_lleva_su_ultima_linea(rutas_instalacion):
+    momento = time.time() - 40
+    _apunte(rutas_instalacion, momento)
+    _log_instalador(
+        rutas_instalacion / "logs" / "instalador.log", momento,
+        "Log opened.", "Extracting temporary file: vc_redist.x64.exe", "Fatal exception: disk full",
+        "Deinitializing Setup.", "Log closed.",
+    )
+    assert instalacion.resultado_instalacion_anterior() == ("fallida", "v9.9.9")
+    assert instalacion.motivo_fallida() == "el instalador se detuvo: Fatal exception: disk full"
+
+
+def test_si_el_setup_se_rindio_por_otro_farmadex_no_se_gasta_el_intento(rutas_instalacion):
+    """Otro Farmadex abierto: el setup lo apunta (Log en PrepareToInstall) y se rinde.
+    Eso no es un fallo de la version: no se veta, y el instalador se queda para que
+    lo lance el ultimo Farmadex que se cierre."""
+    momento = time.time() - 70
+    setup = _apunte(rutas_instalacion, momento)
+    _log_instalador(
+        rutas_instalacion / "logs" / "instalador.log", momento,
+        "Log opened.", f"{instalacion.MARCA_OTRA_INSTANCIA}: no se puede actualizar. Se reintentara al cerrar el ultimo Farmadex.",
+        "Log closed.",
+    )
+    assert instalacion.resultado_instalacion_anterior() == ("aplazada", "v9.9.9")
+    assert instalacion.version_fallida() is None and instalacion.motivo_fallida() is None
+    assert setup.exists() and not (rutas_instalacion / "pendiente.json").exists()
+
+
+def test_la_marca_del_mutex_esta_en_el_instalador():
+    iss = (Path(__file__).resolve().parents[1] / "empaquetado" / "instalador.iss").read_text(encoding="utf-8")
+    assert f"Log('{instalacion.MARCA_OTRA_INSTANCIA}" in iss
+
+
+def test_el_veto_es_solo_para_la_version_que_fallo(monkeypatch):
+    """fallida.json con la v0.2.1 no puede bloquear la v0.2.2."""
+    falso, avisos, _, descargas, _ = _ventana_falsa(monkeypatch, fallida="v9.9.8")
+    falso._hay_version_nueva(version())  # v9.9.9
+    assert descargas == [version()] and "Descargando" in avisos["version"]
+
+
+def test_la_ventana_cuenta_el_motivo_del_fallo_y_el_aplazamiento(monkeypatch):
+    import types
+
+    from farmadex.ui.overlay import VentanaOverlay
+
+    avisos = {}
+    falso = types.SimpleNamespace(
+        _aviso=lambda clave, texto: avisos.__setitem__(clave, texto),
+        estado=types.SimpleNamespace(setText=lambda s: None),
+    )
+    monkeypatch.setattr(instalacion, "resultado_instalacion_anterior", lambda: ("fallida", "v9.9.9"))
+    monkeypatch.setattr(instalacion, "motivo_fallida", lambda: instalacion.MOTIVO_SIN_RASTRO)
+    VentanaOverlay._contar_instalacion_anterior(falso)
+    assert "v9.9.9" in avisos["version"] and "no llego a arrancar" in avisos["version"]
+
+    monkeypatch.setattr(instalacion, "motivo_fallida", lambda: "el instalador se detuvo: Fatal exception: disk full")
+    VentanaOverlay._contar_instalacion_anterior(falso)
+    assert "se detuvo: Fatal exception: disk full" in avisos["version"]
+
+    monkeypatch.setattr(instalacion, "resultado_instalacion_anterior", lambda: ("aplazada", "v9.9.9"))
+    VentanaOverlay._contar_instalacion_anterior(falso)
+    assert "otro Farmadex abierto" in avisos["version"] and "al cerrar el ultimo" in avisos["version"]

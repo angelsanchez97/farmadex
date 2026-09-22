@@ -695,13 +695,34 @@ class VentanaOverlay(QWidget):
             self.estado.setText(t("Farmadex se ha actualizado a la version {version}", version=etiqueta))
             # El setup que nos acaba de abrir aun puede estar cerrandose: se barre luego.
             QTimer.singleShot(60_000, descarga.limpiar)
+        elif estado == "aplazada":
+            # El instalador sigue descargado: la proxima comprobacion lo da por listo
+            # al instante y se instala al cerrar el ultimo Farmadex.
+            self._aviso(
+                "version",
+                t(
+                    "La actualizacion {version} se aplazo: habia otro Farmadex abierto. "
+                    "Se instalara al cerrar el ultimo.",
+                    version=etiqueta,
+                ),
+            )
         else:
+            motivo = instalacion.motivo_fallida()
+            if motivo:
+                # El motivo va en castellano en fallida.json: el fijo se traduce entero y
+                # el de "se detuvo" lleva detras la linea del instalador tal cual.
+                fijo = instalacion.MOTIVO_DETENIDO.split("{detalle}")[0]
+                motivo = (
+                    t(instalacion.MOTIVO_DETENIDO, detalle=motivo[len(fijo):])
+                    if motivo.startswith(fijo)
+                    else t(motivo)
+                )
             self._aviso(
                 "version",
                 t(
                     "La actualizacion {version} no llego a instalarse; sigues en la {actual}. "
-                    "El detalle esta en logs/instalador.log.",
-                    version=etiqueta, actual=VERSION,
+                    "Motivo: {motivo}. El detalle esta en logs/instalador.log.",
+                    version=etiqueta, actual=VERSION, motivo=motivo or "?",
                 ),
             )
 

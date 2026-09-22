@@ -89,7 +89,12 @@ begin
     espera := espera + 1;
   end;
   if CheckForMutexes(MutexFarmadex) then
+  begin
+    // Esta linea la busca Farmadex al arrancar (instalacion.MARCA_OTRA_INSTANCIA) para
+    // no dar la version por fallida: se reintenta al cerrar el ultimo Farmadex.
+    Log('Farmadex sigue abierto: no se puede actualizar. Se reintentara al cerrar el ultimo Farmadex.');
     Result := 'Farmadex sigue abierto: no se puede actualizar.';
+  end;
 end;
 
 function FaltaVCRedist: Boolean;

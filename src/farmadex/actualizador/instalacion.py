@@ -187,13 +187,52 @@ def _comillas(texto: str) -> str:
     return f'"{texto}"' if RE_NECESITA_COMILLAS.search(texto) else texto
 
 
+# Lo que el setup escribe en instalador.log (Log() en PrepareToInstall, instalador.iss)
+# cuando se rinde porque otro Farmadex sigue abierto. Se busca literalmente.
+MARCA_OTRA_INSTANCIA = "Farmadex sigue abierto"
+MOTIVO_SIN_RASTRO = "el instalador no llego a arrancar (instalador.log no tiene nada de esa hora)"
+MOTIVO_DETENIDO = "el instalador se detuvo: {detalle}"
+RE_LINEA_INSTALADOR = re.compile(r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)\.\d+\s+(.*)$")
+
+
+def diagnostico_instalador(desde: float, ruta_log: Path | None = None) -> tuple[str, str]:
+    """Que cuenta instalador.log del setup lanzado en el instante `desde` (epoch).
+
+    Devuelve (clave, detalle): "sin_rastro" si el log no tiene nada de esa hora (el
+    setup no llego a arrancar, o arranco sin poder escribirlo), "otra_instancia" si
+    se rindio esperando al mutex, o "detenido" con la ultima linea que dejo.
+    """
+    if ruta_log is None:
+        ruta_log = DIR_LOGS / "instalador.log"
+    try:
+        lineas = ruta_log.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return ("sin_rastro", "")
+    # Un par de segundos de margen: el apunte se escribe justo antes de lanzar el setup.
+    limite = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(desde - 2))
+    recientes = []
+    for linea in lineas:
+        m = RE_LINEA_INSTALADOR.match(linea)
+        if m and m.group(1) >= limite:
+            recientes.append(m.group(2).strip())
+    if not recientes:
+        return ("sin_rastro", "")
+    if any(MARCA_OTRA_INSTANCIA in texto for texto in recientes):
+        return ("otra_instancia", "")
+    # La ultima linea con sustancia: "Log closed." y "Deinitializing Setup." no cuentan nada.
+    con_sustancia = [t for t in recientes if not t.startswith(("Log closed", "Deinitializing"))]
+    return ("detenido", (con_sustancia or recientes)[-1][:160])
+
+
 def resultado_instalacion_anterior() -> tuple[str, str] | None:
     """Al arrancar: que paso con la ultima instalacion automatica, si la hubo.
 
     Devuelve ("instalada", version) si esta es ya esa version, ("fallida", version)
-    si Farmadex sigue en una anterior, o None si no habia nada pendiente. Borra
-    el apunte y el instalador usado, y deja anotada la version fallida para no
-    intentar instalarla otra vez sola.
+    si Farmadex sigue en una anterior, ("aplazada", version) si el setup se rindio
+    porque habia otro Farmadex abierto, o None si no habia nada pendiente. Borra el
+    apunte. Si fallo, borra tambien el instalador y deja anotada la version y el
+    motivo (`motivo_fallida`) para no intentarla otra vez sola; si se aplazo, el
+    instalador se queda para que lo lance el ultimo Farmadex que se cierre.
     """
     pendiente = _leer(RUTA_PENDIENTE)
     if pendiente is None:
@@ -201,33 +240,64 @@ def resultado_instalacion_anterior() -> tuple[str, str] | None:
     RUTA_PENDIENTE.unlink(missing_ok=True)
     etiqueta = str(pendiente.get("version") or "")
     setup = pendiente.get("setup")
-    if setup:
-        try:
-            Path(setup).unlink(missing_ok=True)
-        except OSError:
-            pass
     pedida, actual = numeros(etiqueta), numeros(VERSION)
     if not pedida or not actual:
         log.warning("Apunte de actualizacion ilegible (%r): se descarta", etiqueta)
+        _borrar_setup(setup)
         return None
     if pedida == actual:
         RUTA_FALLIDA.unlink(missing_ok=True)
         log.info("Actualizacion a %s completada", etiqueta)
+        _borrar_setup(setup)
         return ("instalada", etiqueta)
     if pedida < actual:
         # Un apunte de otra epoca (se instalo a mano una version mas nueva): ni
         # exito ni fallo, y desde luego no hay que vetar nada.
         log.info("Apunte de actualizacion a %s anterior a la %s que corre: se descarta", etiqueta, VERSION)
+        _borrar_setup(setup)
         return None
-    log.warning("La actualizacion a %s no llego a instalarse; Farmadex sigue en %s", etiqueta, VERSION)
-    _escribir(RUTA_FALLIDA, {"version": etiqueta, "momento": time.time()})
+    try:
+        momento = float(pendiente.get("momento") or 0)
+    except (TypeError, ValueError):
+        momento = 0.0
+    clave, detalle = diagnostico_instalador(momento)
+    if clave == "otra_instancia":
+        # No es un fallo de esa version: habia otro Farmadex abierto y el setup no
+        # quiso pisar nada. El instalador se conserva y se vuelve a intentar al
+        # cerrar el ultimo; no se gasta el intento ni se veta la version.
+        log.warning(
+            "La actualizacion a %s se aplazo: el instalador encontro otro Farmadex abierto "
+            "(se reintenta al cerrar el ultimo; el instalador sigue en %s)", etiqueta, setup,
+        )
+        return ("aplazada", etiqueta)
+    motivo = MOTIVO_SIN_RASTRO if clave == "sin_rastro" else MOTIVO_DETENIDO.format(detalle=detalle)
+    log.warning(
+        "La actualizacion a %s no llego a instalarse; Farmadex sigue en %s. Motivo: %s", etiqueta, VERSION, motivo
+    )
+    _escribir(RUTA_FALLIDA, {"version": etiqueta, "momento": time.time(), "motivo": motivo})
+    _borrar_setup(setup)
     return ("fallida", etiqueta)
+
+
+def _borrar_setup(setup) -> None:
+    if not setup:
+        return
+    try:
+        Path(setup).unlink(missing_ok=True)
+    except OSError as e:
+        log.info("No se pudo borrar el instalador usado %s: %s", setup, e)
 
 
 def version_fallida() -> str | None:
     """La version cuya instalacion automatica fallo la ultima vez, si hubo."""
     datos = _leer(RUTA_FALLIDA) or {}
     return str(datos.get("version") or "") or None
+
+
+def motivo_fallida() -> str | None:
+    """Por que fallo la ultima instalacion automatica (texto en castellano, pasa por t())."""
+    datos = _leer(RUTA_FALLIDA) or {}
+    return str(datos.get("motivo") or "") or None
 
 
 def _leer(ruta: Path) -> dict | None:
