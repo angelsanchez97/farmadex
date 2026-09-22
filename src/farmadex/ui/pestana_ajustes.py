@@ -106,6 +106,13 @@ class PestanaAjustes(QWidget):
         self.opacidad.setRange(50, 100)
         self.opacidad.setValue(int(float(self.config["overlay_opacidad"]) * 100))
         self.opacidad.valueChanged.connect(self._cambiar_opacidad)
+        self.estilo_recompensas = QComboBox()
+        self.estilo_recompensas.addItem(t("Etiquetas pequenas junto a cada tarjeta"), "etiquetas")
+        self.estilo_recompensas.addItem(t("Panel con una tarjeta por recompensa"), "panel")
+        self.estilo_recompensas.setCurrentIndex(
+            max(0, self.estilo_recompensas.findData(self.config.get("estilo_recompensas") or "etiquetas"))
+        )
+        self.estilo_recompensas.currentIndexChanged.connect(self._cambiar_estilo_recompensas)
         self.ocr_auto = QCheckBox()
         self._fijo(self.ocr_auto.setText, "Leer sola la pantalla de recompensas de reliquia")
         self.ocr_auto.setChecked(bool(self.config["ocr_reliquias_auto"]))
@@ -130,6 +137,7 @@ class PestanaAjustes(QWidget):
         self._fila(aspecto, "Idioma", self.idioma)
         self._fila(aspecto, "Disposicion de Mundo", self.diseno_mundo)
         self._fila(aspecto, "Opacidad del fondo", self.opacidad)
+        self._fila(aspecto, "Recompensas de reliquia", self.estilo_recompensas)
         aspecto.addRow(self.ocr_auto)
         aspecto.addRow(self.perfil_pasivo)
         aspecto.addRow(self.inventario_pasivo)
@@ -314,6 +322,8 @@ class PestanaAjustes(QWidget):
         self.idioma.setItemText(0, t("Automatico (el de Windows)"))
         self.diseno_mundo.setItemText(0, t("Lista"))
         self.diseno_mundo.setItemText(1, t("Tablero"))
+        self.estilo_recompensas.setItemText(0, t("Etiquetas pequenas junto a cada tarjeta"))
+        self.estilo_recompensas.setItemText(1, t("Panel con una tarjeta por recompensa"))
         self.aviso_hotkey.setText("")
         self.estado_version(t("Estas en la ultima version"))
         self.refrescar_estado()
@@ -354,6 +364,13 @@ class PestanaAjustes(QWidget):
     def _guardar(self, clave: str, valor) -> None:
         self.config[clave] = valor
         guardar(self.config)
+
+    estilo_recompensas_cambiado = Signal(str)
+
+    def _cambiar_estilo_recompensas(self, _indice: int) -> None:
+        estilo = self.estilo_recompensas.currentData()
+        self._guardar("estilo_recompensas", estilo)
+        self.estilo_recompensas_cambiado.emit(estilo)
 
     def _cambiar_opacidad(self, valor: int) -> None:
         self._guardar("overlay_opacidad", valor / 100)

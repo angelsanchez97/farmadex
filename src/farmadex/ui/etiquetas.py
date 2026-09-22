@@ -12,6 +12,7 @@ from PySide6.QtCore import QRect, Qt, QTimer
 from PySide6.QtGui import QColor, QFont, QPainter, QPen
 from PySide6.QtWidgets import QWidget
 
+from ..captura.reliquias import texto_platino
 from ..idiomas import t
 from ..registro_log import obtener
 
@@ -93,6 +94,7 @@ class EtiquetasRecompensas(QWidget):
             if nuevo is None:
                 continue
             r.valor, r.mejor, r.nota, r.platino = nuevo.valor, nuevo.mejor, nuevo.nota, nuevo.platino
+            r.criterio_platino = nuevo.criterio_platino
         self._seguro = veredicto.seguro
         self.update()
 
@@ -132,7 +134,7 @@ class EtiquetasRecompensas(QWidget):
                 lineas.append((etiqueta_mejor, color_mejor))
             detalle = []
             if r.platino is not None:
-                detalle.append(t("{n} platino", n=r.platino))
+                detalle.append(texto_platino(r))
             if r.ducados:
                 detalle.append(t("{n} ducados", n=r.ducados))
             if detalle:

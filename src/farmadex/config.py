@@ -48,6 +48,9 @@ POR_DEFECTO = {
     "overlay_geometria_compacto": None,
     "ocultar_vaulted": False,
     "ocr_reliquias_auto": True,
+    # Como se ensenan las recompensas de reliquia: "etiquetas" (pequenas, junto a cada
+    # tarjeta) o "panel" (una tarjeta por recompensa bajo las del juego, con miniatura).
+    "estilo_recompensas": "etiquetas",
     # Lectura pasiva de las pantallas del menu (captura + OCR solo con el juego delante).
     "perfil_pasivo": True,
     "inventario_pasivo": False,  # sin calibrar con capturas del usuario: apagado

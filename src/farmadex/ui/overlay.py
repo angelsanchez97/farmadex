@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (
 
 from .. import NOMBRE_APP, VERSION, idiomas
 from ..config import cargar, guardar
-from ..datos import indice
+from ..datos import eficiencia, indice
 from ..idiomas import es_castellano, t
 from ..estado import inventario as estado_inventario
 from ..estado import objetivos as estado_objetivos
@@ -49,6 +49,7 @@ from .pestana_ajustes import PestanaAjustes
 from .pestana_buscador import PestanaBuscador
 from .pestana_mundo import DISENO_POR_DEFECTO, PestanaMundo
 from .etiquetas import EtiquetasRecompensas
+from .panel_recompensas import PanelRecompensas
 from .pestana_objetivos import PestanaObjetivos
 from .pestana_perfil import PestanaPerfil
 from .vista_compacta import (
@@ -231,7 +232,12 @@ class VentanaOverlay(QWidget):
         self.servicio_mundo: ServicioMundo | None = None
         self.hilo_captura: QThread | None = None
         self.hilo_comparador: QThread | None = None
-        self.etiquetas = EtiquetasRecompensas()
+        # Las dos formas de ensenar las recompensas conviven; `self.etiquetas` es la activa.
+        self.etiquetas_pequenas = EtiquetasRecompensas()
+        self.panel_recompensas = PanelRecompensas()
+        self.etiquetas = (
+            self.panel_recompensas if self.config.get("estilo_recompensas") == "panel" else self.etiquetas_pequenas
+        )
         self.vigilante: VigilanteEELog | None = None
         self._version_encontrada = None
         # Lo que se sabe del juego: cabecera de EE.log (build, modo) y modo de pantalla.
@@ -428,6 +434,7 @@ class VentanaOverlay(QWidget):
         self.ajustes.ocr_auto.toggled.connect(
             lambda activo: setattr(self.disparador, "activo", activo)
         )
+        self.ajustes.estilo_recompensas_cambiado.connect(self.cambiar_estilo_recompensas)
 
         # Botin que EE.log deja claro (reliquia en solitario) va directo a los objetivos.
         self.botin = Botin(self._sumar_botin, bool(self.config.get("botin_eelog_auto", True)))
@@ -986,6 +993,7 @@ class VentanaOverlay(QWidget):
         try:
             completar(recompensas, con, self.objetivos.usuario)
             maestria = self._maestria_recompensas(recompensas, con)
+            extras = self._extras_recompensas(recompensas, con) if self.etiquetas is self.panel_recompensas else {}
         finally:
             con.close()
         t_completar = time.perf_counter() - t0
@@ -1006,7 +1014,10 @@ class VentanaOverlay(QWidget):
             )
             return
         t0 = time.perf_counter()
-        self.etiquetas.mostrar(_a_logicas(recompensas), maestria)
+        if self.etiquetas is self.panel_recompensas:
+            self.panel_recompensas.mostrar(_a_logicas(recompensas), maestria, extras)
+        else:
+            self.etiquetas.mostrar(_a_logicas(recompensas), maestria)
         desde = f"{(time.monotonic() - self._t_reliquia) * 1000:.0f} ms" if self._t_reliquia else "?"
         log.info("Reliquia: completar %.1f ms, pintar %.1f ms; nombres en pantalla %s desde el aviso de EE.log",
                  t_completar * 1000, (time.perf_counter() - t0) * 1000, desde)
@@ -1018,6 +1029,36 @@ class VentanaOverlay(QWidget):
         self.etiquetas.marcar_veredicto(recompensas, veredicto)
         if veredicto.puntuaciones:
             self.estado.setText(veredicto.resumen())
+
+    def cambiar_estilo_recompensas(self, estilo: str) -> None:
+        """Ajustes: "etiquetas" o "panel". Lo que este en pantalla se esconde."""
+        self.etiquetas.hide()
+        self.etiquetas = self.panel_recompensas if estilo == "panel" else self.etiquetas_pequenas
+
+    def _extras_recompensas(self, recompensas: list, con) -> dict[int, dict]:
+        """Lo que el panel ensena ademas: miniatura, tiempo medio de farmeo y cuantas tienes."""
+        from ..datos import relaciones
+
+        extras: dict[int, dict] = {}
+        for r in recompensas:
+            if not r.item_id:
+                continue
+            datos: dict = {}
+            fila = con.execute("SELECT imagen FROM items WHERE id = ?", (r.item_id,)).fetchone()
+            if fila and fila[0]:
+                datos["imagen"] = fila[0]
+            try:
+                ruta = relaciones.mejor_ruta(con, r.item_id)
+                if ruta and ruta.get("minutos_medios") is not None:
+                    datos["minutos"] = eficiencia.texto_minutos(ruta["minutos_medios"])
+            except Exception:  # noqa: BLE001 - un extra nunca deja sin panel
+                log.debug("Sin ruta para la recompensa %s", r.item_id, exc_info=True)
+            if r.unique_name:
+                lectura = estado_inventario.cantidad_de(self.objetivos.usuario, r.unique_name)
+                if lectura is not None:
+                    datos["tienes"] = lectura.cantidad
+            extras[r.item_id] = datos
+        return extras
 
     def _maestria_recompensas(self, recompensas: list, con) -> dict[int, tuple[str, str]]:
         """Para cada recompensa que da rango (o cuya pieza lo da): (texto, estado). Vacio sin perfil."""

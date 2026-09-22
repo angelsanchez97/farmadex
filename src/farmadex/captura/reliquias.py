@@ -7,6 +7,7 @@ lo que interesa: platino, si esta en boveda y si te sirve para un objetivo.
 
 from __future__ import annotations
 
+import re
 import sqlite3
 import time
 from dataclasses import dataclass
@@ -16,7 +17,10 @@ from PySide6.QtCore import QObject, QTimer, Signal, Slot
 from ..idiomas import t
 from ..registro_log import obtener
 from . import pantalla
-from .ocr import Casador, ErrorMotorOCR, MotorOCR, Reconocido, casar_lineas, leer_lineas, reconocer
+from .ocr import (
+    Casador, ErrorMotorOCR, Leido, MotorOCR, Reconocido, _caja_union, agrupar_bloques, casar_lineas,
+    leer_lineas, reconocer,
+)
 
 log = obtener("reliquias")
 
@@ -46,12 +50,18 @@ CATEGORIAS_RECOMPENSA = (
 )
 
 
+# Alto de franja a partir del cual se reduce la imagen antes del OCR (1080p da 454).
+ALTO_FRANJA_OCR = 454
+SIN_IDENTIFICAR = 0  # item_id de una tarjeta leida que no casa con el catalogo
+
+
 @dataclass
 class Recompensa:
-    item_id: int
+    item_id: int  # SIN_IDENTIFICAR (0) si la tarjeta se vio pero no se reconocio
     nombre: str
     texto_ocr: str
     caja: tuple[int, int, int, int]  # en coordenadas de pantalla
+    criterio_platino: str = ""  # "minimo" (vendedor mas barato) o "mediana"
     ducados: int | None = None
     vaulted: bool = False
     objetivo: str = ""
@@ -180,6 +190,7 @@ class LectorRecompensas(LectorBase):
     def __init__(self, motor_ocr: str = "rapidocr", parent=None):
         super().__init__(motor_ocr, CATEGORIAS_RECOMPENSA, parent)
         self.conocidas: list[str] = []  # unique_names que EE.log dio para esta reliquia
+        self.jugadores: int | None = None  # tamano de la escuadra segun EE.log
         self._casador_conocidas: Casador | None = None
         self._t_aviso: float | None = None  # cuando EE.log aviso de la pantalla
 
@@ -188,6 +199,11 @@ class LectorRecompensas(LectorBase):
         if tipo == "recompensa" and valor not in self.conocidas:
             self.conocidas.append(valor)
             self._casador_conocidas = None
+        elif tipo == "remotos":
+            try:
+                self.jugadores = min(4, int(valor) + 1)
+            except ValueError:
+                self.jugadores = None
 
     @Slot(str)
     def evento(self, nombre: str) -> None:
@@ -271,10 +287,16 @@ class LectorRecompensas(LectorBase):
                         "puede que el juego haya cambiado la pantalla"
                     )
         self._anotar_tiempos(tiempos, imagen, ventana, len(encontrados))
+        # Primero la fila (si no, la copia de otro overlay con mas puntuacion
+        # desplazaria a la tarjeta real), y dentro de la fila una por objeto.
+        fila = elegir_fila(
+            encontrados, tiempos.pop("_lineas", []),
+            conocidas=self._ids_conocidas(), maximo=self.jugadores or 4,
+        )
         recompensas = [
             Recompensa(
                 item_id=r.item_id,
-                nombre=r.nombre,
+                nombre=r.nombre if r.item_id != SIN_IDENTIFICAR else t("Sin identificar"),
                 texto_ocr=r.texto_ocr,
                 caja=(
                     region.x + r.caja[0],
@@ -283,7 +305,7 @@ class LectorRecompensas(LectorBase):
                     r.caja[3],
                 ),
             )
-            for r in _quitar_repetidos(encontrados)
+            for r in fila
         ]
         log.info(
             "Recompensas leidas: %s",
@@ -296,11 +318,34 @@ class LectorRecompensas(LectorBase):
         self.leidas.emit(recompensas)
 
 
+    def _ids_conocidas(self) -> set[int]:
+        casador = self._conocidas()
+        return {v[0] for v in casador.candidatos.values()} if casador else set()
+
     def _leer_y_casar(self, imagen, tiempos: dict) -> list[Reconocido] | None:
-        """OCR una vez; casado primero contra lo que EE.log dio y luego contra todo."""
+        """OCR una vez; casado primero contra lo que EE.log dio y luego contra todo.
+
+        Una franja mas alta que la de 1080p se reduce antes del OCR: el tiempo
+        del motor crece con los pixeles y a 1440p, con el juego peleando por la
+        CPU, era lo que dejaba las etiquetas para los ultimos segundos.
+        """
         try:
             t0 = time.perf_counter()
+            escala = 1.0
+            if imagen.shape[0] > ALTO_FRANJA_OCR * 1.15:
+                import cv2
+
+                escala = ALTO_FRANJA_OCR / imagen.shape[0]
+                imagen = cv2.resize(
+                    imagen, (int(imagen.shape[1] * escala), ALTO_FRANJA_OCR), interpolation=cv2.INTER_AREA
+                )
             lineas = leer_lineas(imagen, self.motor)
+            if escala != 1.0:
+                for l in lineas:
+                    l.x, l.y = int(l.x / escala), int(l.y / escala)
+                    l.ancho, l.alto = int(l.ancho / escala), int(l.alto / escala)
+            tiempos["_lineas"] = lineas
+            tiempos["escala"] = escala
             tiempos["ocr"] = tiempos.get("ocr", 0.0) + time.perf_counter() - t0
             t0 = time.perf_counter()
             conocidas = self._conocidas()
@@ -335,6 +380,92 @@ class LectorRecompensas(LectorBase):
         )
 
 
+def _solapan_vertical(a, b, minimo: float = 0.3) -> bool:
+    """True si las dos cajas comparten al menos `minimo` del alto de la mas baja."""
+    _, ya, _, ha = a
+    _, yb, _, hb = b
+    solape = min(ya + ha, yb + hb) - max(ya, yb)
+    return solape >= minimo * max(1, min(ha, hb))
+
+
+def _se_tocan(a, b) -> bool:
+    xa, ya, wa, ha = a
+    xb, yb, wb, hb = b
+    return min(xa + wa, xb + wb) > max(xa, xb) and min(ya + ha, yb + hb) > max(ya, yb)
+
+
+RE_NOMBRE_PLAUSIBLE = re.compile(r"^[^\d]{6,}$")
+
+
+def elegir_fila(
+    encontrados: list[Reconocido],
+    lineas: list[Leido],
+    conocidas: set[int] | None = None,
+    maximo: int = 4,
+) -> list[Reconocido]:
+    """Se queda con la fila de tarjetas del juego y descarta el resto.
+
+    Las recompensas van en una sola fila, repartidas en horizontal. Otro overlay
+    (AlecaFrame) repite los mismos nombres mas abajo, y los nombres de la
+    escuadra van entre medias: por eso, de todas las filas con algo casado, se
+    elige la que mas recompensas de EE.log contiene y, a igualdad, la de mas
+    arriba. En esa fila, lo que se lee como nombre y no casa entra como "sin
+    identificar" (item_id SIN_IDENTIFICAR): se ve que hay una tarjeta y que no
+    se sabe cual es, en vez de inventar una. Nunca mas de `maximo` (jugadores).
+    """
+    if not encontrados:
+        return []
+    conocidas = conocidas or set()
+    # Filas: bloques de lineas que se solapan en vertical.
+    bloques = agrupar_bloques(list(lineas)) if lineas else [[]]
+    cajas = [_caja_union(b) for b in bloques if b]
+    filas: list[list[tuple]] = []
+    for caja in sorted(cajas, key=lambda c: c[1]):
+        for fila in filas:
+            if _solapan_vertical(fila[0], caja):
+                fila.append(caja)
+                break
+        else:
+            filas.append([caja])
+    if not filas:
+        filas = [[r.caja for r in encontrados]]
+
+    def casados_en(fila):
+        return [r for r in encontrados if any(_se_tocan(r.caja, c) for c in fila)]
+
+    candidatas = [(f, casados_en(f)) for f in filas]
+    candidatas = [(f, c) for f, c in candidatas if c]
+    if not candidatas:
+        return sorted(_quitar_repetidos(encontrados), key=lambda r: r.caja[0])[:maximo]
+    fila, casados = max(
+        candidatas,
+        key=lambda fc: (sum(1 for r in fc[1] if r.item_id in conocidas), -min(c[1] for c in fc[0])),
+    )
+    casados = _quitar_repetidos(casados)
+    descartadas = len(encontrados) - len(casados)
+    if descartadas:
+        log.info(
+            "Recompensas fuera de la fila de tarjetas, descartadas: %d (fila elegida en y=%d de %d filas)",
+            descartadas, min(c[1] for c in fila), len(filas),
+        )
+    # Nombres de la misma fila que no casaron: se ensenan como no identificados.
+    textos = {tuple(_caja_union(b)): " ".join(l.texto for l in b) for b in bloques if b}
+    salida = list(casados)
+    for caja in fila:
+        if any(_se_tocan(caja, r.caja) for r in casados):
+            continue
+        texto = textos.get(tuple(caja), "")
+        if RE_NOMBRE_PLAUSIBLE.match(texto.strip()):
+            salida.append(Reconocido(texto, SIN_IDENTIFICAR, "", 0.0, tuple(caja)))
+            log.info("Tarjeta sin identificar: %r", texto)
+    salida.sort(key=lambda r: r.caja[0])
+    if len(salida) > maximo:
+        log.info("Mas tarjetas (%d) que jugadores (%d): se dejan las %d de mayor parecido",
+                 len(salida), maximo, maximo)
+        salida = sorted(sorted(salida, key=lambda r: -r.puntuacion)[:maximo], key=lambda r: r.caja[0])
+    return salida
+
+
 def _sin_solapar(nuevos: list[Reconocido], seguros: list[Reconocido]) -> list[Reconocido]:
     """Descarta lo casado contra el catalogo entero que pisa una linea ya casada por EE.log."""
     salida = []
@@ -347,6 +478,15 @@ def _sin_solapar(nuevos: list[Reconocido], seguros: list[Reconocido]) -> list[Re
         if not pisa:
             salida.append(r)
     return salida
+
+
+def texto_platino(r: Recompensa) -> str:
+    """'3 platino (venta mas barata)' o '3 platino (mediana)': que precio es, no solo cuanto."""
+    if r.criterio_platino == "minimo":
+        return t("{n} platino (venta mas barata)", n=r.platino)
+    if r.criterio_platino == "mediana":
+        return t("{n} platino (mediana)", n=r.platino)
+    return t("{n} platino", n=r.platino)
 
 
 def _quitar_repetidos(encontrados: list[Reconocido]) -> list[Reconocido]:
@@ -391,7 +531,7 @@ def resumir(recompensas: list[Recompensa]) -> str:
     for r in recompensas:
         detalles = []
         if r.platino is not None:
-            detalles.append(t("{n} platino", n=r.platino))
+            detalles.append(texto_platino(r))
         if r.ducados:
             detalles.append(t("{n} ducados", n=r.ducados))
         if r.vaulted:

@@ -77,7 +77,7 @@ from PySide6.QtCore import QObject, QTimer, Signal, Slot
 
 from ..idiomas import t
 from ..registro_log import obtener
-from .reliquias import Recompensa, completar
+from .reliquias import SIN_IDENTIFICAR, Recompensa, completar
 
 log = obtener("comparador")
 
@@ -224,6 +224,10 @@ def puntuar(
     # Precios, con plazo: lo que no llegue a tiempo se queda sin precio y se dice.
     t_precios = reloj()
     for r, p in zip(recompensas, puntuaciones):
+        if r.item_id == SIN_IDENTIFICAR:
+            p.via = "nada"
+            p.notas.append(t("No se ha podido identificar: {leido}", leido=r.texto_ocr))
+            continue
         if r.platino is not None:
             p.platino = p.platino_mediana = p.platino_mejor_venta = r.platino
             continue
@@ -242,6 +246,7 @@ def puntuar(
             continue
         _aplicar_precio(p, _pedir(precios_de, r.market_slug), escuadra)
         r.platino = p.platino
+        r.criterio_platino = ("minimo" if escuadra else "mediana") if p.platino is not None else ""
     tiempos["precios"] = (reloj() - t_precios) * 1000
 
     t_puntuar = reloj()
@@ -256,6 +261,8 @@ def puntuar(
         r.rareza = p.rareza
         r.valor = p.valor
         r.mejor = i == veredicto.mejor
+        if r.platino is None and not p.notas and r.item_id != SIN_IDENTIFICAR:
+            p.notas.append(t("Sin precio"))  # que no parezca que vale cero
         r.nota = "; ".join(p.notas)
     log.info(
         "Veredicto en %.0f ms (completar %.0f, precios %.0f, puntuar %.0f): %s",
@@ -305,6 +312,11 @@ def decidir(puntuaciones: list[Puntuacion], escuadra: bool = True) -> Veredicto:
         return Veredicto([], None, False, t("no se reconocio ninguna recompensa"), escuadra)
 
     orden = sorted(range(len(puntuaciones)), key=lambda i: puntuaciones[i].clave, reverse=True)
+    # Una tarjeta sin identificar nunca es "la mejor": no se sabe ni que es.
+    sin_identificar = [i for i in orden if puntuaciones[i].item_id == SIN_IDENTIFICAR]
+    orden = [i for i in orden if i not in sin_identificar]
+    if not orden:
+        return Veredicto(puntuaciones, None, False, t("no se identifico ninguna recompensa"), escuadra)
     mejor = puntuaciones[orden[0]]
     desconocidas = [p for p in puntuaciones if p.desconocida]
 
@@ -337,6 +349,8 @@ def decidir(puntuaciones: list[Puntuacion], escuadra: bool = True) -> Veredicto:
     if desconocidas:
         seguro = False
         motivo += t("; {nombres} sin valorar", nombres=", ".join(p.nombre for p in desconocidas))
+    if sin_identificar:
+        seguro = False
     return Veredicto(puntuaciones, orden[0], seguro, motivo, escuadra)
 
 

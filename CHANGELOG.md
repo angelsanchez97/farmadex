@@ -1,5 +1,27 @@
 # Cambios
 
+## 0.2.3
+
+Arreglos de la pantalla de recompensas, a partir del video de un usuario que
+tenia AlecaFrame abierto a la vez.
+
+- **Ya no se lee el panel de otro overlay como si fueran recompensas.** Las
+  tarjetas se buscan solo en la fila del juego, y nunca salen mas recompensas
+  que jugadores hay en la partida.
+- **Objetos mal identificados.** "Empuñadura De Quassus Prime" se etiquetaba
+  como "Nikana Prime Empuñadura", y con ella su precio. El catalogo llama
+  "Mango" a lo que el juego llama "Empuñadura"; ahora se reconocen como lo
+  mismo, y si lo leido no contiene ninguna palabra propia del candidato, no se
+  casa.
+- **Lo que no se identifica se dice.** Sale como "Sin identificar" con el texto
+  leido, y nunca lleva la marca de mejor opcion.
+- **El precio dice de donde sale**: "1 platino (venta mas barata)". Si no hay
+  precio, pone "Sin precio" en vez de parecer que vale 0.
+- **Panel de recompensas opcional** (Ajustes > Recompensas de reliquia): una
+  tarjeta por recompensa con miniatura, precio, ducados, boveda, si te sirve
+  para un objetivo, cuantas tienes, tiempo medio de farmeo y maestria. Por
+  defecto siguen las etiquetas pequeñas.
+
 ## 0.2.2
 
 **Farmadex se entera solo de lo que tienes**

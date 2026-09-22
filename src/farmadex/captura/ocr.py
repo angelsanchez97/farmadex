@@ -43,6 +43,11 @@ NUMERALES = {"i", "ii", "iii", "iv", "v", "vi", "x", "mk", "1", "2", "3", "4", "
 # Marcas de icono que traen algunos nombres del catalogo: "<SHARD_RED_SIMPLE> ...".
 RE_ETIQUETAS = re.compile(r"<[^>]*>")
 
+# El catalogo (WFCD) traduce "Handle" como "Mango" y el juego escribe "Empunadura"
+# en algunas armas (visto en pantalla: "Empunadura De Quassus Prime"). Se registran
+# las dos formas para que la pieza case exacta y no se vaya a otra arma.
+SINONIMOS = {"mango": "empunadura", "empunadura": "mango"}
+
 # Hilos de calculo para ONNX Runtime: el usuario juega mientras esto corre.
 # Medido (Ryzen 9800X3D, franja de recompensas): 4 hilos 395 ms, 2 hilos 412 ms.
 # Con pocos nucleos, 4 hilos le quitan al juego mas de lo que ganan.
@@ -421,11 +426,13 @@ class Casador:
                 etiqueta = f"{padre} {nombre}" if padre else nombre
                 etiqueta = " ".join(RE_ETIQUETAS.sub(" ", etiqueta).split())
                 clave = normalizar(etiqueta)
-                if clave:
-                    self.candidatos.setdefault(clave, (iid, etiqueta))
+                for variante in _con_sinonimos(clave):
+                    if not variante:
+                        continue
+                    self.candidatos.setdefault(variante, (iid, etiqueta))
                     # El juego escribe "Plano" al final; tambien se busca sin el.
-                    sin_plano = clave.removesuffix(" plano").removesuffix(" blueprint")
-                    if sin_plano != clave:
+                    sin_plano = variante.removesuffix(" plano").removesuffix(" blueprint")
+                    if sin_plano != variante:
                         alias.setdefault(sin_plano, (iid, etiqueta))
         # Los alias van detras: "Cycron" es el arma, no "Cycron Plano". Se
         # guardan aparte para cuando lo leido SI traia "Plano" al final.
@@ -538,6 +545,11 @@ class Casador:
             return nada
         mejor_puntos, mejor_clave = puntuadas[0]
         mejor_id = self.candidatos[mejor_clave][0]
+        if not _lleva_lo_distintivo(mejor_clave, compacta):
+            # "EMPUNADURA DE QUASSUS PRIME" se parecia un 84 % a "Nikana Prime
+            # Empunadura" solo por las palabras genericas: sin rastro de "nikana"
+            # en lo leido, no es ese objeto. Mejor nada que una etiqueta segura y falsa.
+            return nada
         for puntos, otra in puntuadas[1:]:
             if self.candidatos[otra][0] == mejor_id:
                 continue
@@ -582,6 +594,25 @@ class Casador:
                     fuzz.ratio(variante, compacta_c) * factor,
                 )
         return puntos
+
+
+def _con_sinonimos(clave: str) -> list[str]:
+    """La clave y sus variantes con sinonimos (mango <-> empunadura)."""
+    salida = [clave]
+    palabras = clave.split()
+    for i, p in enumerate(palabras):
+        if p in SINONIMOS:
+            salida.append(" ".join(palabras[:i] + [SINONIMOS[p]] + palabras[i + 1:]))
+    return salida
+
+
+def _lleva_lo_distintivo(clave: str, compacta: str) -> bool:
+    """True si alguna palabra NO generica del candidato aparece (aunque con erratas)
+    en lo leido. Un candidato sin palabras distintivas no se comprueba."""
+    distintivas = [p for p in clave.split() if p not in GENERICAS and p not in PALABRAS_VACIAS and len(p) >= 3]
+    if not distintivas:
+        return True
+    return any(fuzz.partial_ratio(p, compacta) >= 75 for p in distintivas)
 
 
 def _castigo_largo(a: str, b: str) -> float:
