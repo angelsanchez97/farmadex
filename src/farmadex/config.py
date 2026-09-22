@@ -48,6 +48,13 @@ POR_DEFECTO = {
     "overlay_geometria_compacto": None,
     "ocultar_vaulted": False,
     "ocr_reliquias_auto": True,
+    # Lectura pasiva de las pantallas del menu (captura + OCR solo con el juego delante).
+    "perfil_pasivo": True,
+    "inventario_pasivo": False,  # sin calibrar con capturas del usuario: apagado
+    # Botin deducido de EE.log (recompensa de reliquia en misiones en solitario).
+    "botin_eelog_auto": True,
+    # Arranque con Windows (HKCU\...\Run), escondido en la bandeja. Apagado por defecto.
+    "iniciar_con_windows": False,
     "motor_ocr": "rapidocr",
     "plataforma": PLATAFORMA,
     # "auto" = el idioma de Windows si lo tenemos traducido; si no, espanol.

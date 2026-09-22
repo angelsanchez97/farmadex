@@ -70,6 +70,11 @@ TERMINOS: dict[str, tuple[str, str]] = {
         "Version dificil del mapa estelar, con enemigos mucho mas fuertes a cambio de "
         "mejores recompensas. Se desbloquea al completar todos los nodos normales.",
     ),
+    "inventario": (
+        "Tienes",
+        "Cantidad leida en pantalla la ultima vez que abriste el Inventario o la Fundicion "
+        "con Farmadex mirando. Puede quedarse vieja hasta que vuelvas a abrirlos.",
+    ),
     "dominado": (
         "Dominado",
         "Cada warframe, arma o companero subido a rango 30 (40 en algunos) da puntos de "

@@ -1,5 +1,35 @@
 # Cambios
 
+## 0.2.2
+
+**Farmadex se entera solo de lo que tienes**
+- Cuando abres Perfil > Equipamiento en el juego, lo lee solo y apunta lo que
+  tienes dominado, sin que pulses nada. F9 sigue funcionando.
+- Tambien lee el inventario y la fundicion, pero esa parte es experimental y
+  viene apagada: los iconos de cantidad se confunden con cifras y preferimos no
+  apuntar un numero falso. Se enciende en Ajustes.
+- Objetivos y las fichas dicen ahora "tienes 3 de 5" y marcan las piezas que ya
+  tienes.
+- Al abrir una reliquia en solitario, lo que te toca se suma solo a tus
+  objetivos.
+- Solo mira la pantalla con Warframe delante, cada segundo y medio, y con una
+  comprobacion que cuesta un 3 % de un nucleo; el OCR solo entra cuando la
+  pantalla cambia y se queda quieta.
+
+**Reliquias**
+- Las recompensas que el juego anota en su registro se usan como fuente
+  principal: el veredicto sale en un milisegundo en vez de dos segundos, y no
+  hay nombres mal leidos.
+- Farmadex apunta en su registro cuanto tarda cada paso al abrir una reliquia,
+  para poder ver donde se va el tiempo en cada equipo.
+- Si una lectura llega tarde, con la pantalla ya cerrada, ya no pinta etiquetas
+  encima de otra cosa: lo anota y espera a la siguiente.
+- Los hilos del OCR se ajustan a los nucleos del procesador.
+
+**Otros**
+- Opcion "Iniciar con Windows": arranca en la bandeja, sin ventana y sin pedir
+  administrador. Apagada por defecto.
+
 ## 0.2.1
 
 Segunda revision: el codigo nuevo de la 0.2.0, y el programa usado de

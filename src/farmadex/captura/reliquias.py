@@ -8,6 +8,7 @@ lo que interesa: platino, si esta en boveda y si te sirve para un objetivo.
 from __future__ import annotations
 
 import sqlite3
+import time
 from dataclasses import dataclass
 
 from PySide6.QtCore import QObject, QTimer, Signal, Slot
@@ -15,7 +16,7 @@ from PySide6.QtCore import QObject, QTimer, Signal, Slot
 from ..idiomas import t
 from ..registro_log import obtener
 from . import pantalla
-from .ocr import Casador, ErrorMotorOCR, MotorOCR, Reconocido, reconocer
+from .ocr import Casador, ErrorMotorOCR, MotorOCR, Reconocido, casar_lineas, leer_lineas, reconocer
 
 log = obtener("reliquias")
 
@@ -164,12 +165,60 @@ class LectorBase(QObject):
 
 
 class LectorRecompensas(LectorBase):
-    """Hace la captura y el OCR en su hilo; devuelve las recompensas reconocidas."""
+    """Hace la captura y el OCR en su hilo; devuelve las recompensas reconocidas.
+
+    Si EE.log ya ha dicho que recompensas hay en pantalla (`pista` con
+    "recompensa"), esos nombres se casan primero contra un conjunto cerrado con
+    un umbral mas bajo (`UMBRAL_CONOCIDAS`): mismo OCR, casado mas seguro. Lo
+    que el log no dijo se sigue casando contra el catalogo entero.
+    """
 
     leidas = Signal(list)  # list[Recompensa]
 
+    UMBRAL_CONOCIDAS = 70
+
     def __init__(self, motor_ocr: str = "rapidocr", parent=None):
         super().__init__(motor_ocr, CATEGORIAS_RECOMPENSA, parent)
+        self.conocidas: list[str] = []  # unique_names que EE.log dio para esta reliquia
+        self._casador_conocidas: Casador | None = None
+        self._t_aviso: float | None = None  # cuando EE.log aviso de la pantalla
+
+    @Slot(str, str)
+    def pista(self, tipo: str, valor: str) -> None:
+        if tipo == "recompensa" and valor not in self.conocidas:
+            self.conocidas.append(valor)
+            self._casador_conocidas = None
+
+    @Slot(str)
+    def evento(self, nombre: str) -> None:
+        if nombre == "reliquia_abierta":
+            self.conocidas = []
+            self._casador_conocidas = None
+            self._t_aviso = time.monotonic()
+        elif nombre == "reliquia_recompensas":
+            self._t_aviso = time.monotonic()
+        elif nombre == "reliquia_cerrada":
+            self.conocidas = []
+            self._casador_conocidas = None
+            self._t_aviso = None
+
+    def _conocidas(self) -> Casador | None:
+        """Casador restringido a lo que EE.log dio; None si no dio nada o no esta en el indice."""
+        if not self.conocidas or self.casador is None:
+            return None
+        if self._casador_conocidas is None:
+            from ..datos import indice
+
+            con = indice.conectar()
+            try:
+                marcas = ",".join("?" for _ in self.conocidas)
+                ids = {f[0] for f in con.execute(
+                    f"SELECT id FROM items WHERE unique_name IN ({marcas})", tuple(self.conocidas)
+                )}
+            finally:
+                con.close()
+            self._casador_conocidas = self.casador.restringido(ids) if ids else None
+        return self._casador_conocidas
 
     @Slot()
     def leer_ahora(self) -> None:
@@ -191,14 +240,17 @@ class LectorRecompensas(LectorBase):
             self.leidas.emit([])
             return
         self.estado.emit(t("Leyendo la pantalla..."))
+        tiempos: dict[str, float] = {}
+        t0 = time.perf_counter()
         ventana = pantalla.region_objetivo()
         region = ventana.recortar(*FRANJA)
         imagen = pantalla.capturar(region)
+        tiempos["captura"] = time.perf_counter() - t0
         if imagen is None:
             self.estado.emit(t("No se pudo capturar la pantalla"))
             self.leidas.emit([])
             return
-        encontrados = self._leer_protegido(imagen, umbral=80)
+        encontrados = self._leer_y_casar(imagen, tiempos)
         if encontrados is None:
             self.leidas.emit([])
             return
@@ -209,7 +261,7 @@ class LectorRecompensas(LectorBase):
             imagen = pantalla.capturar(ventana)
             if imagen is not None:
                 region = ventana
-                encontrados = self._leer_protegido(imagen, umbral=80)
+                encontrados = self._leer_y_casar(imagen, tiempos)
                 if encontrados is None:
                     self.leidas.emit([])
                     return
@@ -218,6 +270,7 @@ class LectorRecompensas(LectorBase):
                         "Las recompensas estaban fuera de la franja esperada: "
                         "puede que el juego haya cambiado la pantalla"
                     )
+        self._anotar_tiempos(tiempos, imagen, ventana, len(encontrados))
         recompensas = [
             Recompensa(
                 item_id=r.item_id,
@@ -241,6 +294,59 @@ class LectorRecompensas(LectorBase):
             t("No se reconocio ninguna recompensa")
         )
         self.leidas.emit(recompensas)
+
+
+    def _leer_y_casar(self, imagen, tiempos: dict) -> list[Reconocido] | None:
+        """OCR una vez; casado primero contra lo que EE.log dio y luego contra todo."""
+        try:
+            t0 = time.perf_counter()
+            lineas = leer_lineas(imagen, self.motor)
+            tiempos["ocr"] = tiempos.get("ocr", 0.0) + time.perf_counter() - t0
+            t0 = time.perf_counter()
+            conocidas = self._conocidas()
+            seguros = casar_lineas(lineas, conocidas, self.UMBRAL_CONOCIDAS) if conocidas else []
+            resto = casar_lineas(lineas, self.casador, 80)
+            encontrados = seguros + _sin_solapar(resto, seguros)
+            tiempos["casado"] = tiempos.get("casado", 0.0) + time.perf_counter() - t0
+            tiempos["lineas"] = len(lineas)
+            tiempos["conocidas"] = len(seguros)
+            return encontrados
+        except ErrorMotorOCR as e:
+            self._avisar_motor(str(e))
+            return None
+        except Exception:  # noqa: BLE001 - un fallo de lectura no puede tumbar la app
+            log.exception("Fallo leyendo la pantalla")
+            self.estado.emit(t("Fallo al leer la pantalla (mira el registro)"))
+            return None
+
+    def _anotar_tiempos(self, tiempos: dict, imagen, ventana, encontradas: int) -> None:
+        """Una linea de INFO por lectura, para diagnosticar a distancia sin datos personales."""
+        desde_aviso = (
+            f"{(time.monotonic() - self._t_aviso) * 1000:.0f} ms desde el aviso de EE.log"
+            if self._t_aviso is not None else "por atajo"
+        )
+        alto, ancho = imagen.shape[:2] if imagen is not None else (0, 0)
+        log.info(
+            "Reliquia: captura %.0f ms, ocr %.0f ms, casado %.0f ms; %d lineas, %d recompensas "
+            "(%d por EE.log de %d conocidas); franja %dx%d de una ventana de %dx%d; motor %s x%d hilos; %s",
+            tiempos.get("captura", 0) * 1000, tiempos.get("ocr", 0) * 1000, tiempos.get("casado", 0) * 1000,
+            tiempos.get("lineas", 0), encontradas, tiempos.get("conocidas", 0), len(self.conocidas),
+            ancho, alto, ventana.ancho, ventana.alto, self.motor.motor, self.motor.hilos, desde_aviso,
+        )
+
+
+def _sin_solapar(nuevos: list[Reconocido], seguros: list[Reconocido]) -> list[Reconocido]:
+    """Descarta lo casado contra el catalogo entero que pisa una linea ya casada por EE.log."""
+    salida = []
+    for r in nuevos:
+        x, y, w, h = r.caja
+        pisa = any(
+            min(x + w, sx + sw) > max(x, sx) and min(y + h, sy + sh) > max(y, sy)
+            for sx, sy, sw, sh in (s.caja for s in seguros)
+        )
+        if not pisa:
+            salida.append(r)
+    return salida
 
 
 def _quitar_repetidos(encontrados: list[Reconocido]) -> list[Reconocido]:

@@ -15,3 +15,6 @@ herramientas/capturas/overlay_compacto_contenido_*.png
 
 # Runtime de Visual C++: se descarga de Microsoft al compilar (24 MB, no es nuestro)
 empaquetado/vc_redist.x64.exe
+
+# Capturas bajadas de internet para calibrar los lectores (derechos de terceros: no se publican)
+tests/fixtures/capturas_internet/

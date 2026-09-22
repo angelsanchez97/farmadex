@@ -44,7 +44,18 @@ NUMERALES = {"i", "ii", "iii", "iv", "v", "vi", "x", "mk", "1", "2", "3", "4", "
 RE_ETIQUETAS = re.compile(r"<[^>]*>")
 
 # Hilos de calculo para ONNX Runtime: el usuario juega mientras esto corre.
-HILOS_OCR = 4
+# Medido (Ryzen 9800X3D, franja de recompensas): 4 hilos 395 ms, 2 hilos 412 ms.
+# Con pocos nucleos, 4 hilos le quitan al juego mas de lo que ganan.
+
+
+def _hilos_por_defecto() -> int:
+    import os
+
+    nucleos = os.cpu_count() or 4
+    return 4 if nucleos >= 8 else 2
+
+
+HILOS_OCR = _hilos_por_defecto()
 
 CATEGORIAS_PLAUSIBLES = (
     "Warframes",
@@ -436,6 +447,27 @@ class Casador:
             self.ordenadas.setdefault("".join(sorted(k.replace(" ", ""))), k)
         self.claves_ordenadas = list(self.ordenadas)
 
+    def restringido(self, ids: set[int]) -> "Casador":
+        """Copia que solo conoce esos objetos (las recompensas que EE.log ya dio).
+
+        Con un conjunto cerrado de 1-4 nombres el casado admite un umbral mas bajo
+        sin confundirse. Se construye filtrando los diccionarios ya hechos: ~5 ms,
+        frente a los ~30 de volver a leer el indice.
+        """
+        copia = Casador.__new__(Casador)
+        copia.candidatos = {k: v for k, v in self.candidatos.items() if v[0] in ids}
+        copia.alias = {k: v for k, v in self.alias.items() if v[0] in ids}
+        copia.alias_compactos = {k.replace(" ", ""): v for k, v in copia.alias.items()}
+        copia.claves = list(copia.candidatos)
+        copia.compactos = {k.replace(" ", ""): v for k, v in copia.candidatos.items()}
+        copia.compactos_a_clave = {k.replace(" ", ""): k for k in copia.candidatos}
+        copia.claves_compactas = list(copia.compactos)
+        copia.ordenadas = {}
+        for k in copia.candidatos:
+            copia.ordenadas.setdefault("".join(sorted(k.replace(" ", ""))), k)
+        copia.claves_ordenadas = list(copia.ordenadas)
+        return copia
+
     def casar(self, texto: str, umbral: int = 82) -> tuple[int | None, str, float]:
         """Devuelve (item_id, etiqueta, puntuacion) del objeto que mejor encaja."""
         nada = (None, "", 0.0)
@@ -592,17 +624,24 @@ def _contenidas(compacta: str, palabras: list[str]) -> float:
     return 100.0 * suma / sum(len(p) for p in palabras)
 
 
+def leer_lineas(imagen, motor: MotorOCR, minimo_confianza: float = 0.4) -> list[Leido]:
+    """OCR de la imagen con los trozos de cada linea ya unidos."""
+    return [l for l in unir_filas(motor.leer(imagen)) if l.confianza >= minimo_confianza]
+
+
 def reconocer(
     imagen, motor: MotorOCR, casador: Casador, umbral: int = 82, minimo_confianza: float = 0.4
 ) -> list[Reconocido]:
-    """Lee la imagen y devuelve solo los trozos que casan con algo del catalogo.
+    """Lee la imagen y devuelve solo los trozos que casan con algo del catalogo."""
+    return casar_lineas(leer_lineas(imagen, motor, minimo_confianza), casador, umbral)
+
+
+def casar_lineas(lineas: list[Leido], casador: Casador, umbral: int = 82) -> list[Reconocido]:
+    """Los trozos ya leidos que casan con algo del catalogo.
 
     Primero se prueba cada bloque de lineas juntas (los nombres largos se partan
     en dos lineas bajo la tarjeta); si el bloque no casa, cada linea por su lado.
     """
-    lineas = [
-        l for l in unir_filas(motor.leer(imagen)) if l.confianza >= minimo_confianza
-    ]
     salida = []
     for bloque in agrupar_bloques(lineas):
         if len(bloque) > 1:

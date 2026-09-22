@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 import re
 from html import unescape
 
@@ -23,7 +25,11 @@ from PySide6.QtWidgets import (
 from .. import NOMBRE_APP, VERSION, idiomas
 from ..config import cargar, guardar
 from ..datos import indice
-from ..idiomas import t
+from ..idiomas import es_castellano, t
+from ..estado import inventario as estado_inventario
+from ..estado import objetivos as estado_objetivos
+from ..perfil import desde_ocr
+from ..registro.botin import Botin
 from ..registro.eelog import VigilanteEELog
 from ..registro_log import obtener
 from ..tareas import TareaDatos
@@ -35,7 +41,8 @@ from ..actualizador.local import ComprobadorLocal, instalar
 from ..captura import pantalla
 from ..captura.comparador import ServicioComparador
 from ..captura.cursor import LectorCursor
-from ..captura.reliquias import DisparadorAutomatico, LectorRecompensas, completar, resumir
+from ..captura.lector_pasivo import LectorPasivo
+from ..captura.reliquias import DisparadorAutomatico, LectorRecompensas, Recompensa, completar, resumir
 from ..online.servicio_market import ServicioMarket
 from ..online.worldstate import ServicioMundo
 from .pestana_ajustes import PestanaAjustes
@@ -139,6 +146,8 @@ def geometria_redimensionada(borde: str, geometria: QRect, delta: QPoint, minimo
 
 class VentanaOverlay(QWidget):
     """Se abre y se cierra con el atajo; nunca se destruye, para abrir al instante."""
+
+    recompensas_conocidas = Signal(list)  # list[Recompensa] dadas por EE.log, sin caja
 
     cerrar_programa = Signal()
 
@@ -400,6 +409,18 @@ class VentanaOverlay(QWidget):
         self.hilo_captura.started.connect(self.lector_cursor.iniciar)
         self.lector_recompensas.leidas.connect(self._pintar_recompensas)
         self.lector_cursor.encontrado.connect(self._abrir_desde_cursor)
+        # Lectura pasiva del perfil, el inventario y la fundicion: mismo hilo, mismo motor.
+        self.lector_pasivo = LectorPasivo(
+            motor,
+            perfil=bool(self.config.get("perfil_pasivo", True)),
+            inventario=bool(self.config.get("inventario_pasivo", False)),
+        )
+        self.lector_pasivo.moveToThread(self.hilo_captura)
+        self.hilo_captura.started.connect(self.lector_pasivo.iniciar)
+        self.lector_pasivo.pagina_perfil.connect(self._pagina_perfil_leida)
+        self.lector_pasivo.pagina_inventario.connect(self._pagina_inventario_leida)
+        self.ajustes.perfil_pasivo.toggled.connect(self.lector_pasivo.activar_perfil)
+        self.ajustes.inventario_pasivo.toggled.connect(self.lector_pasivo.activar_inventario)
         self.hilo_captura.start()
 
         self.disparador = DisparadorAutomatico(bool(self.config.get("ocr_reliquias_auto", True)))
@@ -408,8 +429,26 @@ class VentanaOverlay(QWidget):
             lambda activo: setattr(self.disparador, "activo", activo)
         )
 
+        # Botin que EE.log deja claro (reliquia en solitario) va directo a los objetivos.
+        self.botin = Botin(self._sumar_botin, bool(self.config.get("botin_eelog_auto", True)))
+        self.ajustes.botin_eelog.toggled.connect(lambda activo: setattr(self.botin, "activo", activo))
+
         self.vigilante = VigilanteEELog(self.config.get("ruta_eelog", ""))
         self.vigilante.evento.connect(self._evento_juego)
+        self.vigilante.pista.connect(self.botin.pista)
+        self.vigilante.pista.connect(self.lector_recompensas.pista)
+        self.vigilante.evento.connect(self.lector_recompensas.evento)
+        self.vigilante.pista.connect(self._pista_juego)
+        # Recompensas que EE.log dio: veredicto sin esperar al OCR (se pinta al llegar el OCR).
+        self._conocidas_log: list[str] = []
+        self._t_reliquia: float | None = None  # monotonic del aviso "Got rewards"
+        self._t_cerrada: float | None = None
+        self._t_lectura_pedida: float | None = None
+        self._temporizador_conocidas = QTimer(self)
+        self._temporizador_conocidas.setSingleShot(True)
+        self._temporizador_conocidas.setInterval(150)  # las lineas "gets reward" salen juntas
+        self._temporizador_conocidas.timeout.connect(self._recompensas_conocidas)
+        self.vigilante.pantalla.connect(self.lector_pasivo.pantalla_juego)
         self.vigilante.arranque.connect(self._arranque_juego)
         self.vigilante.start()
 
@@ -424,6 +463,7 @@ class VentanaOverlay(QWidget):
         self.servicio_comparador.moveToThread(self.hilo_comparador)
         self.hilo_comparador.started.connect(self.servicio_comparador.iniciar)
         self.lector_recompensas.leidas.connect(self.servicio_comparador.comparar)
+        self.recompensas_conocidas.connect(self.servicio_comparador.comparar)
         self.servicio_comparador.veredicto.connect(self._veredicto_recompensas)
         # EE.log dice que reliquia llevas unos minutos antes de abrirla, y que le ha
         # tocado a cada companero al abrirse: con eso los precios se piden antes de
@@ -837,14 +877,99 @@ class VentanaOverlay(QWidget):
 
     def _evento_juego(self, nombre: str) -> None:
         self.disparador.evento(nombre)
-        if nombre == "reliquia_cerrada":
+        if nombre == "reliquia_abierta":
+            self._conocidas_log = []
+            self._t_cerrada = None
+        elif nombre == "reliquia_recompensas":
+            self._t_reliquia = time.monotonic()
+            self._t_cerrada = None
+        elif nombre == "reliquia_cerrada":
+            self._t_cerrada = time.monotonic()
+            self._temporizador_conocidas.stop()
             self.etiquetas.hide()
+        if self.botin.evento(nombre):
+            self.objetivos.refrescar()
+
+    def _pista_juego(self, tipo: str, valor: str) -> None:
+        if tipo == "recompensa" and valor not in self._conocidas_log:
+            self._conocidas_log.append(valor)
+            self._temporizador_conocidas.start()
+
+    def _recompensas_conocidas(self) -> None:
+        """Lo que EE.log dio de la reliquia: nombres exactos, ducados y veredicto ya, sin OCR."""
+        if not self._conocidas_log or self.hilo_captura is None:
+            return
+        con = indice.conectar()
+        try:
+            recompensas = []
+            for unique_name in self._conocidas_log:
+                fila = con.execute(
+                    "SELECT id, nombre_es, nombre_en FROM items WHERE unique_name = ?", (unique_name,)
+                ).fetchone()
+                if fila:
+                    nombre = (fila[1] or fila[2]) if es_castellano() else (fila[2] or fila[1])
+                    recompensas.append(Recompensa(fila[0], nombre, "", None))
+            if not recompensas:
+                return
+            completar(recompensas, con, self.objetivos.usuario)
+        finally:
+            con.close()
+        desde = f"{(time.monotonic() - self._t_reliquia) * 1000:.0f} ms" if self._t_reliquia else "?"
+        log.info("Recompensas por EE.log (%d de la escuadra, %s desde el aviso): %s",
+                 len(recompensas), desde, resumir(recompensas))
+        self.estado.setText(t("Por EE.log: {resumen}", resumen=resumir(recompensas)))
+        self.servicio_comparador.comparar(recompensas) if self.hilo_comparador is None else \
+            self.recompensas_conocidas.emit(recompensas)
+
+    def _sumar_botin(self, unique_name: str, cantidad: int, origen: str) -> None:
+        objetivo = estado_objetivos.sumar_por_item(self.objetivos.usuario, unique_name, cantidad, origen=origen)
+        if objetivo is not None:
+            self.estado.setText(t("+{n} {nombre} (EE.log)", n=cantidad, nombre=objetivo.nombre))
+
+    def _pagina_perfil_leida(self, pagina) -> None:
+        """Una pagina de Perfil > Equipamiento leida sola: se guarda como con F9."""
+        con = indice.conectar()
+        try:
+            lecturas = desde_ocr.desde_tarjetas(pagina.tarjetas, pagina.categoria or "")
+            completados = (
+                {pagina.categoria: pagina.completado} if pagina.categoria and pagina.completado else None
+            )
+            resultado = desde_ocr.guardar(
+                self.objetivos.usuario, con, lecturas, pagina.rango_maestria, completados=completados
+            )
+        except Exception:  # noqa: BLE001 - una lectura mala no puede tumbar la ventana
+            log.exception("No se pudo guardar la pagina de perfil leida sola")
+            return
+        finally:
+            con.close()
+        log.info("Perfil actualizado solo: %d objetos con rango, %d sin leer",
+                 resultado.guardadas, len(resultado.desconocidas))
+        self.estado.setText(t("Perfil leido solo: {n} objetos", n=len(lecturas)))
+        self.perfil.pintar()
+        self.buscador.refrescar_perfil()
+
+    def _pagina_inventario_leida(self, pagina) -> None:
+        """Cantidades leidas solas en Inventario/Fundicion: solo las fiables entran."""
+        fiables = pagina.fiables
+        if not fiables:
+            return
+        try:
+            n = estado_inventario.guardar(self.objetivos.usuario, fiables, pagina.pantalla)
+            cambios = estado_inventario.sincronizar_objetivos(self.objetivos.usuario)
+        except Exception:  # noqa: BLE001
+            log.exception("No se pudo guardar la lectura del inventario")
+            return
+        self.estado.setText(t("{n} cantidades leidas solas en pantalla", n=n))
+        if cambios:
+            self.objetivos.refrescar()
+        self.buscador.repintar()
 
     def leer_recompensas(self) -> None:
         """Lee la pantalla de recompensas de reliquia (atajo o aviso de EE.log)."""
         if self.hilo_captura is None:
             self.estado.setText(t("Los datos todavia se estan preparando"))
             return
+        self._t_lectura_pedida = time.monotonic()
         self.etiquetas.hide()
         QTimer.singleShot(0, self.lector_recompensas.leer_ahora)
 
@@ -856,12 +981,14 @@ class VentanaOverlay(QWidget):
     def _pintar_recompensas(self, recompensas: list) -> None:
         if not recompensas:
             return
+        t0 = time.perf_counter()
         con = indice.conectar()
         try:
             completar(recompensas, con, self.objetivos.usuario)
             maestria = self._maestria_recompensas(recompensas, con)
         finally:
             con.close()
+        t_completar = time.perf_counter() - t0
         # El resumen en texto vale en cualquier modo de pantalla (y queda en el log).
         resumen = resumir(recompensas)
         log.info("Recompensas: %s", resumen)
@@ -869,7 +996,20 @@ class VentanaOverlay(QWidget):
             self.estado.setText(t("Recompensas (no se pueden pintar encima del juego): {resumen}", resumen=resumen))
             return
         self.estado.setText(resumen)
+        if (self._t_cerrada is not None and self._t_lectura_pedida is not None
+                and self._t_cerrada > self._t_lectura_pedida):
+            # La pantalla ya se cerro mientras se leia: pintarlas ahora seria encima
+            # de otra cosa. Queda en el log con lo que tardo, que es el dato que importa.
+            log.warning(
+                "Las recompensas llegaron %.1f s despues de cerrarse la pantalla: no se pintan",
+                time.monotonic() - self._t_cerrada,
+            )
+            return
+        t0 = time.perf_counter()
         self.etiquetas.mostrar(_a_logicas(recompensas), maestria)
+        desde = f"{(time.monotonic() - self._t_reliquia) * 1000:.0f} ms" if self._t_reliquia else "?"
+        log.info("Reliquia: completar %.1f ms, pintar %.1f ms; nombres en pantalla %s desde el aviso de EE.log",
+                 t_completar * 1000, (time.perf_counter() - t0) * 1000, desde)
 
     def _veredicto_recompensas(self, recompensas: list, veredicto) -> None:
         """Llega despues, con los precios: solo añade la marca de "mejor" a lo que ya se ve."""

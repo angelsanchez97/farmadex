@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 
 from ..config import cargar, guardar
 from .. import perfil
+from ..estado import inventario as estado_inventario
 from ..datos import eficiencia, indice, items, relaciones
 from ..datos.nodos import etapa_bonita, nombre_bonito
 from ..idiomas import es_castellano, glosa, nombre as nombre_idioma, t
@@ -275,6 +276,30 @@ class PestanaBuscador(QWidget):
             return ""
         fondo, color = colores_maestria(estado)
         return _etiqueta(texto, fondo, color, "dominado")
+
+    def _etiqueta_inventario(self, unique_name: str) -> str:
+        """'Tienes 3', si el inventario se ha leido en pantalla."""
+        if self.usuario is None:
+            return ""
+        lectura = estado_inventario.cantidad_de(self.usuario, unique_name)
+        if lectura is None:
+            return ""
+        texto = t("Tienes {n}", n=lectura.cantidad)
+        if lectura.cantidad:
+            return _etiqueta(texto, "#15301a", COLOR_DISPONIBLE, "inventario")
+        return _etiqueta(texto, PALETA["panel"], PALETA["suave"], "inventario")
+
+    def _tienes_componente(self, componente) -> str:
+        """En la lista de piezas: '(tienes 2)', verde si cubre lo que pide la receta."""
+        if self.usuario is None:
+            return ""
+        lectura = estado_inventario.cantidad_de(self.usuario, componente["unique_name"])
+        if lectura is None:
+            return ""
+        cubre = lectura.cantidad >= (componente["item_count"] or 1)
+        color = COLOR_DISPONIBLE if cubre else PALETA["suave"]
+        texto = html.escape(t("tienes {n}", n=lectura.cantidad))
+        return f" <span style='color:{color}'>({texto})</span>"
 
     def repintar(self) -> None:
         """Tras cambiar de tema: la ficha lleva los colores dentro del HTML."""
@@ -538,6 +563,9 @@ class PestanaBuscador(QWidget):
         maestria = self._etiqueta_maestria(item["id"])
         if maestria:
             etiquetas.append(maestria)
+        tienes = self._etiqueta_inventario(item["unique_name"])
+        if tienes:
+            etiquetas.append(tienes)
 
         imagen = ""
         ruta = imagenes().ruta(item["imagen"]) if item.get("imagen") else None
@@ -574,6 +602,7 @@ class PestanaBuscador(QWidget):
                 f"{html.escape(nombre_idioma(c))}</a>"
                 + (f" <span style='color:{p['suave']}'>&times;{c['item_count']}</span>"
                    if c["item_count"] else "")
+                + self._tienes_componente(c)
                 + "</li>"
                 for c in datos["componentes"]
             )

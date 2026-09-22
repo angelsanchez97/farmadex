@@ -110,6 +110,18 @@ class PestanaAjustes(QWidget):
         self._fijo(self.ocr_auto.setText, "Leer sola la pantalla de recompensas de reliquia")
         self.ocr_auto.setChecked(bool(self.config["ocr_reliquias_auto"]))
         self.ocr_auto.toggled.connect(lambda v: self._guardar("ocr_reliquias_auto", v))
+        self.perfil_pasivo = QCheckBox()
+        self._fijo(self.perfil_pasivo.setText, "Leer sola la maestria al abrir Perfil > Equipamiento")
+        self.perfil_pasivo.setChecked(bool(self.config.get("perfil_pasivo", True)))
+        self.perfil_pasivo.toggled.connect(lambda v: self._guardar("perfil_pasivo", v))
+        self.inventario_pasivo = QCheckBox()
+        self._fijo(self.inventario_pasivo.setText, "Leer solas las cantidades del Inventario y la Fundicion (experimental)")
+        self.inventario_pasivo.setChecked(bool(self.config.get("inventario_pasivo", False)))
+        self.inventario_pasivo.toggled.connect(lambda v: self._guardar("inventario_pasivo", v))
+        self.botin_eelog = QCheckBox()
+        self._fijo(self.botin_eelog.setText, "Sumar a los objetivos la recompensa de reliquia de las misiones en solitario (EE.log)")
+        self.botin_eelog.setChecked(bool(self.config.get("botin_eelog_auto", True)))
+        self.botin_eelog.toggled.connect(lambda v: self._guardar("botin_eelog_auto", v))
 
         aspecto = QFormLayout()
         aspecto.setHorizontalSpacing(16)
@@ -119,6 +131,13 @@ class PestanaAjustes(QWidget):
         self._fila(aspecto, "Disposicion de Mundo", self.diseno_mundo)
         self._fila(aspecto, "Opacidad del fondo", self.opacidad)
         aspecto.addRow(self.ocr_auto)
+        aspecto.addRow(self.perfil_pasivo)
+        aspecto.addRow(self.inventario_pasivo)
+        aspecto.addRow(self.botin_eelog)
+        aspecto.addRow(self._nota(
+            "Las lecturas solas solo miran la pantalla cuando Warframe esta delante y se ha "
+            "quedado quieta; F9 en la herramienta de escaneo sigue valiendo."
+        ))
         nota = self._nota(
             "Warframe tiene que estar en Ventana sin bordes (o en DX12). En pantalla "
             "completa exclusiva el overlay no se ve."
@@ -181,6 +200,14 @@ class PestanaAjustes(QWidget):
         self._fijo(self.auto_actualizar.setText, "Actualizar automaticamente (se instala al cerrar Farmadex)")
         self.auto_actualizar.setChecked(bool(self.config.get("actualizar_automaticamente", True)))
         self.auto_actualizar.toggled.connect(lambda v: self._guardar("actualizar_automaticamente", v))
+        self.iniciar_windows = QCheckBox()
+        self._fijo(self.iniciar_windows.setText, "Iniciar con Windows (escondido en la bandeja)")
+        self.iniciar_windows.setChecked(bool(self.config.get("iniciar_con_windows", False)))
+        self.iniciar_windows.toggled.connect(self._cambiar_arranque)
+        self.aviso_arranque = QLabel("")
+        self.aviso_arranque.setWordWrap(True)
+        self.aviso_arranque.setStyleSheet(f"color: {p['suave']}; font-size: 12px;")
+        self._pintar_aviso_arranque()
         botones_version = QHBoxLayout()
         botones_version.addWidget(self.boton_comprobar)
         botones_version.addWidget(self.boton_instalar)
@@ -191,6 +218,8 @@ class PestanaAjustes(QWidget):
         version.addWidget(self.etiqueta_version)
         version.addWidget(self.aviso_version)
         version.addWidget(self.auto_actualizar)
+        version.addWidget(self.iniciar_windows)
+        version.addWidget(self.aviso_arranque)
         version.addStretch(1)
         version.addLayout(botones_version)
         grupo_version = self._grupo("Version")
@@ -344,6 +373,31 @@ class PestanaAjustes(QWidget):
         clave = self.diseno_mundo.currentData() or DISENO_POR_DEFECTO
         self._guardar("diseno_mundo", clave)
         self.diseno_mundo_cambiado.emit(clave)
+
+    def _cambiar_arranque(self, activo: bool) -> None:
+        """Alta o baja en HKCU\\...\\Run; si no se puede (codigo sin congelar), se desmarca."""
+        from .. import arranque
+
+        if arranque.sincronizar(activo):
+            self._guardar("iniciar_con_windows", activo)
+        elif activo:
+            self.iniciar_windows.blockSignals(True)
+            self.iniciar_windows.setChecked(False)
+            self.iniciar_windows.blockSignals(False)
+            self._guardar("iniciar_con_windows", False)
+        self._pintar_aviso_arranque()
+
+    def _pintar_aviso_arranque(self) -> None:
+        from .. import arranque
+
+        if arranque.comando_arranque() is None:
+            self.aviso_arranque.setText(t("Solo disponible en la version instalada o portable (.exe)."))
+        elif arranque.es_portable():
+            self.aviso_arranque.setText(
+                t("Version portable: si mueves o borras el .exe, el arranque dejara de funcionar.")
+            )
+        else:
+            self.aviso_arranque.setText("")
 
     def _aplicar_hotkeys(self) -> None:
         nuevas = {}

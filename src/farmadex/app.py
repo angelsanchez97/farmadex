@@ -7,7 +7,7 @@ import sys
 from PySide6.QtGui import QAction, QIcon
 from PySide6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon
 
-from . import NOMBRE_APP
+from . import NOMBRE_APP, arranque
 from .config import cargar, crear_carpetas
 from .hotkeys import GestorHotkeys
 from .registro_log import configurar, instalar_gancho_excepciones, obtener
@@ -16,9 +16,10 @@ from .ui.widgets import HOJA_ESTILOS
 
 
 class Aplicacion:
-    def __init__(self, argv: list[str]):
+    def __init__(self, argv: list[str], en_bandeja: bool = False):
         self.log = obtener("app")
         self.config = cargar()
+        self.en_bandeja = en_bandeja  # arrancado por Windows: sin ventana hasta que se pida
 
         self.qt = QApplication(argv)
         self.qt.setApplicationName(NOMBRE_APP)
@@ -109,7 +110,12 @@ class Aplicacion:
         self.qt.quit()
 
     def ejecutar(self) -> int:
-        self.ventana.mostrar()
+        if self.en_bandeja:
+            # Arrancado con Windows: se queda en la bandeja vigilando EE.log; la
+            # ventana sale con el atajo o desde el icono, este o no el juego abierto.
+            self.log.info("Arrancado en la bandeja (inicio con Windows)")
+        else:
+            self.ventana.mostrar()
         return self.qt.exec()
 
 
@@ -163,7 +169,7 @@ def main(argv: list[str] | None = None) -> int:
         lambda texto: QMessageBox.critical(None, f"{NOMBRE_APP}: error", texto)
     )
     try:
-        aplicacion = Aplicacion(argumentos)
+        aplicacion = Aplicacion(argumentos, en_bandeja=arranque.arrancado_en_bandeja(argumentos))
     except Exception:
         log.exception("No se pudo arrancar %s", NOMBRE_APP)
         raise

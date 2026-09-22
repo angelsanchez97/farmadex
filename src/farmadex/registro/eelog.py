@@ -30,6 +30,22 @@ lineas "gets reward" salen en el mismo instante que "Got rewards", solo para
 algunos jugadores de la escuadra (no siempre el propio), y dan el objeto exacto
 sin esperar al OCR. El texto del dialogo esta en el idioma del juego, pero el
 nombre de la reliquia ("Lith K5") no se traduce. El id de jugador no se copia.
+
+Pantallas del menu (`VigilanteEELog.pantalla`), comprobadas contra un EE.log real
+(septiembre de 2026) solo para el arsenal; las demas son nombres CANDIDATOS que
+se confirman cuando el usuario abra esas pantallas con Farmadex vigilando (cada
+nombre nuevo se anota una vez en el log de Farmadex, sin datos personales):
+
+    Script [Info]: LoadOutRedux.lua: Background::ScreenOpened(screenName=LoadOut)
+    Script [Info]: ThemedSquadOverlay.lua: Background::OpenScreen(screenName=InvitePanel, ...)
+    Script [Info]: LoadOutRedux.lua: Background::GoToPreviousScreen(skipScreens=1)
+    Input [Info]: Subscribing for /Lotus/Interface/LoadOutRedux.swf with input filter ...
+    Sys [Info]: Executing command: /EE/Editor/ToolMenus/Commands/CmdShowPauseMenu
+
+`ScreenOpened`/`OpenScreen` dan el nombre logico de la pantalla; `Subscribing for`
+sale cada vez que un panel .swf toma el teclado (tambien al volver a el). Con el
+nombre se sabe si merece la pena mirar la pantalla por OCR (perfil, inventario,
+fundicion) o no (arsenal, menu de pausa, dialogos).
 """
 
 from __future__ import annotations
@@ -146,6 +162,67 @@ def pista(linea: str) -> tuple[str, str] | None:
         if ruta.startswith(PREFIJO_TIENDA):
             ruta = "/Lotus/" + ruta[len(PREFIJO_TIENDA):]
         return ("recompensa", ruta)
+    m = RE_REMOTOS.search(linea)
+    if m:
+        return ("remotos", m.group(1))
+    return None
+
+
+# Al cargar una mision, Progress.lua dice cuantos jugadores remotos hay (0 = en
+# solitario). Visto en un EE.log real; la linea vecina con el nombre de cada
+# jugador remoto no se lee.
+RE_REMOTOS = re.compile(r"Progress\.lua: Num remote players (\d+)")
+
+
+# --- pantallas del menu -----------------------------------------------------------
+
+RE_PANTALLA = re.compile(r"Background::(?:OpenScreen|ScreenOpened)\(screenName=(\w+)")
+RE_INTERFAZ = re.compile(r"Subscribing for /Lotus/Interface/(\w+)\.swf")
+MARCADORES_CIERRE = ("Background::GoToPreviousScreen(", "Background::CloseScreen(")
+MARCADOR_PAUSA = "CmdShowPauseMenu"
+
+# Nombre en el log -> pantalla interna. Solo "arsenal" esta visto en un log real;
+# el resto son candidatos razonables que se confirman al abrir la pantalla.
+PANTALLAS = {
+    "LoadOut": "arsenal", "LoadOutRedux": "arsenal", "ArsenalRedux": "arsenal",
+    "Profile": "perfil", "ProfileRedux": "perfil", "PlayerProfile": "perfil",
+    "ProfileMenu": "perfil", "ProfileScreen": "perfil",
+    "Inventory": "inventario", "InventoryRedux": "inventario", "InventoryScreen": "inventario",
+    "Foundry": "fundicion", "FoundryRedux": "fundicion", "FoundryScreen": "fundicion",
+    "Codex": "codex", "CodexRedux": "codex",
+    "InvitePanel": "escuadra", "ChatRedux": "chat", "Dialog": "dialogo",
+    "TopMenu": "menu", "ThemedMainMenu": "menu", "Progress": "carga",
+}
+# Pantallas donde puede haber algo que leer por OCR.
+PANTALLAS_LEGIBLES = ("perfil", "inventario", "fundicion")
+# Paneles que no cambian de pantalla (chat, dialogos): no tocan el estado.
+PANTALLAS_SUPERPUESTAS = ("chat", "dialogo", "escuadra")
+_pantallas_desconocidas: set[str] = set()
+
+
+def pantalla_de(linea: str) -> tuple[str, str] | None:
+    """("abierta", "perfil"), ("abierta", "?NombreNuevo"), ("cerrada", "") o ("pausa", "").
+
+    Un nombre que no esta en PANTALLAS vuelve con "?" delante y se anota una vez
+    en el log para poder anadirlo a la tabla: asi se descubren los marcadores del
+    perfil, el inventario y la fundicion sin copiar el fichero del usuario.
+    """
+    m = RE_PANTALLA.search(linea) or RE_INTERFAZ.search(linea)
+    if m:
+        nombre = m.group(1)
+        interna = PANTALLAS.get(nombre)
+        if interna is None:
+            if nombre not in _pantallas_desconocidas:
+                _pantallas_desconocidas.add(nombre)
+                log.info("Pantalla del juego sin clasificar (candidata a marcador): %r", nombre)
+            return ("abierta", "?" + nombre)
+        if interna in PANTALLAS_SUPERPUESTAS:
+            return None
+        return ("abierta", interna)
+    if MARCADOR_PAUSA in linea:
+        return ("pausa", "")
+    if any(marca in linea for marca in MARCADORES_CIERRE):
+        return ("cerrada", "")
     return None
 
 
@@ -177,6 +254,7 @@ class VigilanteEELog(QThread):
 
     evento = Signal(str)  # nombre del evento
     pista = Signal(str, str)  # ("reliquia", "Lith K5") o ("recompensa", unique_name)
+    pantalla = Signal(str, str)  # ("abierta", "perfil"), ("cerrada", ""), ("pausa", "")
     arranque = Signal(object)  # Cabecera: al ver el fichero y cada vez que el juego arranca
 
     INTERVALO = 0.5
@@ -227,6 +305,11 @@ class VigilanteEELog(QThread):
             if encontrada:
                 log.info("EE.log: pista %s = %s", *encontrada)
                 self.pista.emit(*encontrada)
+                continue
+            cambio = pantalla_de(linea)
+            if cambio:
+                log.debug("EE.log: pantalla %s %s", *cambio)
+                self.pantalla.emit(*cambio)
 
     def _anunciar_cabecera(self) -> None:
         cabecera = leer_cabecera(self.ruta)

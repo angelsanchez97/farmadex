@@ -530,8 +530,17 @@ class ServicioComparador(QObject):
                 )
             except Exception as e:  # noqa: BLE001 - sin objetivos se puntua igual
                 log.warning("Sin base de datos del usuario para el comparador: %s", e)
+            precios_de = self._precios_de()
+            en_cache = self._en_cache(recompensas)
+            t0 = time.perf_counter()
             resultado = puntuar(
-                recompensas, indice_con, self._precios_de(), usuario_con, escuadra=self.escuadra
+                recompensas, indice_con, precios_de, usuario_con, escuadra=self.escuadra
+            )
+            log.info(
+                "Veredicto: puntuar %.0f ms; precios de %d de %d en cache/precarga; mejor: %s",
+                (time.perf_counter() - t0) * 1000, en_cache,
+                sum(1 for r in recompensas if getattr(r, "market_slug", "")),
+                resultado.resumen() if resultado.puntuaciones else "ninguna",
             )
         except Exception:  # noqa: BLE001 - un fallo aqui no puede dejar la pantalla sin etiquetas
             log.exception("Fallo puntuando las recompensas")
@@ -541,6 +550,17 @@ class ServicioComparador(QObject):
             if usuario_con is not None:
                 usuario_con.close()
         self.veredicto.emit(recompensas, resultado)
+
+    def _en_cache(self, recompensas: list) -> int:
+        """Cuantas recompensas tienen ya su precio en la cache del cliente HTTP."""
+        cliente = getattr(self._market, "cliente", None)
+        cache = getattr(cliente, "_cache", None)
+        if not isinstance(cache, dict):
+            return 0
+        return sum(
+            1 for r in recompensas
+            if getattr(r, "market_slug", "") and any(f"/orders/item/{r.market_slug}/" in url for url in cache)
+        )
 
     @Slot()
     def cerrar(self) -> None:
