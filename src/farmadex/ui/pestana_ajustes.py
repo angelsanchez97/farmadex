@@ -29,7 +29,7 @@ from ..config import DIR_BASE, cargar, guardar
 from ..datos import eficiencia, indice
 from ..hotkeys import parsear
 from ..idiomas import t
-from .acerca_de import abrir_acerca_de
+from .acerca_de import abrir_acerca_de, texto_autor
 from .pestana_mundo import DISENO_POR_DEFECTO
 from .widgets import PALETA, TEMA_POR_DEFECTO, TEMAS
 
@@ -71,6 +71,9 @@ class PestanaAjustes(QWidget):
         self._fila(formulario, "Leer las recompensas de reliquia", self.campos_hotkey["reliquias"])
         self.aviso_hotkey = QLabel("")
         self.aviso_hotkey.setStyleSheet(f"color: {p['aviso']};")
+        if hasattr(self, "autor"):  # repintar tambien corre a mitad del __init__
+            self.autor.setStyleSheet(f"color: {p['suave']}; font-size: 12px;")
+            self.autor.setText(texto_autor())  # el enlace lleva el color de acento del tema
         boton_hotkeys = self._boton("Aplicar atajos")
         boton_hotkeys.clicked.connect(self._aplicar_hotkeys)
         fila_hotkeys = QHBoxLayout()
@@ -287,6 +290,12 @@ class PestanaAjustes(QWidget):
         creditos.setWordWrap(False)  # en el pie hay sitio de sobra; partido queda raro
         pie.addWidget(creditos)
         pie.addStretch(1)
+        self.autor = QLabel()
+        self.autor.setTextFormat(Qt.RichText)
+        self.autor.setOpenExternalLinks(True)
+        self.autor.setStyleSheet(f"color: {PALETA['suave']}; font-size: 12px;")
+        self._fijo(lambda _s: self.autor.setText(texto_autor()), "Creado por {autor}")
+        pie.addWidget(self.autor)
         pie.addWidget(self.boton_acerca)
         pie.addWidget(boton_salir)
 

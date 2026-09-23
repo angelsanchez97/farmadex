@@ -23,6 +23,8 @@ from .widgets import PALETA, hoja_estilos
 
 URL_POLITICA_DE = "https://support.warframe.com/hc/en-us/articles/360030014351-Third-Party-Software-and-You"
 URL_REPOSITORIO = "https://github.com/angelsanchez97/farmadex"
+AUTOR = "vaas"
+URL_TWITCH = "https://www.twitch.tv/vaas1897"
 CITA_NO_RESPALDO = "we do not endorse any use of third-party software"
 CITA_RIESGO = "at your own risk"
 ANCHO_IMAGEN = 560
@@ -36,6 +38,12 @@ def ruta_imagen_soporte() -> Path:
 
 def _enlace(url: str, texto: str) -> str:
     return f'<a href="{html.escape(url)}" style="color: {PALETA["acento"]};">{html.escape(texto)}</a>'
+
+
+def texto_autor() -> str:
+    """"Creado por vaas · twitch.tv/vaas1897", con el canal enlazado (Acerca de y pie de Ajustes)."""
+    return (html.escape(t("Creado por {autor}", autor=AUTOR)) + " · "
+            + _enlace(URL_TWITCH, URL_TWITCH.removeprefix("https://www.")))
 
 
 def _parrafo(texto: str, color: str | None = None) -> QLabel:
@@ -61,6 +69,7 @@ class DialogoAcercaDe(QDialog):
 
         titulo = QLabel(f"{NOMBRE_APP} <b>{VERSION}</b>")
         titulo.setStyleSheet(f"font-size: 20px; color: {p['acento']};")
+        self.autor = _parrafo(texto_autor())
 
         no_afiliado = _parrafo(html.escape(t(
             "No esta afiliado a Digital Extremes ni tiene su respaldo. Warframe y todo su "
@@ -108,7 +117,7 @@ class DialogoAcercaDe(QDialog):
         dentro = QVBoxLayout(contenido)
         dentro.setContentsMargins(4, 4, 12, 4)
         dentro.setSpacing(10)
-        for widget in (titulo, no_afiliado, seccion, que_hace, decision, self.enlace_politica,
+        for widget in (titulo, self.autor, no_afiliado, seccion, que_hace, decision, self.enlace_politica,
                        pie_imagen, self.imagen, codigo):
             dentro.addWidget(widget)
         dentro.addStretch(1)

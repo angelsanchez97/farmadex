@@ -1,5 +1,10 @@
 # Cambios
 
+## 0.2.7
+
+- En Acerca de y en el pie de Ajustes aparece quien hace Farmadex (vaas) con el
+  enlace a su canal de Twitch.
+
 ## 0.2.6
 
 **Pestaña Primes, nueva**
