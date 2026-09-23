@@ -409,6 +409,8 @@ class ServicioComparador(QObject):
     @Slot(str, str)
     def precargar(self, tipo: str, valor: str) -> None:
         """Pista de EE.log: ("reliquia", "Lith K5") o ("recompensa", unique_name)."""
+        if tipo not in ("reliquia", "recompensa"):
+            return
         slugs = self._slugs_de(tipo, valor)
         if tipo == "reliquia":
             self._slugs_reliquia = slugs
@@ -447,11 +449,10 @@ class ServicioComparador(QObject):
                     (f"RELIQUIA/{valor}",),
                 ).fetchall()
             elif tipo == "recompensa":
-                filas = con.execute(
-                    "SELECT market_slug FROM items WHERE unique_name = ? "
-                    "AND market_slug IS NOT NULL AND market_slug != ''",
-                    (valor,),
-                ).fetchall()
+                from ..datos.indice import fila_por_ruta
+
+                fila = fila_por_ruta(con, valor, "market_slug")
+                filas = [fila] if fila and fila[0] else []
             else:
                 filas = []
         finally:

@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import NOMBRE_APP, VERSION, idiomas
+from .. import config as config_modulo
 from ..config import cargar, guardar
 from ..datos import eficiencia, indice
 from ..idiomas import es_castellano, t
@@ -49,9 +50,11 @@ from .pestana_ajustes import PestanaAjustes
 from .pestana_buscador import PestanaBuscador
 from .pestana_mundo import DISENO_POR_DEFECTO, PestanaMundo
 from .etiquetas import EtiquetasRecompensas
+from .guia import CapaGuia
 from .panel_recompensas import PanelRecompensas
 from .pestana_objetivos import PestanaObjetivos
 from .pestana_perfil import PestanaPerfil
+from .pestana_primes import PestanaPrimes
 from .vista_compacta import (
     ALTO as ALTO_COMPACTO,
     ALTO_MINIMO as ALTO_MINIMO_COMPACTO,
@@ -154,6 +157,10 @@ class VentanaOverlay(QWidget):
 
     def __init__(self):
         super().__init__()
+        # Si el fichero ya existia antes de este arranque: un usuario que actualiza, no
+        # alguien que instala Farmadex por primera vez. `cargar()` lo crea si falta, asi
+        # que hay que mirarlo antes de llamarla.
+        self._config_existia_antes = config_modulo.RUTA_CONFIG.exists()
         self.config = cargar()
         # El idioma se fija antes de construir nada: las pestanas leen los textos al nacer.
         idiomas.cargar(self.config.get("idioma_ui"))
@@ -197,6 +204,12 @@ class VentanaOverlay(QWidget):
         self.boton_modo.setFixedHeight(26)
         self.boton_modo.setCursor(Qt.PointingHandCursor)
         self.boton_modo.clicked.connect(self.alternar_modo)
+        self.boton_guia = QPushButton(t("Guia"))
+        self.boton_guia.setFixedHeight(26)
+        self.boton_guia.setCursor(Qt.PointingHandCursor)
+        self.boton_guia.setToolTip(t("Lanza la guia de uso desde el principio"))
+        self.boton_guia.clicked.connect(self.mostrar_guia)
+        self._guia: CapaGuia | None = None
         self._pintar_cabecera()
 
         cabecera = QHBoxLayout()
@@ -204,6 +217,7 @@ class VentanaOverlay(QWidget):
         cabecera.addWidget(self.titulo)
         cabecera.addStretch(1)
         cabecera.addWidget(self.pista)
+        cabecera.addWidget(self.boton_guia)
         cabecera.addWidget(self.boton_modo)
         cabecera.addWidget(boton_cerrar)
 
@@ -211,6 +225,8 @@ class VentanaOverlay(QWidget):
         self.buscador = PestanaBuscador()
         self.mundo = PestanaMundo(diseno=self.config.get("diseno_mundo", DISENO_POR_DEFECTO))
         self.objetivos = PestanaObjetivos()
+        # Lo marcado en Primes son objetivos: comparte su BD y se repintan mutuamente.
+        self.primes = PestanaPrimes(self.objetivos)
         self.ajustes = PestanaAjustes()
         # El perfil comparte la BD del usuario con los objetivos (misma conexion, mismo hilo).
         self.perfil = PestanaPerfil(self.objetivos.usuario)
@@ -218,11 +234,13 @@ class VentanaOverlay(QWidget):
         self.perfil.perfil_cambiado.connect(self.buscador.refrescar_perfil)
         self.perfil.abrir_item.connect(lambda item_id: self._abrir_desde_cursor(item_id, ""))
         self.mundo.abrir_item.connect(lambda item_id: self._abrir_desde_cursor(item_id, ""))
+        self.primes.abrir_item.connect(lambda item_id: self._abrir_desde_cursor(item_id, ""))
         self.objetivos.cambiados.connect(self.mundo.refrescar_objetivos)
         self.ajustes.reconstruir.connect(lambda: self.preparar_datos(forzar=True))
         self.ajustes.tema_cambiado.connect(self.cambiar_tema)
         self.ajustes.idioma_cambiado.connect(self.cambiar_idioma)
         self.ajustes.diseno_mundo_cambiado.connect(self._cambiar_diseno_mundo)
+        self.ajustes.ritmo_cambiado.connect(self._cambiar_ritmo)
         self.ajustes.salir.connect(self.cerrar_programa.emit)
         self.ajustes.instalar_version.connect(self._instalar_version)
         for pestana, titulo in self._titulos_pestanas():
@@ -360,6 +378,7 @@ class VentanaOverlay(QWidget):
             return
         self.buscador.habilitar(True)
         self.objetivos.conectar_indice(indice.conectar())
+        self.primes.conectar_indice(indice.conectar())
         self.perfil.conectar_indice(indice.conectar())
         self.mundo.conectar_objetivos(indice.conectar(), self.objetivos.usuario)
         self._arrancar_mundo()
@@ -367,6 +386,32 @@ class VentanaOverlay(QWidget):
         self._arrancar_comparador()
         self._arrancar_actualizador()
         self._comprobar_desfase()
+        self._avisar_o_lanzar_guia()
+
+    def _avisar_o_lanzar_guia(self) -> None:
+        """La primera vez que la ventana esta lista: la guia sola si es instalacion nueva,
+        o un aviso discreto si quien abre Farmadex ya lo tenia instalado de antes."""
+        if self.config.get("guia_vista") or self._guia is not None:
+            return
+        if not self._config_existia_antes:
+            QTimer.singleShot(300, self.mostrar_guia)
+        elif not self.config.get("guia_aviso_visto"):
+            self.config["guia_aviso_visto"] = True
+            guardar(self.config)
+            enlace = (
+                f'<a style="color:{PALETA["acento"]}" href="farmadex:guia">{t("Verla ahora")}</a>'
+            )
+            self._aviso("guia_nueva", t("Nuevo: guia de uso en la pestana Ajustes.") + " " + enlace)
+
+    def mostrar_guia(self) -> None:
+        """Lanza la guia desde el principio: la relanza el boton "Guia" aunque ya se
+        hubiera visto o saltado antes."""
+        if self._guia is not None:
+            return
+        if self.modo == "compacto":
+            self.aplicar_modo("completo")
+        self._aviso("guia_nueva", None)
+        self._guia = CapaGuia(self)
 
     def _anadir_objetivo(self, item_id: int, set_completo: bool) -> None:
         creados = self.objetivos.anadir_item(item_id, set_completo)
@@ -610,6 +655,8 @@ class VentanaOverlay(QWidget):
         super().resizeEvent(evento)
         if self.modo == "compacto" and self._avisos:
             self._elidir_banner()
+        if self._guia is not None:
+            self._guia.reposicionar()
 
     def _pantalla_libre(self) -> QRect | None:
         """Geometria de un monitor que no sea el del juego, si lo hay."""
@@ -823,6 +870,8 @@ class VentanaOverlay(QWidget):
     def _enlace_banner(self, href: str) -> None:
         if href == "farmadex:actualizar":
             self._reiniciar_y_actualizar()
+        elif href == "farmadex:guia":
+            self.mostrar_guia()
         elif href:
             QDesktopServices.openUrl(QUrl(href))
 
@@ -966,9 +1015,7 @@ class VentanaOverlay(QWidget):
         try:
             recompensas = []
             for unique_name in self._conocidas_log:
-                fila = con.execute(
-                    "SELECT id, nombre_es, nombre_en FROM items WHERE unique_name = ?", (unique_name,)
-                ).fetchone()
+                fila = indice.fila_por_ruta(con, unique_name, "id, nombre_es, nombre_en")
                 if fila:
                     nombre = (fila[1] or fila[2]) if es_castellano() else (fila[2] or fila[1])
                     recompensas.append(Recompensa(fila[0], nombre, "", None))
@@ -1262,6 +1309,7 @@ class VentanaOverlay(QWidget):
         return [
             (self.buscador, "Buscar"),
             (self.objetivos, "Objetivos"),
+            (self.primes, "Primes"),
             (self.mundo, "Mundo"),
             (self.perfil, "Perfil"),
             (self.ajustes, "Ajustes"),
@@ -1276,12 +1324,20 @@ class VentanaOverlay(QWidget):
         idiomas.cargar(codigo)
         self._pintar_pista()
         self._pintar_boton_modo()
+        self.boton_guia.setText(t("Guia"))
+        self.boton_guia.setToolTip(t("Lanza la guia de uso desde el principio"))
         for i, (_, titulo) in enumerate(self._titulos_pestanas()):
             self.pestanas.setTabText(i, t(titulo))
         self.estado.setText("")
-        for pestana in (self.buscador, self.objetivos, self.mundo, self.perfil, self.ajustes, self.compacta):
+        for pestana in (self.buscador, self.objetivos, self.primes, self.mundo, self.perfil, self.ajustes, self.compacta):
             pestana.retraducir()
         self._regenerar_avisos()
+
+    def _cambiar_ritmo(self, _ritmo: str) -> None:
+        """El ritmo de juego cambia todos los tiempos estimados: se recalcula lo abierto."""
+        self.buscador.repintar()
+        self.objetivos.refrescar()
+        self.primes.repintar()
 
     def _cambiar_diseno_mundo(self, diseno: str) -> None:
         """Cambio al vuelo: rehace Mundo con la disposicion nueva sin perder lo que ya se sabia."""
@@ -1327,6 +1383,7 @@ class VentanaOverlay(QWidget):
             f" border-radius: 6px; color: {PALETA['suave']}; font-size: 12px; padding: 0 8px; }}"
             f" QPushButton:hover {{ color: {PALETA['texto']}; border-color: {PALETA['acento']}; }}"
         )
+        self.boton_guia.setStyleSheet(self.boton_modo.styleSheet())
 
     def cambiar_tema(self, nombre: str) -> None:
         """Se puede cambiar en caliente: la hoja de estilos y lo que lleva color en el HTML."""
@@ -1341,6 +1398,7 @@ class VentanaOverlay(QWidget):
         )
         self.buscador.repintar()
         self.objetivos.refrescar()
+        self.primes.repintar()
         self.perfil.repintar()
         self.compacta.repintar()
         self.ajustes.repintar()

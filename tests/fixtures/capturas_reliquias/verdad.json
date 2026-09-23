@@ -1,0 +1,67 @@
+{
+  "_nota": "Pantallas de recompensas reales del usuario y de un amigo (2560x1440, 3 tarjetas, con AlecaFrame debajo). Nombres como los conoce el Casador (padre + pieza, en ingles). 'fila' y 'franja' en pixeles solo para los recortes, que no son la ventana entera.",
+  "video_1440p_3tarjetas_t0.jpg": {
+    "tarjetas": [
+      "Fang Prime Blueprint",
+      "Orthos Prime Blueprint",
+      "Quassus Prime Handle"
+    ],
+    "nota": "primer fotograma, cuenta atras en 15"
+  },
+  "video_1440p_3tarjetas_t5.jpg": {
+    "tarjetas": [
+      "Fang Prime Blueprint",
+      "Orthos Prime Blueprint",
+      "Quassus Prime Handle"
+    ],
+    "nota": "a los 5 s, con la marca de eleccion de un jugador"
+  },
+  "video_1440p_3tarjetas_t14.jpg": {
+    "tarjetas": [
+      "Fang Prime Blueprint",
+      "Orthos Prime Blueprint",
+      "Quassus Prime Handle"
+    ],
+    "nota": "a los 14 s, con las etiquetas de Farmadex encima de las tarjetas y el rotulo de la eleccion"
+  },
+  "recorte_3tarjetas_alecaframe.webp": {
+    "tarjetas": [
+      "Fang Prime Blueprint",
+      "Orthos Prime Blueprint",
+      "Quassus Prime Handle"
+    ],
+    "fila": [
+      340,
+      228,
+      1130,
+      300
+    ],
+    "franja": [
+      0,
+      0,
+      1590,
+      800
+    ],
+    "nota": "recorte de 1590x800 con el panel de AlecaFrame debajo; Empunadura De Quassus Prime en dos lineas"
+  },
+  "recorte_3tarjetas_obtenidos.webp": {
+    "tarjetas": [
+      "Trumna Prime Stock",
+      "Euphona Prime Barrel",
+      "Caliban Prime Chassis"
+    ],
+    "fila": [
+      0,
+      238,
+      921,
+      316
+    ],
+    "franja": [
+      0,
+      0,
+      1021,
+      598
+    ],
+    "nota": "recorte del usuario a otra escala, con 'Obtenidos' sobre las tarjetas y el panel de Farmadex debajo"
+  }
+}

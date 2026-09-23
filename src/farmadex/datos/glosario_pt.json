@@ -1,0 +1,25 @@
+{
+  "componente": {
+    "Blueprint": "Projeto",
+    "Systems": "Sistemas",
+    "Chassis": "Chassi",
+    "Neuroptics": "Neuróptica",
+    "Barrel": "Cano",
+    "Stock": "Coronha",
+    "Handle": "Cabo",
+    "Grip": "Empunhadura",
+    "Link": "Elo",
+    "String": "Corda",
+    "Carapace": "Carapaça",
+    "Cerebrum": "Cérebro",
+    "Guard": "Guarda",
+    "Head": "Cabeça",
+    "Disc": "Disco",
+    "Chain": "Corrente",
+    "Core": "Núcleo",
+    "Blade": "Lâmina",
+    "Wings": "Asas",
+    "Boot": "Bota",
+    "Gauntlet": "Manopla"
+  }
+}

@@ -26,9 +26,10 @@ from PySide6.QtWidgets import (
 
 from .. import NOMBRE_APP, VERSION, idiomas
 from ..config import DIR_BASE, cargar, guardar
-from ..datos import indice
+from ..datos import eficiencia, indice
 from ..hotkeys import parsear
 from ..idiomas import t
+from .acerca_de import abrir_acerca_de
 from .pestana_mundo import DISENO_POR_DEFECTO
 from .widgets import PALETA, TEMA_POR_DEFECTO, TEMAS
 
@@ -41,6 +42,7 @@ class PestanaAjustes(QWidget):
     tema_cambiado = Signal(str)
     idioma_cambiado = Signal(str)
     diseno_mundo_cambiado = Signal(str)
+    ritmo_cambiado = Signal(str)
     comprobar_version = Signal()
     instalar_version = Signal(object)
 
@@ -162,6 +164,24 @@ class PestanaAjustes(QWidget):
         grupo_aspecto.setLayout(aspecto)
 
         # -- datos del juego -----------------------------------------------------
+        # Ritmo de juego: multiplica las duraciones estimadas (eficiencia.RITMOS), no las
+        # probabilidades. Un desplegable de tres y no un deslizador: el factor exacto no
+        # dice nada a quien juega, "Rapido" o "Tranquilo" si.
+        self.ritmo = QComboBox()
+        for clave in eficiencia.RITMOS:
+            self.ritmo.addItem("", clave)
+        self._textos_ritmo()
+        ritmo_guardado = self.config.get(eficiencia.CLAVE_RITMO) or eficiencia.RITMO_POR_DEFECTO
+        self.ritmo.setCurrentIndex(max(0, self.ritmo.findData(ritmo_guardado)))
+        self.ritmo.currentIndexChanged.connect(self._cambiar_ritmo)
+        ritmo = QFormLayout()
+        ritmo.setHorizontalSpacing(16)
+        self._fila(ritmo, "Ritmo de juego", self.ritmo)
+        ritmo.addRow(self._nota(
+            "Ajusta los tiempos estimados de la ficha a como juegas. No cambia las probabilidades "
+            "ni el orden de los sitios."
+        ))
+
         self.estado_datos = QLabel("")
         self.estado_datos.setWordWrap(True)
         self.estado_datos.setStyleSheet(f"color: {p['suave']};")
@@ -180,6 +200,7 @@ class PestanaAjustes(QWidget):
         self.aviso_parche.hide()
         datos = QVBoxLayout()
         datos.setSpacing(8)
+        datos.addLayout(ritmo)
         datos.addWidget(self.estado_datos)
         datos.addWidget(self.aviso_parche)
         datos.addStretch(1)
@@ -237,6 +258,10 @@ class PestanaAjustes(QWidget):
         boton_salir = QPushButton()
         self._fijo(lambda s: boton_salir.setText(s.format(app=NOMBRE_APP)), "Salir de {app}")
         boton_salir.clicked.connect(self.salir.emit)
+        # Que es Farmadex y que dice DE de los programas de terceros (ui/acerca_de.py).
+        self.boton_acerca = QPushButton()
+        self._fijo(lambda s: self.boton_acerca.setText(s.format(app=NOMBRE_APP)), "Acerca de {app}")
+        self.boton_acerca.clicked.connect(lambda: abrir_acerca_de(self.window()))
 
         rejilla = QGridLayout()
         rejilla.setHorizontalSpacing(12)
@@ -262,6 +287,7 @@ class PestanaAjustes(QWidget):
         creditos.setWordWrap(False)  # en el pie hay sitio de sobra; partido queda raro
         pie.addWidget(creditos)
         pie.addStretch(1)
+        pie.addWidget(self.boton_acerca)
         pie.addWidget(boton_salir)
 
         caja = QVBoxLayout(self)
@@ -322,6 +348,7 @@ class PestanaAjustes(QWidget):
         self.idioma.setItemText(0, t("Automatico (el de Windows)"))
         self.diseno_mundo.setItemText(0, t("Lista"))
         self.diseno_mundo.setItemText(1, t("Tablero"))
+        self._textos_ritmo()
         self.estilo_recompensas.setItemText(0, t("Etiquetas pequenas junto a cada tarjeta"))
         self.estilo_recompensas.setItemText(1, t("Panel con una tarjeta por recompensa"))
         self.aviso_hotkey.setText("")
@@ -390,6 +417,22 @@ class PestanaAjustes(QWidget):
         clave = self.diseno_mundo.currentData() or DISENO_POR_DEFECTO
         self._guardar("diseno_mundo", clave)
         self.diseno_mundo_cambiado.emit(clave)
+
+    RITMOS = {
+        "rapido": "Rapido: veterano con buen equipo (x{factor})",
+        "normal": "Normal: jugador medio (x{factor})",
+        "tranquilo": "Tranquilo: empezando o explorando (x{factor})",
+    }
+
+    def _textos_ritmo(self) -> None:
+        for i in range(self.ritmo.count()):
+            clave = self.ritmo.itemData(i)
+            self.ritmo.setItemText(i, t(self.RITMOS[clave], factor=f"{eficiencia.RITMOS[clave]:g}"))
+
+    def _cambiar_ritmo(self, _indice: int) -> None:
+        clave = self.ritmo.currentData() or eficiencia.RITMO_POR_DEFECTO
+        self._guardar(eficiencia.CLAVE_RITMO, clave)
+        self.ritmo_cambiado.emit(clave)
 
     def _cambiar_arranque(self, activo: bool) -> None:
         """Alta o baja en HKCU\\...\\Run; si no se puede (codigo sin congelar), se desmarca."""

@@ -29,6 +29,11 @@ Farmadex vive en la bandeja del sistema, al lado del reloj de Windows. El
 icono de la bandeja tiene un menú con «Mostrar», «Ajustes», «Actualizar
 datos» y «Salir»; un clic normal sobre el icono abre y cierra la ventana.
 
+En cuanto la ventana está lista, la primera vez se abre sola una guía de uso
+corta que resalta cada parte de la interfaz; se puede saltar en cualquier
+momento con el botón «Saltar guía» o con Escape. El botón **«Guía»**, en la
+cabecera de la ventana, la vuelve a lanzar desde el principio cuando quieras.
+
 ## Las pestañas
 
 ### Buscar

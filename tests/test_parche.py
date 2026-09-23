@@ -321,8 +321,9 @@ def test_si_la_franja_sale_vacia_se_lee_la_ventana_entera(con, monkeypatch):
     lector.leer_ahora()
     assert len(lecturas) == 2
 
-    assert len(capturas) == 2
-    assert (capturas[1].x, capturas[1].y) == (100, 200)  # la segunda captura es la ventana entera
+    # Tres capturas: la fila de nombres (camino rapido), la franja y la ventana entera.
+    assert len(capturas) == 3
+    assert (capturas[2].x, capturas[2].y) == (100, 200)  # la ultima captura es la ventana entera
     assert len(leidas) == 1 and [r.nombre for r in leidas[0]] == ["Forma"]
     assert leidas[0][0].caja[:2] == (140, 230)  # coordenadas de pantalla relativas a la ventana
 

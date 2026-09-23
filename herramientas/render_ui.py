@@ -28,6 +28,9 @@ def preparar_sandbox() -> Path:
     if not real.exists():
         sys.exit("No hay indice real construido; abre la app una vez primero.")
     raiz = Path(tempfile.gettempdir()) / "farmadex_render"
+    # Antes del import de farmadex de abajo: config fija sus rutas al importarse y, sin
+    # esto, la copia del indice dejaba config apuntando a la carpeta de verdad.
+    os.environ["FARMADEX_DATOS"] = str(raiz)
     caja = raiz / "Farmadex"  # config.DIR_BASE = FARMADEX_DATOS / NOMBRE_APP
     (caja / "db").mkdir(parents=True, exist_ok=True)
     destino = caja / "db" / "indice.sqlite"

@@ -29,7 +29,7 @@ from ..estado import inventario as estado_inventario
 from ..datos import eficiencia, indice, items, relaciones
 from ..datos.nodos import etapa_bonita, nombre_bonito
 from ..idiomas import es_castellano, glosa, nombre as nombre_idioma, t
-from . import glosario
+from . import desglose_tiempo, glosario, pestana_primes, relleno_filas
 from .maestria import colores_maestria, estado_con_padre, texto_maestria
 from .widgets import COLOR_BOVEDA, COLOR_DISPONIBLE, PALETA, color_rareza, imagenes
 
@@ -200,6 +200,8 @@ class PestanaBuscador(QWidget):
         self.ficha = glosario.FichaConGlosario()
         self.ficha.setOpenLinks(False)
         self.ficha.anchorClicked.connect(self._enlace)
+        # Fondo de las filas de fuentes relleno segun lo rapido que es conseguirlo ahi.
+        self._relleno = relleno_filas.RellenoFilas(self.ficha)
 
         divisor = QSplitter(Qt.Horizontal)
         divisor.addWidget(self.lista)
@@ -311,9 +313,15 @@ class PestanaBuscador(QWidget):
         )
         self.lista.viewport().update()
         if self._datos_actuales:
-            self.ficha.setHtml(self._html(self._datos_actuales))
+            self._poner_ficha(self._html(self._datos_actuales))
         elif self._sin_resultados is not None:
-            self.ficha.setHtml(self._html_sin_resultados(self._sin_resultados))
+            self._poner_ficha(self._html_sin_resultados(self._sin_resultados))
+
+    def _poner_ficha(self, contenido: str) -> None:
+        """Pinta la ficha y su relleno de filas en el acto, sin esperar al bucle de eventos:
+        con fichas largas el temporizador podia quedarse sin disparar antes de pintarse."""
+        self.ficha.setHtml(contenido)
+        self._relleno.aplicar()
 
     def retraducir(self) -> None:
         """Tras cambiar de idioma: textos fijos, lista de resultados y ficha abierta."""
@@ -330,7 +338,7 @@ class PestanaBuscador(QWidget):
         self.lista.viewport().update()
         if self._datos_actuales and self._datos_actuales["item"].get("imagen") == nombre:
             posicion = self.ficha.verticalScrollBar().value()
-            self.ficha.setHtml(self._html(self._datos_actuales))
+            self._poner_ficha(self._html(self._datos_actuales))
             self.ficha.verticalScrollBar().setValue(posicion)
 
     # -- navegacion --------------------------------------------------------
@@ -393,7 +401,7 @@ class PestanaBuscador(QWidget):
             self._historial.append((item_id, self.caja.text().strip()))
             del self._historial[:-MAX_HISTORIAL]
         self.atras.setEnabled(len(self._historial) > 1)
-        self.ficha.setHtml(self._html(datos))
+        self._poner_ficha(self._html(datos))
         self.ficha.verticalScrollBar().setValue(0)
         self._consultar_precio(datos["item"])
         self.boton_objetivo.setEnabled(True)
@@ -439,7 +447,7 @@ class PestanaBuscador(QWidget):
             # respuesta a lo que se acaba de escribir.
             self._vaciar_ficha()
             self._sin_resultados = texto
-            self.ficha.setHtml(self._html_sin_resultados(texto))
+            self._poner_ficha(self._html_sin_resultados(texto))
 
     def _vaciar_ficha(self) -> None:
         self._actual = None
@@ -618,11 +626,18 @@ class PestanaBuscador(QWidget):
         for f in relaciones.fuentes_de(con, item["id"]):
             agrupadas.setdefault(f["tipo"], []).append(f)
         hay_estimacion = False
+        # Una sola escala para toda la ficha: el mismo tiempo se rellena igual en
+        # Misiones que en Contratos, y las secciones se comparan entre si.
+        referencia = relleno_filas.escala(
+            f["minutos_medios"]
+            for tipo in ORDEN_TIPOS
+            for f in _filas_visibles(agrupadas.get(tipo) or [])
+        )
         for tipo in ORDEN_TIPOS:
             grupo = agrupadas.get(tipo)
             if grupo:
                 partes.append(_seccion(_glosa(con, "tipo_fuente", tipo)))
-                partes.append(self._tabla_fuentes(grupo))
+                partes.append(self._tabla_fuentes(grupo, referencia))
                 hay_estimacion = hay_estimacion or any(f["minutos_medios"] is not None for f in grupo)
         if hay_estimacion:
             partes.append(
@@ -657,6 +672,10 @@ class PestanaBuscador(QWidget):
         return "".join(partes)
 
     def _bloque_ruta(self, item_id: int) -> str:
+        # Pieza prime (o el prime entero): reliquia, mision y tiempo hasta la pieza.
+        prime = pestana_primes.bloque_ficha(self.con, item_id)
+        if prime is not None:
+            return prime
         ruta = relaciones.mejor_ruta(self.con, item_id)
         if not ruta:
             return ""
@@ -694,7 +713,7 @@ class PestanaBuscador(QWidget):
                         html.escape(m["mision"]),
                         _rotacion(self.con, m["rotacion"], p["texto"]),
                         f"{m['probabilidad']:.1f}%" if m["probabilidad"] else "",
-                        _tiempo(m.get("minutos_medios"), p["texto"]),
+                        _tiempo(m.get("minutos_medios"), p["texto"], fila=m),
                     )
                     if x
                 )
@@ -720,7 +739,7 @@ class PestanaBuscador(QWidget):
         if prob:
             trozos.append(f"<b>{prob:.1f}%</b>")
         if ruta.get("minutos_medios") is not None:
-            trozos.append(_tiempo(ruta["minutos_medios"], p["texto"], negrita=True))
+            trozos.append(_tiempo(ruta["minutos_medios"], p["texto"], negrita=True, fila=m))
         tipo = _glosa(self.con, "tipo_fuente", ruta.get("tipo"))
         if m.get("recurso_planeta"):
             tipo = t("Jefe: suelta un recurso del planeta al morir")
@@ -761,7 +780,7 @@ class PestanaBuscador(QWidget):
                 + (f" &middot; {html.escape(m['mision'])}" if m["mision"] else "")
                 + (f" &middot; {_rotacion(self.con, m['rotacion'], p['suave'])}" if m["rotacion"] else "")
                 + (f" &middot; {m['probabilidad']:.1f}%" if m["probabilidad"] else "")
-                + (f" &middot; {_tiempo(m['minutos_medios'], p['suave'])}" if m["minutos_medios"] is not None else "")
+                + (f" &middot; {_tiempo(m['minutos_medios'], p['suave'], fila=m)}" if m["minutos_medios"] is not None else "")
                 + "</div>"
                 for m in misiones
             ) or f"<div style='color:{p['suave']}'>{html.escape(t('No cae en ninguna mision activa'))}</div>"
@@ -801,15 +820,17 @@ class PestanaBuscador(QWidget):
             )
         return _seccion(t("Contenido en Radiante"), "refinamiento") + _envolver(filas)
 
-    def _tabla_fuentes(self, grupo: list[dict]) -> str:
+    def _tabla_fuentes(self, grupo: list[dict], referencia: tuple[float, float] | None = None) -> str:
         p = PALETA
         filas = []
         # Cada modo de Conclave es una fila con un 0,2 %: ocho filas iguales que
         # tapaban lo farmeable. Van juntas en una sola linea al final.
         pvp = [f for f in grupo if f.get("motivo") == "pvp"]
-        grupo = [f for f in grupo if f.get("motivo") != "pvp"]
-        sobran = max(0, len(grupo) - MAX_FILAS_POR_TIPO)
-        for f in grupo[:MAX_FILAS_POR_TIPO]:
+        sobran = max(0, sum(1 for f in grupo if f.get("motivo") != "pvp") - MAX_FILAS_POR_TIPO)
+        visibles = _filas_visibles(grupo)
+        if referencia is None:
+            referencia = relleno_filas.escala(f.get("minutos_medios") for f in visibles)
+        for f in visibles:
             if f.get("jefe"):
                 # "Alad V (Temisto, Jupiter) - Asesinato": el nodo lo pone relaciones.
                 donde = f["donde"] + (f" - {f['mision']}" if f.get("mision") else "")
@@ -836,10 +857,15 @@ class PestanaBuscador(QWidget):
                 extra.append(html.escape(t("tabla {prob}%", prob=f"{f['probabilidad_enemigo']:.1f}")))
             prob = f"{f['probabilidad']:.1f}%" if f["probabilidad"] is not None else ""
             color = color_rareza(f["rareza"])
-            tiempo = _tiempo(f.get("minutos_medios"), p["texto"]) or _sin_estimacion(f.get("motivo"), p["suave"])
+            tiempo = _tiempo(f.get("minutos_medios"), p["texto"], fila=f) or _sin_estimacion(f.get("motivo"), p["suave"])
+            # La marca no es un enlace (sin href): solo dice cuanto rellenar la fila.
+            ancla = relleno_filas.marca(relleno_filas.fraccion(f.get("minutos_medios"), referencia))
+            nombre = f"<b>{html.escape(donde)}</b>"
+            if ancla:
+                nombre = f"<a name='{ancla}'>{nombre}</a>"
             filas.append(
                 f"<tr><td width='6' style='background:{color}'></td>"
-                f"<td><b>{html.escape(donde)}</b></td>"
+                f"<td>{nombre}</td>"
                 f"<td style='color:{p['suave']}'>{', '.join(extra)}</td>"
                 f"<td>{glosario.enlace('rareza', _glosa(self.con, 'rareza', f['rareza']), color)}</td>"
                 f"<td align='right'><b>{prob}</b></td>"
@@ -884,6 +910,11 @@ class PestanaBuscador(QWidget):
         return _tarjeta("".join(cuerpo), p["acento"])
 
 
+def _filas_visibles(grupo: list[dict]) -> list[dict]:
+    """Las filas que pinta la tabla de fuentes: sin las de Conclave y con el tope por tipo."""
+    return [f for f in grupo if f.get("motivo") != "pvp"][:MAX_FILAS_POR_TIPO]
+
+
 def _con_padre(nombre: str, padre: str | None) -> str:
     """'Sistemas de Ash Prime' o 'Ash Prime Systems', segun el idioma."""
     return t("{nombre} de {padre}", nombre=nombre, padre=padre) if padre else nombre
@@ -909,12 +940,16 @@ def _etiqueta(texto: str, fondo: str, color: str, clave_glosario: str | None = N
     )
 
 
-def _tiempo(minutos: float | None, color: str, negrita: bool = False) -> str:
-    """'~35 min' con la explicacion de la estimacion al pasar el raton; vacio si no hay."""
+def _tiempo(minutos: float | None, color: str, negrita: bool = False, fila: dict | None = None) -> str:
+    """'~35 min' con la explicacion de la estimacion al pasar el raton; vacio si no hay.
+
+    Con `fila` (la fuente de ese tiempo) el tooltip desglosa SUS numeros: minutos por
+    partida, partidas de media y total (desglose_tiempo); sin ella, la explicacion generica.
+    """
     texto = eficiencia.texto_minutos(minutos)
     if not texto:
         return ""
-    return glosario.enlace("tiempo_medio", texto, color, negrita)
+    return glosario.enlace("tiempo_medio", texto, color, negrita, desglose_tiempo.texto(fila))
 
 
 MOTIVOS_SIN_ESTIMACION = {

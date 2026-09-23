@@ -1,0 +1,20 @@
+{
+  "componente": {
+    "Blueprint": "Bauplan",
+    "Systems": "Systeme",
+    "Chassis": "Chassis",
+    "Neuroptics": "Neuroptik",
+    "Barrel": "Lauf",
+    "Receiver": "Verschluss",
+    "Stock": "Schaft",
+    "Handle": "Griff",
+    "Grip": "Griff",
+    "Head": "Kopf",
+    "Disc": "Scheibe",
+    "Chain": "Kette",
+    "Core": "Kern",
+    "Blade": "Klinge",
+    "Wings": "Flügel",
+    "Boot": "Stiefel"
+  }
+}

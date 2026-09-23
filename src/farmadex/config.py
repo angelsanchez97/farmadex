@@ -60,8 +60,17 @@ POR_DEFECTO = {
     "iniciar_con_windows": False,
     "motor_ocr": "rapidocr",
     "plataforma": PLATAFORMA,
+    # Guia de uso guiada dentro de la ventana: si ya se vio (o se salto), no vuelve a
+    # lanzarse sola. El boton "Guia" siempre la relanza aunque esto sea True.
+    "guia_vista": False,
+    # Aviso discreto ("Nuevo: guia de uso") para quien ya tenia Farmadex instalado antes
+    # de esta funcion: se ensena una sola vez y no vuelve, aunque no haga la guia.
+    "guia_aviso_visto": False,
     # "auto" = el idioma de Windows si lo tenemos traducido; si no, espanol.
     "idioma_ui": "auto",
+    # Ritmo de juego: multiplica las duraciones estimadas de las misiones (no las
+    # probabilidades). "rapido" x0.7, "normal" x1, "tranquilo" x1.4 (datos/eficiencia.py).
+    "ritmo_juego": "normal",
     "comprobar_actualizaciones_app": True,
     # Descargar la version nueva sola e instalarla al cerrar Farmadex (o al pulsar
     # "Reiniciar y actualizar"). Apagado, solo se avisa con el enlace de descarga.

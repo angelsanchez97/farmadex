@@ -69,6 +69,23 @@ CREATE TABLE IF NOT EXISTS glosario (
   dominio TEXT, en TEXT, es TEXT, PRIMARY KEY(dominio, en)
 );
 
+-- Glosario de componentes (y la palabra "Blueprint") en los idiomas que WFCD no
+-- traduce por si solo: fr, de, pt (ver glosario_fr.json etc). El espanol se queda
+-- en 'glosario' tal cual estaba, sin tocar lo que ya funcionaba.
+CREATE TABLE IF NOT EXISTS glosario_idiomas (
+  dominio TEXT, idioma TEXT, en TEXT, valor TEXT, PRIMARY KEY(dominio, idioma, en)
+);
+
+-- Nombre de cada objeto en un idioma que no sea espanol o ingles (fr, de, pt, it, pl).
+-- Aparte de nombre_en/nombre_es para no romper nada que ya lea esas dos columnas.
+CREATE TABLE IF NOT EXISTS items_nombres (
+  item_id INTEGER NOT NULL REFERENCES items(id),
+  idioma TEXT NOT NULL,
+  nombre TEXT NOT NULL,
+  PRIMARY KEY (item_id, idioma)
+);
+CREATE INDEX IF NOT EXISTS ix_items_nombres_idioma ON items_nombres(idioma);
+
 CREATE TABLE IF NOT EXISTS reliquia_recompensas (
   reliquia_id INTEGER NOT NULL REFERENCES items(id),
   refinamiento TEXT NOT NULL,

@@ -23,7 +23,15 @@ from ..registro_log import obtener
 log = obtener("ocr")
 
 # Lo que puede salir en una pantalla de recompensas o en el inventario.
-PALABRAS_VACIAS = {"de", "del", "la", "el", "los", "las", "of", "the"}
+# Con fr/de/pt/it hacen falta tambien sus articulos y preposiciones: "Plan du Chassis
+# de Caliban Prime", "Bauplan fur...", "Projeto do Chassi...".
+PALABRAS_VACIAS = {
+    "de", "del", "la", "el", "los", "las", "of", "the",
+    "du", "des", "le", "les", "l",  # fr
+    "der", "die", "das", "dem", "den", "von", "fur",  # de (normalizar() quita la dieresis)
+    "do", "da", "dos", "das", "o", "a",  # pt
+    "di", "il", "lo", "gli",  # it
+}
 
 # Palabras que aparecen en cientos de nombres y que, solas o juntas, no
 # identifican nada: "BLUEPRINT" suelto no puede casarse con "Bo Blueprint".
@@ -268,6 +276,29 @@ class MotorOCR:
             )
         return salida
 
+    def leer_tira(self, imagen) -> list[Leido]:
+        """Lee una tira estrecha de texto (la fila de nombres de las recompensas) tal cual.
+
+        RapidOCR amplia cualquier imagen hasta 736 px de lado corto antes de
+        detectar (una tira de 1250x80 pasa a 11500x736: ~150 ms) y, si es mas de
+        8 veces mas ancha que alta, ni detecta: la lee entera como una sola linea.
+        Aqui se llaman el detector y el reconocedor directamente y sin reescalar:
+        ~30 ms. Mismo contrato que `leer`.
+        """
+        if imagen is None:
+            return []
+        imagen = preparar(imagen)
+        if imagen is None:
+            return []
+        motor = self._cargar()
+        if motor == "winocr":  # pragma: no cover - el OCR de Windows no reescala
+            return self._leer_windows(imagen)
+        try:
+            return _leer_tira_rapidocr(motor, imagen)
+        except Exception as e:  # noqa: BLE001 - onnxruntime lanza de todo
+            log.warning("El OCR fallo sobre una tira de %sx%s: %s", imagen.shape[1], imagen.shape[0], e)
+            return []
+
     def _leer_windows(self, imagen) -> list[Leido]:  # pragma: no cover
         import winocr
         from PIL import Image
@@ -285,6 +316,37 @@ class MotorOCR:
             )
             for linea in resultado.get("lines", [])
         ]
+
+
+def _leer_tira_rapidocr(motor, imagen) -> list[Leido]:
+    """Detector y reconocedor de RapidOCR a pelo, con el reescalado del detector apagado.
+
+    El limite se cambia solo mientras dura la deteccion: el motor es compartido y
+    el resto de lecturas siguen queriendo el reescalado de siempre.
+    """
+    detector = motor.text_detector
+    reescalados = [op for op in detector.preprocess_op if type(op).__name__ == "DetResizeForTest"]
+    previos = [(op.limit_type, op.limit_side_len) for op in reescalados]
+    for op in reescalados:
+        op.limit_type, op.limit_side_len = "max", 8192
+    try:
+        cajas, _ = detector(imagen)
+    finally:
+        for op, (tipo, lado) in zip(reescalados, previos):
+            op.limit_type, op.limit_side_len = tipo, lado
+    if cajas is None or len(cajas) == 0:
+        return []
+    cajas = motor.sorted_boxes(cajas)
+    textos, _ = motor.text_recognizer(motor.get_crop_img_list(imagen, cajas))
+    salida = []
+    for caja, (texto, confianza) in zip(cajas, textos):
+        texto = texto.strip()
+        if not texto:
+            continue
+        xs = [int(p[0]) for p in caja]
+        ys = [int(p[1]) for p in caja]
+        salida.append(Leido(texto, min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys), float(confianza)))
+    return salida
 
 
 def _imagen_de_prueba(ancho: int = 1536, alto: int = 454):
@@ -412,19 +474,52 @@ class Casador:
         filas = con.execute(
             f"""
             SELECT i.id, i.nombre_en, i.nombre_es, p.nombre_en, p.nombre_es,
-                   i.categoria, i.tipo, i.unique_name
+                   i.categoria, i.tipo, i.unique_name, i.padre_id
               FROM items i LEFT JOIN items p ON p.id = i.padre_id
              WHERE i.categoria IN ({marcas})
              ORDER BY (i.market_slug IS NULL), (i.ducados IS NULL), length(i.unique_name)
             """,
             tuple(categorias),
         ).fetchall()
+
+        # Nombres en fr/de/pt/it/pl de los objetos de arriba y de sus padres.
+        ids = {f[0] for f in filas} | {f[8] for f in filas if f[8]}
+        nombres_idioma: dict[int, dict[str, str]] = {}
+        if ids:
+            marcas_id = ", ".join("?" * len(ids))
+            for iid, idioma, nombre in con.execute(
+                f"SELECT item_id, idioma, nombre FROM items_nombres WHERE item_id IN ({marcas_id})",
+                tuple(ids),
+            ):
+                nombres_idioma.setdefault(iid, {})[idioma] = nombre
+
+        # Palabras genericas y la palabra local de "Blueprint" en cada idioma, sacadas
+        # del glosario de componentes (WFCD no trae esa palabra traducida en ningun sitio).
+        self.genericas = set(GENERICAS)
+        self.palabras_plano = ["plano", "blueprint"]
+        for idioma, en, valor in con.execute(
+            "SELECT idioma, en, valor FROM glosario_idiomas WHERE dominio = 'componente'"
+        ):
+            palabra = normalizar(valor)
+            if not palabra:
+                continue
+            self.genericas.update(palabra.split())
+            if en == "Blueprint" and palabra not in self.palabras_plano:
+                self.palabras_plano.append(palabra)
+
         self.candidatos: dict[str, tuple[int, str]] = {}
         alias: dict[str, tuple[int, str]] = {}
-        for iid, nombre_en, nombre_es, padre_en, padre_es, categoria, tipo, unique_name in filas:
+        for iid, nombre_en, nombre_es, padre_en, padre_es, categoria, tipo, unique_name, padre_id in filas:
             if filtro is not None and not filtro(categoria, tipo, unique_name):
                 continue
-            for nombre, padre in ((nombre_es, padre_es), (nombre_en, padre_en)):
+            pares = [(nombre_es, padre_es), (nombre_en, padre_en)]
+            extra_item = nombres_idioma.get(iid, {})
+            extra_padre = nombres_idioma.get(padre_id, {}) if padre_id else {}
+            for idioma, nombre_i in extra_item.items():
+                # Sin nombre del padre en ese idioma, el nombre en espanol o ingles vale
+                # igual: los nombres propios (Ash Prime, Braton Prime...) no cambian.
+                pares.append((nombre_i, extra_padre.get(idioma) or padre_es or padre_en))
+            for nombre, padre in pares:
                 if not nombre:
                     continue
                 etiqueta = f"{padre} {nombre}" if padre else nombre
@@ -434,8 +529,10 @@ class Casador:
                     if not variante:
                         continue
                     self.candidatos.setdefault(variante, (iid, etiqueta))
-                    # El juego escribe "Plano" al final; tambien se busca sin el.
-                    sin_plano = variante.removesuffix(" plano").removesuffix(" blueprint")
+                    # El juego escribe "Plano"/"Blueprint"/etc. al final; tambien se busca sin el.
+                    sin_plano = variante
+                    for palabra in self.palabras_plano:
+                        sin_plano = sin_plano.removesuffix(f" {palabra}")
                     if sin_plano != variante:
                         alias.setdefault(sin_plano, (iid, etiqueta))
         # Los alias van detras: "Cycron" es el arma, no "Cycron Plano". Se
@@ -474,6 +571,8 @@ class Casador:
         frente a los ~30 de volver a leer el indice.
         """
         copia = Casador.__new__(Casador)
+        copia.genericas = self.genericas
+        copia.palabras_plano = self.palabras_plano
         copia.candidatos = {k: v for k, v in self.candidatos.items() if v[0] in ids}
         copia.alias = {k: v for k, v in self.alias.items() if v[0] in ids}
         copia.alias_compactos = {k.replace(" ", ""): v for k, v in copia.alias.items()}
@@ -512,12 +611,14 @@ class Casador:
         # Sin quitarlo, "plano chasis caliban prime" se parecia casi igual al chasis
         # que al plano principal ("Caliban Prime Plano"), y ganaba el principal.
         con_plano = False
-        for prefijo in ("plano ", "blueprint "):
+        for palabra in self.palabras_plano:
+            prefijo = f"{palabra} "
             if consulta.startswith(prefijo) and consulta != prefijo.strip():
                 con_plano = True
                 consulta = consulta.removeprefix(prefijo)
                 break
-        for sufijo in (" blueprint", " plano"):
+        for palabra in self.palabras_plano:
+            sufijo = f" {palabra}"
             if consulta.endswith(sufijo):
                 con_plano = True
                 consulta = consulta.removesuffix(sufijo)
@@ -543,7 +644,7 @@ class Casador:
             return exacto[0], exacto[1], 100.0
 
         # Solo palabras genericas ("BLUEPRINT", "PRIME SYSTEMS"): no hay objeto.
-        if all(p in GENERICAS for p in consulta.split()) or compacta in GENERICAS:
+        if all(p in self.genericas for p in consulta.split()) or compacta in self.genericas:
             return nada
         # Cuanto mas corto lo leido, menos erratas caben: "BLADE" no es "Blaze".
         umbral_efectivo = max(float(umbral), 96.0 - len(compacta))
@@ -578,7 +679,7 @@ class Casador:
             return nada
         mejor_puntos, mejor_clave = puntuadas[0]
         mejor_id = self.candidatos[mejor_clave][0]
-        if not _lleva_lo_distintivo(mejor_clave, compacta):
+        if not _lleva_lo_distintivo(mejor_clave, compacta, self.genericas):
             # "EMPUNADURA DE QUASSUS PRIME" se parecia un 84 % a "Nikana Prime
             # Empunadura" solo por las palabras genericas: sin rastro de "nikana"
             # en lo leido, no es ese objeto. Mejor nada que una etiqueta segura y falsa.
@@ -639,10 +740,10 @@ def _con_sinonimos(clave: str) -> list[str]:
     return salida
 
 
-def _lleva_lo_distintivo(clave: str, compacta: str) -> bool:
+def _lleva_lo_distintivo(clave: str, compacta: str, genericas=GENERICAS) -> bool:
     """True si alguna palabra NO generica del candidato aparece (aunque con erratas)
     en lo leido. Un candidato sin palabras distintivas no se comprueba."""
-    distintivas = [p for p in clave.split() if p not in GENERICAS and p not in PALABRAS_VACIAS and len(p) >= 3]
+    distintivas = [p for p in clave.split() if p not in genericas and p not in PALABRAS_VACIAS and len(p) >= 3]
     if not distintivas:
         return True
     return any(fuzz.partial_ratio(p, compacta) >= 75 for p in distintivas)

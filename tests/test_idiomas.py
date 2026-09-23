@@ -132,7 +132,7 @@ def _claves_del_codigo() -> set[str]:
     # Textos que llegan a t() desde constantes, no como literal en la llamada.
     from farmadex.captura import reliquias
     from farmadex.online import worldstate
-    from farmadex.ui import glosario, pestana_buscador, pestana_mundo, pestana_perfil, widgets
+    from farmadex.ui import glosario, pestana_buscador, pestana_mundo, pestana_perfil, pestana_primes, widgets
     from farmadex.ui.pestana_ajustes import PestanaAjustes
 
     for grupo in (
@@ -145,7 +145,8 @@ def _claves_del_codigo() -> set[str]:
         PestanaAjustes.MODOS_PANTALLA.values(), worldstate.CICLOS.values(),
         worldstate.ESTADOS_CICLO.values(), (reliquias.AVISO_DATOS, reliquias.AVISO_MOTOR),
         # Titulos de las pestanas (VentanaOverlay._titulos_pestanas los pasa por t()).
-        ("Buscar", "Objetivos", "Mundo", "Perfil", "Ajustes"),
+        ("Buscar", "Objetivos", "Primes", "Mundo", "Perfil", "Ajustes"),
+        pestana_primes.NOMBRES_REFINAMIENTO.values(),
     ):
         claves.update(grupo)
     return claves

@@ -358,7 +358,7 @@ def recurso_de_planeta(con: sqlite3.Connection, item_id: int) -> dict | None:
     for n in nodos:
         n["donde"] = f"{nombre(n, 'nodo')}, {nombre(n, 'planeta')}"
         n["mision"] = glosa(n["mision_es"], n["mision_en"]) if n["mision_es"] else n["mision_en"]
-        n["minutos"] = eficiencia.UNA_VEZ.get(n["mision_en"], eficiencia.DURACION_DESCONOCIDA)
+        n["minutos"] = eficiencia.minutos_mision(n["mision_en"])  # al ritmo de Ajustes
     nodos.sort(key=lambda n: (n["minutos"], n["nivel_min"] if n["nivel_min"] is not None else 999))
     jefes: list[dict] = []
     for enemigo, (nodo_en, probabilidad) in eficiencia.JEFES.items():
@@ -443,15 +443,38 @@ def mejor_ruta(con: sqlite3.Connection, item_id: int) -> dict | None:
     elegido, con 'donde', 'mision', 'rotacion', 'probabilidad'), `misiones` (los
     cinco mejores sitios), `probabilidad` (la de la ruta: Radiante en reliquia,
     efectiva en el resto), `minutos_medios` (tiempo medio estimado hasta que caiga
-    en el sitio elegido: el de la reliquia, sin contar abrirla) y `alternativas`
-    (los otros sitios, sin el elegido).
+    en el sitio elegido: el de la reliquia, sin contar abrirla), `minutos_pieza`
+    (hasta tener la pieza, con reliquias a abrir y fisuras, segun ruta_prime y las
+    preferencias de la pestana Primes; None si no aplica) y `alternativas` (los
+    otros sitios, sin el elegido). Con reliquias fuera de boveda, reliquia y sitio
+    son los de menor `minutos_pieza`.
     """
     reliquias = reliquias_de(con, item_id)
     if reliquias:
         disponibles = [r for r in reliquias if not r["vaulted"]]
         mejor = (disponibles or reliquias)[0]
         misiones = misiones_de(con, mejor["reliquia_id"])
+        minutos_pieza = None
+        if disponibles:
+            # La reliquia y el sitio los decide el tiempo hasta la PIEZA (ruta_prime:
+            # reliquias que hay que abrir, fisuras y reliquias utiles que caen juntas),
+            # no el mayor porcentaje: asi Objetivos, la vista compacta y la ficha
+            # recomiendan lo mismo. Importado aqui porque ruta_prime usa este modulo.
+            from . import ruta_prime
+
+            ruta = ruta_prime.ruta_pieza(con, item_id)
+            if ruta and ruta["mision"]:
+                elegida = ruta["reliquia"]["reliquia_id"]
+                mejor = next((r for r in disponibles if r["reliquia_id"] == elegida), mejor)
+                misiones = misiones_de(con, mejor["reliquia_id"])
+                sitio = ruta["mision"]
+                misiones.sort(
+                    key=lambda f: (f["origen_texto"], (f["rotacion"] or "").upper(), f.get("etapa") or "")
+                    != (sitio["origen_texto"], (sitio["rotacion"] or "").upper(), sitio.get("etapa") or "")
+                )
+                minutos_pieza = ruta["minutos"]
         return {
+            "minutos_pieza": minutos_pieza,
             "tipo": "reliquia",
             "reliquia": mejor,
             "solo_en_boveda": not disponibles,
@@ -468,6 +491,7 @@ def mejor_ruta(con: sqlite3.Connection, item_id: int) -> dict | None:
     mejor = fuentes[0]
     return {
         "tipo": mejor["tipo"],
+        "minutos_pieza": None,
         "reliquia": None,
         "solo_en_boveda": False,
         "mision": mejor,

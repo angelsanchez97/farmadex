@@ -1,0 +1,28 @@
+{
+  "componente": {
+    "Blueprint": "Plan",
+    "Systems": "Systèmes",
+    "Chassis": "Châssis",
+    "Neuroptics": "Neuroptique",
+    "Barrel": "Canon",
+    "Receiver": "Culasse",
+    "Stock": "Crosse",
+    "Handle": "Poignée",
+    "Hilt": "Garde",
+    "Grip": "Prise",
+    "Link": "Maillon",
+    "String": "Corde",
+    "Carapace": "Carapace",
+    "Cerebrum": "Cerveau",
+    "Guard": "Garde",
+    "Harness": "Harnais",
+    "Head": "Tête",
+    "Disc": "Disque",
+    "Chain": "Chaîne",
+    "Core": "Noyau",
+    "Blade": "Lame",
+    "Wings": "Ailes",
+    "Boot": "Botte",
+    "Gauntlet": "Gantelet"
+  }
+}

@@ -88,6 +88,13 @@ POR_TRAMOS = {
     "Caches": {"A": 6.0, "B": 9.0, "C": 12.0},
 }
 
+# Fisura del Vacio para abrir una reliquia (ruta_prime.py): la mas rapida que suele
+# haber, una Captura, con lo que cuesta reunir los 10 de reactivo por el camino y la
+# pantalla de elegir recompensa. Exterminio seria ~3 min mas; el tipo de fisura lo
+# decide el juego cada hora, asi que se toma la rapida, que es la que se busca.
+FISURA_REACTIVO = 1.0
+FISURA = UNA_VEZ["Capture"] + FISURA_REACTIVO + CARGA  # 5.5 min por reliquia abierta
+
 # Modos que no se pueden estimar: Conclave es PvP y depende de la partida.
 NO_ESTIMABLES = {"Conclave"}
 
@@ -187,29 +194,83 @@ def duracion_bounty(origen_texto: str) -> float:
     return BOUNTY_BASE
 
 
-def _sin_fin(minutos_rotacion: float, rotacion: str | None) -> float:
-    """Minutos por oportunidad en una mision sin fin, saliendo en el mejor momento."""
-    rotaciones, premios = ROTACIONES_SIN_FIN.get((rotacion or "").upper(), (2, 1))
-    return (rotaciones * minutos_rotacion + CARGA) / premios
+# Ritmo de juego (Ajustes): cuanto tarda el jugador en una partida respecto al jugador
+# medio de las tablas de arriba. Multiplica TODAS las duraciones (mision, rotaciones,
+# carga, fisura), nunca las probabilidades: asi todos los tiempos cambian en la misma
+# proporcion y el orden de las fuentes no se mueve.
+#   rapido    x0.7  veterano con equipo para barrer: una Captura en ~2 min, no en 3.
+#   normal    x1    el jugador medio para el que estan pensadas las tablas.
+#   tranquilo x1.4  quien empieza, explora o recoge todo lo que ve por el camino.
+RITMOS = {"rapido": 0.7, "normal": 1.0, "tranquilo": 1.4}
+RITMO_POR_DEFECTO = "normal"
+CLAVE_RITMO = "ritmo_juego"
 
 
-def _tramos(minutos: dict[str, float], rotacion: str | None) -> float:
+def ritmo() -> str:
+    """El ritmo elegido en Ajustes ('rapido', 'normal' o 'tranquilo')."""
+    try:
+        from ..config import cargar
+
+        elegido = cargar().get(CLAVE_RITMO)
+    except Exception:  # noqa: BLE001 - sin configuracion legible vale el de por defecto
+        elegido = None
+    return elegido if elegido in RITMOS else RITMO_POR_DEFECTO
+
+
+def con_ritmo(minutos: float) -> float:
+    """Minutos de jugador medio pasados al ritmo del usuario.
+
+    Es el UNICO sitio que aplica el ritmo: todo lo que da minutos (fuentes, rutas
+    prime, misiones rapidas de un recurso de planeta) pasa por aqui.
+    """
+    return minutos * RITMOS[ritmo()]
+
+
+def minutos_mision(modo: str) -> float:
+    """Lo que dura una mision de un solo premio, sin la carga, al ritmo del usuario."""
+    return con_ritmo(UNA_VEZ.get(modo, DURACION_DESCONOCIDA))
+
+
+def minutos_fisura() -> float:
+    """Lo que cuesta abrir una reliquia (FISURA) al ritmo del usuario."""
+    return con_ritmo(FISURA)
+
+
+def _info(clase: str, partida: float, premios: int = 1, **extra) -> dict:
+    """Desglose de un intento con todos los minutos ya al ritmo del usuario."""
+    info = {"clase": clase, "partida": con_ritmo(partida), "premios": premios}
+    info.update({c: (con_ritmo(v) if c.startswith("min_") else v) for c, v in extra.items()})
+    return info
+
+
+def _sin_fin(minutos_rotacion: float, rotacion: str | None) -> dict:
+    """Una oportunidad en una mision sin fin, saliendo en el mejor momento."""
+    letra = (rotacion or "").upper()
+    rotaciones, premios = ROTACIONES_SIN_FIN.get(letra, (2, 1))
+    return _info(
+        "sin_fin", rotaciones * minutos_rotacion + CARGA, premios,
+        rotacion=letra, rotaciones=rotaciones, min_rotacion=minutos_rotacion,
+    )
+
+
+def _tramos(minutos: dict[str, float], rotacion: str | None) -> dict:
     clave = (rotacion or "").upper()
-    return (minutos.get(clave) or max(minutos.values())) + CARGA
+    return _info("tramos", (minutos.get(clave) or max(minutos.values())) + CARGA, rotacion=clave)
 
 
-def minutos_por_intento(f: dict) -> tuple[float | None, str]:
-    """Minutos que cuesta cada oportunidad de que salga el objeto, y un motivo.
+def _intento(f: dict) -> tuple[dict | None, str]:
+    """Como es cada oportunidad de que salga el objeto, o por que no se estima.
 
-    El motivo es 'estimado' cuando hay numero; si no, dice por que no lo hay:
-    'por_muerte' (enemigo comun), 'reputacion', 'diaria' (incursion), 'semanal'
-    (Archimedea), 'evento' (solo durante un evento), 'pvp' o 'desconocido'.
+    El dict lleva `clase` ('una_vez', 'sin_fin', 'tramos', 'bounty' o 'jefe'),
+    `partida` (minutos de una partida, con la carga), `premios` (oportunidades que da
+    esa partida) y, segun la clase, `rotacion`, `rotaciones`, `min_rotacion` o
+    `min_tanda`. Todos los minutos ya van al ritmo del usuario.
     """
     tipo = f.get("tipo")
     rotacion = f.get("rotacion")
     if tipo == "enemigo":
         if f.get("jefe"):
-            return UNA_VEZ["Assassination"] + CARGA, "estimado"
+            return _info("jefe", UNA_VEZ["Assassination"] + CARGA), "estimado"
         return None, "por_muerte"
     if tipo == "sindicato":
         return None, "reputacion"
@@ -218,11 +279,12 @@ def minutos_por_intento(f: dict) -> tuple[float | None, str]:
     if RE_EVENTO.search(f.get("origen_texto") or ""):
         return None, "evento"
     if tipo == "bounty":
-        return BOUNTY_CICLO * (duracion_bounty(f.get("origen_texto") or "") + CARGA), "estimado"
+        tanda = duracion_bounty(f.get("origen_texto") or "") + CARGA
+        return _info("bounty", BOUNTY_CICLO * tanda, min_tanda=tanda, tandas=BOUNTY_CICLO), "estimado"
     if tipo == "transitoria":
         origen = f.get("origen_texto") or ""
         if RE_VOID_STORM.match(origen):
-            return UNA_VEZ["Skirmish"] + CARGA, "estimado"
+            return _info("una_vez", UNA_VEZ["Skirmish"] + CARGA), "estimado"
         if RE_SEMANAL.search(origen):
             return None, "semanal"
         clase, dato = TRANSITORIAS.get(origen, ("una_vez", DURACION_TRANSITORIA))
@@ -230,7 +292,7 @@ def minutos_por_intento(f: dict) -> tuple[float | None, str]:
             return _sin_fin(dato, rotacion), "estimado"
         if clase == "tramos":
             return _tramos(dato, rotacion), "estimado"
-        return dato + CARGA, "estimado"
+        return _info("una_vez", dato + CARGA), "estimado"
     if tipo in ("mision", "llave"):
         modo = f.get("modo") or f.get("mision_en") or ""
         if modo in NO_ESTIMABLES:
@@ -239,8 +301,42 @@ def minutos_por_intento(f: dict) -> tuple[float | None, str]:
             return _tramos(POR_TRAMOS[modo], rotacion), "estimado"
         if modo in SIN_FIN:
             return _sin_fin(SIN_FIN[modo], rotacion), "estimado"
-        return UNA_VEZ.get(modo, DURACION_DESCONOCIDA) + CARGA, "estimado"
+        return _info("una_vez", UNA_VEZ.get(modo, DURACION_DESCONOCIDA) + CARGA), "estimado"
     return None, "desconocido"
+
+
+def minutos_por_intento(f: dict) -> tuple[float | None, str]:
+    """Minutos que cuesta cada oportunidad de que salga el objeto, y un motivo.
+
+    El motivo es 'estimado' cuando hay numero; si no, dice por que no lo hay:
+    'por_muerte' (enemigo comun), 'reputacion', 'diaria' (incursion), 'semanal'
+    (Archimedea), 'evento' (solo durante un evento), 'pvp' o 'desconocido'.
+    Los minutos siguen el ritmo de juego elegido en Ajustes.
+    """
+    info, motivo = _intento(f)
+    if info is None:
+        return None, motivo
+    return info["partida"] / info["premios"], motivo
+
+
+def desglose(f: dict) -> dict | None:
+    """De donde sale el tiempo medio de una fila, para explicarlo; None sin estimacion.
+
+    Lo de `_intento` mas `intento` (minutos por oportunidad), `probabilidad` (en %,
+    la que se uso), `veces` (oportunidades de media hasta que salga), `total`
+    (los minutos medios de la fila) y `ritmo`.
+    """
+    info, _motivo = _intento(f)
+    probabilidad = f.get("probabilidad_efectiva", f.get("probabilidad"))
+    total = minutos_medios(info["partida"] / info["premios"], probabilidad) if info else None
+    if total is None:
+        return None
+    info["intento"] = info["partida"] / info["premios"]
+    info["probabilidad"] = min(float(probabilidad), 100.0)
+    info["veces"] = 100.0 / info["probabilidad"]
+    info["total"] = total
+    info["ritmo"] = ritmo()
+    return info
 
 
 def minutos_medios(minutos_intento: float | None, probabilidad: float | None) -> float | None:

@@ -147,6 +147,10 @@ SCRIPT_DIALOGO = "Dialog.lua:"
 RE_RELIQUIA = re.compile(r"\b(Lith|Meso|Neo|Axi|Requiem) ([A-Z]\d{1,2})\b")
 # Recompensa que le ha tocado a un jugador de la escuadra, con la ruta del objeto.
 RE_RECOMPENSA = re.compile(r"VoidProjections: [0-9a-f]+ gets reward (/Lotus/\S+)")
+# Justo detras de "Got rewards" el juego escribe una de estas por tarjeta en pantalla
+# (visto en un EE.log real: cuatro lineas con cuatro jugadores). Sirve para saber
+# cuantas recompensas esperar sin fiarse solo del tamano de la escuadra.
+MARCA_TARJETA = "ProjectionRewardChoice.lua: Missing icon data!"
 # El juego nombra las recompensas como articulo de tienda; el indice, como objeto.
 PREFIJO_TIENDA = "/Lotus/StoreItems/"
 
@@ -156,6 +160,8 @@ def pista(linea: str) -> tuple[str, str] | None:
     if SCRIPT_DIALOGO in linea:
         m = RE_RELIQUIA.search(linea)
         return ("reliquia", f"{m.group(1)} {m.group(2)}") if m else None
+    if MARCA_TARJETA in linea:
+        return ("tarjeta", "1")
     m = RE_RECOMPENSA.search(linea)
     if m:
         ruta = m.group(1)
@@ -257,7 +263,10 @@ class VigilanteEELog(QThread):
     pantalla = Signal(str, str)  # ("abierta", "perfil"), ("cerrada", ""), ("pausa", "")
     arranque = Signal(object)  # Cabecera: al ver el fichero y cada vez que el juego arranca
 
-    INTERVALO = 0.5
+    # Cada cuanto se mira si EE.log ha crecido. Es el primer trozo del retraso entre
+    # que el juego pinta las recompensas y que se leen: con 0,5 s se esperaba de
+    # media 250 ms a ciegas. Un stat() cada 100 ms no se nota.
+    INTERVALO = 0.1
 
     def __init__(self, ruta: str | Path, parent=None):
         super().__init__(parent)

@@ -134,14 +134,23 @@ UMBRAL_RECETAS_RECURSO = 3
 class ImportadorItems:
     """Vuelca warframe-items en las tablas items / nodos / reliquia_recompensas."""
 
-    def __init__(self, con: sqlite3.Connection, i18n: dict):
+    def __init__(self, con: sqlite3.Connection, i18n: dict, idiomas_extra: dict[str, dict] | None = None):
         self.con = con
         self.i18n = i18n
+        # Nombres en otros idiomas (fr, de, pt, it, pl): {idioma: {unique_name: {"name": ...}}}.
+        # Van a la tabla items_nombres, aparte de nombre_en/nombre_es que no se tocan.
+        self.idiomas_extra = idiomas_extra or {}
         # El catalogo no traduce los nombres de las piezas ("Systems", "Barrel"):
         # se completan con el glosario para que la busqueda en espanol las encuentre.
         self.componentes_es = {
             en: es for en, es in con.execute("SELECT en, es FROM glosario WHERE dominio = 'componente'")
         }
+        # Lo mismo para los idiomas extra: {idioma: {en: traducido}}, de glosario_idiomas.
+        self.componentes_extra: dict[str, dict[str, str]] = {}
+        for dominio, idioma, en, valor in con.execute(
+            "SELECT dominio, idioma, en, valor FROM glosario_idiomas WHERE dominio = 'componente'"
+        ):
+            self.componentes_extra.setdefault(idioma, {})[en] = valor
         # nombre normalizado -> item_id, para que drop-data pueda casar por texto
         self.alias: dict[str, int] = {}
         # nombre canonico de reliquia normalizado -> item_id
@@ -152,12 +161,33 @@ class ImportadorItems:
         self.recetas_por_ingrediente: dict[str, set[int]] = {}
         # nombre de componente -> ids, para dar alias propio a los que no se repiten
         self.componentes_por_nombre: dict[str, list[int]] = {}
+        # item_id -> {idioma: nombre}, para que un componente pueda nombrar a su padre
+        # en su mismo idioma aunque el padre ya se haya insertado antes.
+        self.nombres_extra_por_item: dict[int, dict[str, str]] = {}
 
     # -- utilidades -----------------------------------------------------
 
     def _es(self, unique_name: str) -> tuple[str | None, str | None]:
         trad = self.i18n.get(unique_name) or {}
         return _nombre(trad.get("name")), _texto(trad.get("description"))
+
+    def _extra(self, unique_name: str) -> dict[str, str]:
+        """Nombre de este objeto en cada idioma de IDIOMAS_EXTRA que lo traiga."""
+        salida = {}
+        for idioma, datos in self.idiomas_extra.items():
+            nombre = _nombre((datos.get(unique_name) or {}).get("name"))
+            if nombre:
+                salida[idioma] = nombre
+        return salida
+
+    def _guardar_nombres_idioma(self, item_id: int, nombres: dict[str, str]) -> None:
+        self.nombres_extra_por_item[item_id] = nombres
+        for idioma, nombre in nombres.items():
+            if nombre:
+                self.con.execute(
+                    "INSERT OR REPLACE INTO items_nombres (item_id, idioma, nombre) VALUES (?, ?, ?)",
+                    (item_id, idioma, nombre),
+                )
 
     def _registrar_alias(self, nombre: str, item_id: int) -> None:
         clave = normalizar(nombre)
@@ -240,6 +270,7 @@ class ImportadorItems:
                 }
             )
             self._registrar_alias(nombre, item_id)
+            self._guardar_nombres_idioma(item_id, self._extra(unico))
             cuenta += 1
 
             for drop in _lista(obj.get("drops")):
@@ -287,6 +318,13 @@ class ImportadorItems:
         )
         if primera_vez:
             self.componentes_por_nombre[nombre].append(item_id)
+        # Nombre en fr/de/pt/it/pl: primero el de WFCD si lo trae (raro en piezas),
+        # si no el del glosario de componentes de ese idioma ("Chassis" -> "Châssis").
+        nombres_idioma = self._extra(unico)
+        for idioma, palabras in self.componentes_extra.items():
+            if idioma not in nombres_idioma and palabras.get(nombre):
+                nombres_idioma[idioma] = palabras[nombre]
+        self._guardar_nombres_idioma(item_id, nombres_idioma)
         # Alias con los que drop-data nombra las piezas: "Ash Prime Chassis Blueprint".
         self._registrar_alias(f"{padre_en} {nombre}", item_id)
         if not nombre.lower().endswith("blueprint"):

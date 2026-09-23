@@ -17,6 +17,7 @@ from PySide6.QtCore import QObject, QTimer, Signal, Slot
 from ..idiomas import t
 from ..registro_log import obtener
 from . import pantalla
+from . import recompensas_rapidas as rapidas
 from .ocr import (
     Casador, ErrorMotorOCR, Leido, MotorOCR, Reconocido, _caja_union, agrupar_bloques, casar_lineas,
     leer_lineas, reconocer,
@@ -186,13 +187,39 @@ class LectorRecompensas(LectorBase):
     leidas = Signal(list)  # list[Recompensa]
 
     UMBRAL_CONOCIDAS = 70
+    # Valores de partida tambien a nivel de clase: hay pruebas que construyen el
+    # lector sin pasar por __init__.
+    tarjetas = 0
+    _miradas = 0
+    _casador_reliquias: Casador | None = None
+    _casador_piezas: Casador | None = None
 
     def __init__(self, motor_ocr: str = "rapidocr", parent=None):
         super().__init__(motor_ocr, CATEGORIAS_RECOMPENSA, parent)
         self.conocidas: list[str] = []  # unique_names que EE.log dio para esta reliquia
         self.jugadores: int | None = None  # tamano de la escuadra segun EE.log
         self._casador_conocidas: Casador | None = None
+        self._casador_reliquias: Casador | None = None  # lo que puede salir de una reliquia
+        self._casador_piezas: Casador | None = None  # el catalogo sin armas ni warframes enteros
         self._t_aviso: float | None = None  # cuando EE.log aviso de la pantalla
+        self.tarjetas = 0  # lineas "Missing icon data!" de esta pantalla: una por recompensa
+        self._miradas = 0  # lecturas de esta pantalla; las dos primeras solo miran la fila
+
+    @Slot()
+    def iniciar(self) -> None:
+        super().iniciar()
+        if self.casador is not None and self._casador_reliquias is None:
+            from ..datos import indice
+
+            con = indice.conectar()
+            try:
+                ids = rapidas.ids_reliquias(con)
+                self._casador_piezas = rapidas.catalogo_de_piezas(self.casador, con)
+            finally:
+                con.close()
+            self._casador_reliquias = self.casador.restringido(ids) if ids else None
+        if not self.motor.fallo:
+            rapidas.precalentar(self.motor)
 
     @Slot(str, str)
     def pista(self, tipo: str, valor: str) -> None:
@@ -204,6 +231,8 @@ class LectorRecompensas(LectorBase):
                 self.jugadores = min(4, int(valor) + 1)
             except ValueError:
                 self.jugadores = None
+        elif tipo == "tarjeta":
+            self.tarjetas = min(4, self.tarjetas + 1)
 
     @Slot(str)
     def evento(self, nombre: str) -> None:
@@ -211,12 +240,25 @@ class LectorRecompensas(LectorBase):
             self.conocidas = []
             self._casador_conocidas = None
             self._t_aviso = time.monotonic()
+            self.tarjetas = 0
+            self._miradas = 0
         elif nombre == "reliquia_recompensas":
             self._t_aviso = time.monotonic()
+            self._miradas = 0
         elif nombre == "reliquia_cerrada":
             self.conocidas = []
             self._casador_conocidas = None
             self._t_aviso = None
+            self.tarjetas = 0
+
+    def _esperadas(self) -> int | None:
+        """Cuantas tarjetas hay segun EE.log (marcas de tarjeta o escuadra), o None."""
+        return max(self.tarjetas, self.jugadores or 0) or None
+
+    def _escalonado(self) -> rapidas.CasadorEscalonado:
+        return rapidas.CasadorEscalonado(
+            self._casador_piezas or self.casador, self._casador_reliquias, self._conocidas()
+        )
 
     def _conocidas(self) -> Casador | None:
         """Casador restringido a lo que EE.log dio; None si no dio nada o no esta en el indice."""
@@ -227,10 +269,7 @@ class LectorRecompensas(LectorBase):
 
             con = indice.conectar()
             try:
-                marcas = ",".join("?" for _ in self.conocidas)
-                ids = {f[0] for f in con.execute(
-                    f"SELECT id FROM items WHERE unique_name IN ({marcas})", tuple(self.conocidas)
-                )}
+                ids = rapidas.ids_conocidas(con, self.conocidas)
             finally:
                 con.close()
             self._casador_conocidas = self.casador.restringido(ids) if ids else None
@@ -262,8 +301,7 @@ class LectorRecompensas(LectorBase):
             return False
         if time.monotonic() - self._t_aviso > self.PLAZO_REINTENTO_S:
             return False
-        esperadas = self.jugadores or 1
-        return halladas < esperadas
+        return halladas < (self._esperadas() or 1)
 
     def _reintentar(self) -> None:
         QTimer.singleShot(self.REINTENTO_MS, self.leer_ahora)
@@ -273,60 +311,33 @@ class LectorRecompensas(LectorBase):
             self.leidas.emit([])
             return
         self.estado.emit(t("Leyendo la pantalla..."))
-        tiempos: dict[str, float] = {}
-        t0 = time.perf_counter()
+        tiempos: dict = {}
         ventana = pantalla.region_objetivo()
-        region = ventana.recortar(*FRANJA)
-        imagen = pantalla.capturar(region)
-        tiempos["captura"] = time.perf_counter() - t0
-        if imagen is None:
+        self._miradas += 1
+        # Tras el aviso de EE.log, las dos primeras miradas solo leen la fila de
+        # nombres (~30 ms): si la pantalla aun no esta pintada, gastar la franja
+        # entera solo retrasaria la siguiente mirada. A partir de la tercera, y
+        # siempre que se lee por atajo, la franja entera entra como respaldo.
+        lento = None if (self._miradas <= 2 and self._toca_reintentar(0)) else self._leer_franja
+        lectura = rapidas.leer_pantalla(
+            pantalla.capturar, ventana, self.motor, self._escalonado(), self._esperadas(), lento, tiempos,
+        )
+        if lectura is None:
             self.estado.emit(t("No se pudo capturar la pantalla"))
             self.leidas.emit([])
             return
-        encontrados = self._leer_y_casar(imagen, tiempos)
-        if encontrados is None:
-            self.leidas.emit([])
-            return
-        if not encontrados and self._toca_reintentar(0):
-            # Pronto para la pantalla: se vuelve a mirar en 150 ms sin gastar una
-            # segunda lectura de la ventana entera ni borrar lo que haya pintado.
-            self._anotar_tiempos(tiempos, imagen, ventana, 0)
+        fila = lectura.recompensas
+        self._anotar_tiempos(tiempos, ventana, lectura.via, len(fila))
+        if not fila and self._toca_reintentar(0):
+            # Pronto para la pantalla: se vuelve a mirar en 150 ms sin borrar lo pintado.
             self._reintentar()
             return
-        if not encontrados:
-            # Si un parche mueve las tarjetas fuera de la franja habitual, se lee
-            # la ventana entera antes de dar la pantalla por vacia.
-            log.info("Nada en la franja de recompensas; se prueba con la ventana entera")
-            imagen = pantalla.capturar(ventana)
-            if imagen is not None:
-                region = ventana
-                encontrados = self._leer_y_casar(imagen, tiempos)
-                if encontrados is None:
-                    self.leidas.emit([])
-                    return
-                if encontrados:
-                    log.warning(
-                        "Las recompensas estaban fuera de la franja esperada: "
-                        "puede que el juego haya cambiado la pantalla"
-                    )
-        self._anotar_tiempos(tiempos, imagen, ventana, len(encontrados))
-        # Primero la fila (si no, la copia de otro overlay con mas puntuacion
-        # desplazaria a la tarjeta real), y dentro de la fila una por objeto.
-        fila = elegir_fila(
-            encontrados, tiempos.pop("_lineas", []),
-            conocidas=self._ids_conocidas(), maximo=self.jugadores or 4,
-        )
         recompensas = [
             Recompensa(
                 item_id=r.item_id,
                 nombre=r.nombre if r.item_id != SIN_IDENTIFICAR else t("Sin identificar"),
                 texto_ocr=r.texto_ocr,
-                caja=(
-                    region.x + r.caja[0],
-                    region.y + r.caja[1],
-                    r.caja[2],
-                    r.caja[3],
-                ),
+                caja=r.caja,
             )
             for r in fila
         ]
@@ -348,40 +359,52 @@ class LectorRecompensas(LectorBase):
         casador = self._conocidas()
         return {v[0] for v in casador.candidatos.values()} if casador else set()
 
-    def _leer_y_casar(self, imagen, tiempos: dict) -> list[Reconocido] | None:
-        """OCR una vez; casado primero contra lo que EE.log dio y luego contra todo.
+    def _leer_franja(self, ventana, tiempos: dict) -> list[Reconocido] | None:
+        """El camino de siempre: la franja entera y, si esta vacia, la ventana entera.
 
-        Una franja mas alta que la de 1080p se reduce antes del OCR: el tiempo
-        del motor crece con los pixeles y a 1440p, con el juego peleando por la
-        CPU, era lo que dejaba las etiquetas para los ultimos segundos.
+        Devuelve las tarjetas de la fila elegida con las cajas en coordenadas de
+        pantalla; None si el motor no esta disponible o no se pudo capturar.
         """
-        try:
-            t0 = time.perf_counter()
-            escala = 1.0
-            if imagen.shape[0] > ALTO_FRANJA_OCR * 1.15:
-                import cv2
-
-                escala = ALTO_FRANJA_OCR / imagen.shape[0]
-                imagen = cv2.resize(
-                    imagen, (int(imagen.shape[1] * escala), ALTO_FRANJA_OCR), interpolation=cv2.INTER_AREA
+        region = ventana.recortar(*FRANJA)
+        t0 = time.perf_counter()
+        imagen = pantalla.capturar(region)
+        tiempos["captura"] = tiempos.get("captura", 0.0) + time.perf_counter() - t0
+        if imagen is None:
+            return None
+        encontrados = self._leer_y_casar(imagen, tiempos)
+        if encontrados is None:
+            return None
+        if not encontrados and not self._toca_reintentar(0):
+            # Si un parche mueve las tarjetas fuera de la franja habitual, se lee
+            # la ventana entera antes de dar la pantalla por vacia (nunca mientras
+            # aun toque reintentar: es la lectura mas cara y la pantalla puede
+            # simplemente no estar pintada todavia).
+            log.info("Nada en la franja de recompensas; se prueba con la ventana entera")
+            imagen = pantalla.capturar(ventana)
+            if imagen is None:
+                return []
+            region = ventana
+            encontrados = self._leer_y_casar(imagen, tiempos)
+            if encontrados is None:
+                return None
+            if encontrados:
+                log.warning(
+                    "Las recompensas estaban fuera de la franja esperada: "
+                    "puede que el juego haya cambiado la pantalla"
                 )
-            lineas = leer_lineas(imagen, self.motor)
-            if escala != 1.0:
-                for l in lineas:
-                    l.x, l.y = int(l.x / escala), int(l.y / escala)
-                    l.ancho, l.alto = int(l.ancho / escala), int(l.alto / escala)
-            tiempos["_lineas"] = lineas
-            tiempos["escala"] = escala
-            tiempos["ocr"] = tiempos.get("ocr", 0.0) + time.perf_counter() - t0
-            t0 = time.perf_counter()
-            conocidas = self._conocidas()
-            seguros = casar_lineas(lineas, conocidas, self.UMBRAL_CONOCIDAS) if conocidas else []
-            resto = casar_lineas(lineas, self.casador, 80)
-            encontrados = seguros + _sin_solapar(resto, seguros)
-            tiempos["casado"] = tiempos.get("casado", 0.0) + time.perf_counter() - t0
-            tiempos["lineas"] = len(lineas)
-            tiempos["conocidas"] = len(seguros)
-            return encontrados
+        tiempos["franja"] = f"{imagen.shape[1]}x{imagen.shape[0]}"
+        # Primero la fila (si no, la copia de otro overlay con mas puntuacion
+        # desplazaria a la tarjeta real), y dentro de la fila una por objeto.
+        fila = elegir_fila(
+            encontrados, tiempos.pop("_lineas", []),
+            conocidas=self._ids_conocidas(), maximo=self._esperadas() or 4,
+        )
+        return [rapidas.desplazar(r, region.x, region.y) for r in fila]
+
+    def _leer_y_casar(self, imagen, tiempos: dict) -> list[Reconocido] | None:
+        """`leer_franja` sin que nada se propague: None si el motor no esta disponible."""
+        try:
+            return leer_franja(imagen, self.motor, self.casador, self._conocidas(), self.UMBRAL_CONOCIDAS, tiempos)
         except ErrorMotorOCR as e:
             self._avisar_motor(str(e))
             return None
@@ -390,20 +413,57 @@ class LectorRecompensas(LectorBase):
             self.estado.emit(t("Fallo al leer la pantalla (mira el registro)"))
             return None
 
-    def _anotar_tiempos(self, tiempos: dict, imagen, ventana, encontradas: int) -> None:
+    def _anotar_tiempos(self, tiempos: dict, ventana, via: str, encontradas: int) -> None:
         """Una linea de INFO por lectura, para diagnosticar a distancia sin datos personales."""
         desde_aviso = (
             f"{(time.monotonic() - self._t_aviso) * 1000:.0f} ms desde el aviso de EE.log"
             if self._t_aviso is not None else "por atajo"
         )
-        alto, ancho = imagen.shape[:2] if imagen is not None else (0, 0)
         log.info(
-            "Reliquia: captura %.0f ms, ocr %.0f ms, casado %.0f ms; %d lineas, %d recompensas "
-            "(%d por EE.log de %d conocidas); franja %dx%d de una ventana de %dx%d; motor %s x%d hilos; %s",
-            tiempos.get("captura", 0) * 1000, tiempos.get("ocr", 0) * 1000, tiempos.get("casado", 0) * 1000,
+            "Reliquia (%s): captura %.0f ms, ocr %.0f ms, casado %.0f ms; %d lineas, %d recompensas "
+            "(%d por EE.log de %d conocidas, %s esperadas); fila %s, franja %s, ventana %dx%d; "
+            "motor %s x%d hilos; %s",
+            via, tiempos.get("captura", 0) * 1000, tiempos.get("ocr", 0) * 1000, tiempos.get("casado", 0) * 1000,
             tiempos.get("lineas", 0), encontradas, tiempos.get("conocidas", 0), len(self.conocidas),
-            ancho, alto, ventana.ancho, ventana.alto, self.motor.motor, self.motor.hilos, desde_aviso,
+            self._esperadas() or "?", tiempos.get("fila", "-"), tiempos.get("franja", "-"),
+            ventana.ancho, ventana.alto, self.motor.motor, self.motor.hilos, desde_aviso,
         )
+
+
+def leer_franja(imagen, motor: MotorOCR, casador: Casador, conocidas: Casador | None,
+                umbral_conocidas: int, tiempos: dict) -> list[Reconocido]:
+    """OCR de la franja una vez; casado primero contra lo que EE.log dio y luego contra todo.
+
+    Una franja mas alta que la de 1080p se reduce antes del OCR: el tiempo del
+    motor crece con los pixeles y a 1440p, con el juego peleando por la CPU, era
+    lo que dejaba las etiquetas para los ultimos segundos. Deja las lineas leidas
+    en `tiempos["_lineas"]` para `elegir_fila`.
+    """
+    t0 = time.perf_counter()
+    escala = 1.0
+    if imagen.shape[0] > ALTO_FRANJA_OCR * 1.15:
+        import cv2
+
+        escala = ALTO_FRANJA_OCR / imagen.shape[0]
+        imagen = cv2.resize(
+            imagen, (int(imagen.shape[1] * escala), ALTO_FRANJA_OCR), interpolation=cv2.INTER_AREA
+        )
+    lineas = leer_lineas(imagen, motor)
+    if escala != 1.0:
+        for l in lineas:
+            l.x, l.y = int(l.x / escala), int(l.y / escala)
+            l.ancho, l.alto = int(l.ancho / escala), int(l.alto / escala)
+    tiempos["_lineas"] = lineas
+    tiempos["escala"] = escala
+    tiempos["ocr"] = tiempos.get("ocr", 0.0) + time.perf_counter() - t0
+    t0 = time.perf_counter()
+    seguros = casar_lineas(lineas, conocidas, umbral_conocidas) if conocidas else []
+    resto = casar_lineas(lineas, casador, 80)
+    encontrados = seguros + _sin_solapar(resto, seguros)
+    tiempos["casado"] = tiempos.get("casado", 0.0) + time.perf_counter() - t0
+    tiempos["lineas"] = len(lineas)
+    tiempos["conocidas"] = len(seguros)
+    return encontrados
 
 
 def _solapan_vertical(a, b, minimo: float = 0.3) -> bool:
@@ -580,8 +640,9 @@ class DisparadorAutomatico(QObject):
     # atras en 15) los nombres ya se leen, y EE.log escribe "Got rewards" ~0,4 s
     # despues de abrirse. La espera fija de 1,5 s era margen sin medir y era el
     # trozo mas grande del retraso. Si la primera lectura llega antes de tiempo, el
-    # lector reintenta solo (LectorRecompensas.REINTENTO_MS).
-    ESPERA_MS = 150
+    # lector reintenta solo (LectorRecompensas.REINTENTO_MS), y como las dos primeras
+    # miradas solo leen la fila de nombres (~40 ms), mirar pronto sale casi gratis.
+    ESPERA_MS = 80
 
     def __init__(self, activo: bool = True, parent=None):
         super().__init__(parent)

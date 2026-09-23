@@ -31,6 +31,11 @@ ITEMS_COMMITS = (
 DROPS_BASE = "https://raw.githubusercontent.com/WFCD/warframe-drop-data/master/data/"
 DROPS_ESPEJO = "https://drops.warframestat.us/data/"
 
+# Idiomas de i18n.json que se guardan aparte del espanol, para casar y buscar objetos
+# cuando el juego esta en ese idioma. WFCD trae bastantes mas (ja, ko, ru, zh...) pero
+# estos son los que el casador sabe tratar (ver glosario_<idioma>.json en datos/).
+IDIOMAS_EXTRA = ("fr", "de", "pt", "it", "pl")
+
 # Categorias de warframe-items que se importan al indice.
 CATEGORIAS_ITEMS = (
     "Warframes",
@@ -256,6 +261,8 @@ class Descargador:
     def rutas_items(self) -> dict[str, Path]:
         rutas = {c: DIR_DATOS / f"{c}.json" for c in CATEGORIAS_ITEMS}
         rutas["i18n_es"] = DIR_DATOS / "i18n_es.json"
+        for idioma in IDIOMAS_EXTRA:
+            rutas[f"i18n_{idioma}"] = DIR_DATOS / f"i18n_{idioma}.json"
         return rutas
 
     def rutas_drops(self) -> dict[str, Path]:
@@ -287,7 +294,7 @@ class Descargador:
                     f"Descargando {categoria}",
                 )
             self.progreso(f"Descargando traducciones ({total}/{total})", total - 1, total)
-            self._descargar_i18n(rutas_items["i18n_es"])
+            self._descargar_i18n(rutas_items)
             self.estado.items_sha, self.estado.items_fecha = sha, fecha
             cambios = True
         else:
@@ -334,23 +341,27 @@ class Descargador:
             self.estado.guardar()
         return cambios
 
-    def _descargar_i18n(self, destino: Path) -> None:
-        """i18n.json trae todos los idiomas (~50 MB). Se guarda solo el espanol."""
+    def _descargar_i18n(self, rutas_items: dict[str, Path]) -> None:
+        """i18n.json trae todos los idiomas (~50 MB). Se guarda uno aparte por idioma
+        (es, y ademas IDIOMAS_EXTRA) para no tener que recargar el fichero grande
+        cada vez que hace falta un nombre en otro idioma."""
         crudo = DIR_DATOS / "i18n.json"
         self._descargar_fichero(ITEMS_BASE + "i18n.json", crudo, "Descargando traducciones")
-        self.progreso("Filtrando traducciones al espanol", 0, 0)
+        self.progreso("Filtrando traducciones", 0, 0)
         with crudo.open(encoding="utf-8") as f:
             todos = json.load(f)
-        solo_es = {
-            unico: idiomas["es"]
-            for unico, idiomas in todos.items()
-            if isinstance(idiomas, dict) and idiomas.get("es")
-        }
-        tmp = destino.with_suffix(".tmp")
-        tmp.write_text(json.dumps(solo_es, ensure_ascii=False), encoding="utf-8")
-        tmp.replace(destino)
+        for idioma in ("es", *IDIOMAS_EXTRA):
+            solo_idioma = {
+                unico: idiomas[idioma]
+                for unico, idiomas in todos.items()
+                if isinstance(idiomas, dict) and idiomas.get(idioma)
+            }
+            destino = rutas_items[f"i18n_{idioma}"]
+            tmp = destino.with_suffix(".tmp")
+            tmp.write_text(json.dumps(solo_idioma, ensure_ascii=False), encoding="utf-8")
+            tmp.replace(destino)
+            log.info("Traducciones al %s: %d objetos", idioma, len(solo_idioma))
         crudo.unlink(missing_ok=True)
-        log.info("Traducciones al espanol: %d objetos", len(solo_es))
 
     def cerrar(self) -> None:
         self.cliente.close()

@@ -11,7 +11,7 @@ from rapidfuzz import fuzz, process as rf_process
 
 from ..config import DIR_DATOS, DIR_RECURSOS, RUTA_INDICE, crear_carpetas
 from ..registro_log import obtener
-from .descargas import CATEGORIAS_ITEMS, Descargador
+from .descargas import CATEGORIAS_ITEMS, IDIOMAS_EXTRA, Descargador
 from . import nodos
 from .drops import UMBRAL_SIN_CASAR, ImportadorDrops
 from .items import ImportadorItems, normalizar
@@ -25,12 +25,41 @@ log = obtener("indice")
 # 5: nodos que DE no publica (Railjack, eventos, Duviri, retirados) desde solNodes.json de WFCD.
 # 6: nombres sin etiquetas de icono, alias propio de las piezas con nombre unico, el plano de
 #    un recurso va en su categoria, y probabilidades siempre numericas.
-VERSION_ESQUEMA = "6"
+# 7: nombres de objetos en fr/de/pt/it/pl (tabla items_nombres) y glosario de componentes
+#    en esos idiomas (glosario_idiomas), para casar y buscar con el juego en esos idiomas.
+VERSION_ESQUEMA = "7"
+
+# Idiomas con glosario de componentes propio (glosario_<idioma>.json): lo que WFCD no
+# traduce (Chassis, Systems...) se completa a mano, igual que ya se hacia con el espanol.
+IDIOMAS_GLOSARIO = ("fr", "de", "pt")
 
 def conectar(ruta: Path = RUTA_INDICE) -> sqlite3.Connection:
     con = sqlite3.connect(ruta)
     con.execute("PRAGMA foreign_keys=ON")
     return con
+
+
+def variantes_ruta(ruta: str) -> list[str]:
+    """Las rutas con las que una recompensa de EE.log puede figurar en `items`.
+
+    El juego nombra las piezas de warframe como plano
+    (".../WarframeRecipes/CalibanPrimeChassisBlueprint") y el catalogo de WFCD
+    como componente (".../CalibanPrimeChassisComponent"): visto en un EE.log
+    real, donde la recompensa propia no se encontraba por eso.
+    """
+    salida = [ruta]
+    if "/WarframeRecipes/" in ruta and ruta.endswith("Blueprint"):
+        salida.append(ruta[: -len("Blueprint")] + "Component")
+    return salida
+
+
+def fila_por_ruta(con: sqlite3.Connection, ruta: str, columnas: str = "id"):
+    """Fila de `items` (las `columnas` pedidas) para una ruta del juego, o None."""
+    for candidata in variantes_ruta(ruta):
+        fila = con.execute(f"SELECT {columnas} FROM items WHERE unique_name = ?", (candidata,)).fetchone()
+        if fila:
+            return fila
+    return None
 
 
 def hay_indice(ruta: Path = RUTA_INDICE) -> bool:
@@ -65,6 +94,21 @@ def importar_glosario(con: sqlite3.Connection) -> None:
             "INSERT OR REPLACE INTO glosario (dominio, en, es) VALUES (?, ?, ?)",
             [(dominio, en, es) for en, es in pares.items()],
         )
+
+
+def importar_glosario_idiomas(con: sqlite3.Connection) -> None:
+    """Glosario de componentes en fr/de/pt: lo que WFCD no trae traducido."""
+    for idioma in IDIOMAS_GLOSARIO:
+        ruta = DIR_RECURSOS / f"glosario_{idioma}.json"
+        if not ruta.exists():
+            continue
+        datos = json.loads(ruta.read_text(encoding="utf-8"))
+        for dominio, pares in datos.items():
+            con.executemany(
+                "INSERT OR REPLACE INTO glosario_idiomas (dominio, idioma, en, valor) "
+                "VALUES (?, ?, ?, ?)",
+                [(dominio, idioma, en, valor) for en, valor in pares.items()],
+            )
 
 
 def leer_meta(ruta: Path = RUTA_INDICE) -> dict:
@@ -170,13 +214,18 @@ def poblar_busqueda(con: sqlite3.Connection) -> int:
     con.execute("DELETE FROM busqueda")
     filas = con.execute(
         """
-        SELECT i.id, i.nombre_en, i.nombre_es, i.categoria,
+        SELECT i.id, i.nombre_en, i.nombre_es, i.categoria, i.padre_id,
                p.nombre_en AS padre_en, p.nombre_es AS padre_es
           FROM items i LEFT JOIN items p ON i.padre_id = p.id
         """
     ).fetchall()
+    # Nombres en fr/de/pt/it/pl, por item: {item_id: {idioma: nombre}}.
+    nombres_extra: dict[int, dict[str, str]] = {}
+    for iid, idioma, nombre in con.execute("SELECT item_id, idioma, nombre FROM items_nombres"):
+        nombres_extra.setdefault(iid, {})[idioma] = nombre
+
     lote = []
-    for iid, nombre_en, nombre_es, categoria, padre_en, padre_es in filas:
+    for iid, nombre_en, nombre_es, categoria, padre_id, padre_en, padre_es in filas:
         textos = set()
         if padre_en:
             textos.add((normalizar(f"{padre_en} {nombre_en}"), "en"))
@@ -186,6 +235,14 @@ def poblar_busqueda(con: sqlite3.Connection) -> int:
             textos.add((normalizar(nombre_en), "en"))
             if nombre_es:
                 textos.add((normalizar(nombre_es), "es"))
+        extra_item = nombres_extra.get(iid, {})
+        extra_padre = nombres_extra.get(padre_id, {}) if padre_id else {}
+        for idioma, nombre_i in extra_item.items():
+            if padre_id:
+                padre_i = extra_padre.get(idioma) or padre_es or padre_en
+                textos.add((normalizar(f"{padre_i} {nombre_i}"), idioma))
+            else:
+                textos.add((normalizar(nombre_i), idioma))
         for texto, idioma in textos:
             if texto:
                 lote.append((texto, iid, idioma, categoria))
@@ -221,12 +278,19 @@ def construir(progreso=None, forzar: bool = False) -> dict:
     try:
         crear_esquema(con)
         importar_glosario(con)
+        importar_glosario_idiomas(con)
 
         avisar("Cargando traducciones al espanol", 0, 0)
         ruta_i18n = DIR_DATOS / "i18n_es.json"
         i18n = json.loads(ruta_i18n.read_text(encoding="utf-8")) if ruta_i18n.exists() else {}
 
-        importador = ImportadorItems(con, i18n)
+        idiomas_extra = {}
+        for idioma in IDIOMAS_EXTRA:
+            ruta = DIR_DATOS / f"i18n_{idioma}.json"
+            if ruta.exists():
+                idiomas_extra[idioma] = json.loads(ruta.read_text(encoding="utf-8"))
+
+        importador = ImportadorItems(con, i18n, idiomas_extra)
         total = len(CATEGORIAS_ITEMS)
         objetos = 0
         for i, categoria in enumerate(CATEGORIAS_ITEMS, start=1):
@@ -347,7 +411,15 @@ CORTE_DIFUSO = 72
 
 # "chasis de mesa prime", "plano del rhino": los nombres indexados no llevan estas
 # particulas, y con ellas la busqueda caia en el difuso y devolvia el chasis de otra.
-PALABRAS_VACIAS = frozenset({"de", "del", "la", "el", "los", "las", "of", "the"})
+# Con fr/de/pt/it en la busqueda hacen falta tambien sus articulos y preposiciones
+# ("chassis de caliban prime", "plan du chassis"...).
+PALABRAS_VACIAS = frozenset({
+    "de", "del", "la", "el", "los", "las", "of", "the",
+    "du", "des", "le", "les", "l",  # fr
+    "der", "die", "das", "dem", "den", "von", "fur",  # de (sin diacriticos: normalizar())
+    "do", "da", "dos", "das", "o", "a",  # pt
+    "di", "il", "lo", "gli",  # it
+})
 
 
 def _nivel(normal: str, palabras: list[str], texto: str) -> int:

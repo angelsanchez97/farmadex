@@ -7,19 +7,29 @@ terminos se pintan como siempre y solo al posar el raton sale la explicacion.
 En la ficha (QTextBrowser) y en las etiquetas ricas (QLabel) los terminos van
 como enlaces `glosa:<clave>`; en los widgets normales (casillas, desplegables)
 basta con `aplicar(widget, clave)`.
+
+Un enlace puede llevar ademas un detalle propio (`glosa:<clave>?<texto>`): el
+tooltip ensena entonces ese texto en vez de la explicacion generica. Asi cada
+tiempo de la ficha explica SUS numeros (minutos por partida, partidas de media).
 """
 
 from __future__ import annotations
 
 import html
+from urllib.parse import quote, unquote
 
 from PySide6.QtCore import QEvent
 from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import QLabel, QTextBrowser, QToolTip, QWidget
 
+from ..datos import eficiencia
 from ..idiomas import t
 
 PREFIJO = "glosa:"
+
+# Terminos de tiempo estimado: su tooltip dice ademas con que ritmo de juego se calculo.
+TERMINOS_TIEMPO = ("tiempo_medio", "tiempo_pieza")
+NOMBRES_RITMO = {"rapido": "Rapido", "normal": "Normal", "tranquilo": "Tranquilo"}
 
 # clave -> (titulo, explicacion). Los dos pasan por t(); la explicacion, corta.
 TERMINOS: dict[str, tuple[str, str]] = {
@@ -115,27 +125,69 @@ TERMINOS: dict[str, tuple[str, str]] = {
         "Puntos que ganas con un sindicato haciendo sus misiones o entregando objetos; se "
         "gastan en su tienda.",
     ),
+    "radshare": (
+        "Escuadra compartiendo reliquia",
+        "Los cuatro abren la misma reliquia con el mismo refinamiento y cada uno elige entre "
+        "las cuatro recompensas: cada fisura gasta una reliquia tuya y te da cuatro tiradas. "
+        "Una pieza al 10 % sale asi en una de cada 2,9 fisuras en vez de una de cada 10.",
+    ),
+    "tiempo_pieza": (
+        "Tiempo hasta la pieza",
+        "Minutos de media hasta tenerla: lo que tarda en caer una reliquia util en esa mision "
+        "mas una fisura para abrirla, por las reliquias que hay que abrir segun el refinamiento "
+        "y si vas solo o en escuadra. No cuenta refinar (Trazas del Vacio). Es una estimacion "
+        "para un jugador medio.",
+    ),
 }
 
 
+def nota_ritmo() -> str:
+    """'Calculado con ritmo de juego Normal (x1); se cambia en Ajustes.' ya traducido."""
+    elegido = eficiencia.ritmo()
+    return t(
+        "Calculado con ritmo de juego {ritmo} (x{factor}); se cambia en Ajustes.",
+        ritmo=t(NOMBRES_RITMO[elegido]),
+        factor=f"{eficiencia.RITMOS[elegido]:g}",
+    )
+
+
 def texto(clave: str) -> str:
-    """El contenido del tooltip, en HTML, en el idioma de la interfaz. Vacio si no existe."""
+    """El contenido del tooltip, en HTML, en el idioma de la interfaz. Vacio si no existe.
+
+    `clave` puede traer detalle propio tras '?' (lo que pone `enlace(..., detalle=)`):
+    se ensena ese detalle, linea a linea, en lugar de la explicacion generica.
+    """
+    clave, _, detalle = clave.partition("?")
     termino = TERMINOS.get(clave)
     if not termino:
         return ""
     titulo, explicacion = termino
-    return (
-        f"<p style='white-space:normal'><b>{html.escape(t(titulo))}</b><br>"
-        f"{html.escape(t(explicacion))}</p>"
+    cuerpo = (
+        "<br>".join(html.escape(linea) for linea in unquote(detalle).splitlines())
+        if detalle
+        else html.escape(t(explicacion))
     )
+    if clave in TERMINOS_TIEMPO:
+        cuerpo += f"<br><i>{html.escape(nota_ritmo())}</i>"
+    contenido = f"<p style='white-space:normal'><b>{html.escape(t(titulo))}</b><br>{cuerpo}</p>"
+    if detalle:
+        # El desglose son varias lineas con numeros: sin ancho fijo, Qt parte el tooltip
+        # en una columna estrecha y cada linea ocupa tres.
+        contenido = f"<table width='420' cellspacing='0' cellpadding='0'><tr><td>{contenido}</td></tr></table>"
+    return contenido
 
 
-def enlace(clave: str, visible: str, color: str, negrita: bool = False) -> str:
-    """El termino tal cual se ve, como enlace `glosa:` que solo sirve para el tooltip."""
+def enlace(clave: str, visible: str, color: str, negrita: bool = False, detalle: str = "") -> str:
+    """El termino tal cual se ve, como enlace `glosa:` que solo sirve para el tooltip.
+
+    Con `detalle` (texto plano, una linea por salto de linea) el tooltip ensena ese texto
+    en vez de la explicacion generica del termino.
+    """
     cuerpo = html.escape(visible)
     if negrita:
         cuerpo = f"<b>{cuerpo}</b>"
-    return f"<a href='{PREFIJO}{clave}' style='color:{color};text-decoration:none'>{cuerpo}</a>"
+    destino = PREFIJO + clave + (f"?{quote(detalle, safe='')}" if detalle else "")
+    return f"<a href='{destino}' style='color:{color};text-decoration:none'>{cuerpo}</a>"
 
 
 def es_glosa(url: str) -> bool:

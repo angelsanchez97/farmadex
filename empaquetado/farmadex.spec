@@ -10,8 +10,13 @@ RAIZ = Path(SPECPATH).parent
 datos = [
     (str(RAIZ / "src/farmadex/datos/esquema.sql"), "farmadex/datos"),
     (str(RAIZ / "src/farmadex/datos/glosario_es.json"), "farmadex/datos"),
+    (str(RAIZ / "src/farmadex/datos/glosario_fr.json"), "farmadex/datos"),
+    (str(RAIZ / "src/farmadex/datos/glosario_de.json"), "farmadex/datos"),
+    (str(RAIZ / "src/farmadex/datos/glosario_pt.json"), "farmadex/datos"),
     (str(RAIZ / "recursos/iconos/farmadex.ico"), "recursos/iconos"),
     (str(RAIZ / "recursos/idiomas"), "recursos/idiomas"),
+    # La respuesta de soporte de DE que ensena Ajustes > Acerca de (ui/acerca_de.py).
+    (str(RAIZ / "docs/img/respuesta_soporte_de.png"), "docs/img"),
 ]
 # RapidOCR carga sus piezas por nombre en tiempo de ejecucion
 # (ch_ppocr_v3_det.TextDetector y companía), asi que no basta con los datos:

@@ -1,5 +1,44 @@
 # Cambios
 
+## 0.2.6
+
+**Pestaña Primes, nueva**
+- Marcas las piezas prime que quieres y te dice en que reliquias salen y donde
+  farmearlas, ordenado por el tiempo medio hasta tener la pieza en la mano:
+  conseguir la reliquia y abrirla en fisuras, todo junto. Eliges el
+  refinamiento y si juegas solo o en escuadra de 4 compartiendo reliquia.
+- Marcar una pieza aqui es lo mismo que añadirla a Objetivos.
+- La ficha de una pieza prime dice por donde empezar: reliquia, mision y tiempo
+  total.
+
+**Donde farmear, mas claro**
+- Cada fila se rellena segun lo rapido que es conseguir el objeto ahi: cuanto
+  mas llena, antes lo tienes.
+- Al pasar el raton por un tiempo se ve de donde sale: "~13,5 min por partida
+  x ~5 partidas de media = ~70 min".
+- Ritmo de juego en Ajustes (rapido, normal, tranquilo): ajusta todos los
+  tiempos a como juegas tu.
+
+**Reliquias, mas rapidas y mas exactas**
+- Se lee solo la fila de nombres de las tarjetas: de ~250 ms a ~40 ms, tambien
+  con el procesador ocupado. En pantallas reales anotadas a mano, los aciertos
+  pasan de 29 a 43 de 44 y ya no se inventa ninguna recompensa.
+- Si en la escuadra salen dos recompensas iguales, se ven las dos.
+
+**Otros idiomas**
+- Los objetos se reconocen tambien con el juego en frances, aleman y portugues
+  (y, algo menos, en italiano y polaco), en la pantalla de recompensas y en la
+  busqueda. El indice se reconstruye solo la primera vez.
+
+**Guia de uso**
+- Un recorrido por la ventana que se abre solo la primera vez, se puede saltar
+  cuando quieras y se vuelve a lanzar con el boton "Guia". Si ya tenias
+  Farmadex, solo veras un aviso.
+
+**Farmadex y Digital Extremes**
+- Nuevo "Acerca de Farmadex" en Ajustes: que hace y que no hace el programa, y
+  lo que contesto el soporte de DE sobre programas de terceros.
+
 ## 0.2.5
 
 **Reliquias en menos de un segundo**
