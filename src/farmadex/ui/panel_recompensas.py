@@ -53,6 +53,7 @@ ANCHO_MINIMO_TARJETA = 190
 ANCHO_UNA_TARJETA = 260
 ANCHO_MAXIMO_TARJETA = 300
 HUECO = 8
+HUECO_RAREZA = 0.04  # fraccion del alto de pantalla bajo el nombre
 LADO_IMAGEN = 56
 _COLORES_MAESTRIA = {"dominado": COLOR_DOMINADO, "a_medias": COLOR_A_MEDIAS, "sin_tocar": COLOR_SIN_DOMINAR}
 
@@ -140,7 +141,12 @@ class PanelRecompensas(QWidget):
         total = max(centros) + ancho // 2 + HUECO - izquierda
         # Si no cabe tal cual (monitor mas pequeno que la captura), se desplaza dentro.
         izquierda = max(0, min(izquierda, self.width() - total))
-        y = min(base + 10, self.height() - ALTO_TARJETA - 2 * HUECO - 24)
+        # Bajo el nombre el juego pinta la marca de rareza (bronce, plata, oro); el
+        # panel pegado al nombre la tapaba. El hueco va en proporcion a la pantalla,
+        # como la interfaz del juego (no al alto del texto: un nombre en dos lineas
+        # lo doblaria).
+        hueco_rareza = max(30, round(self.height() * HUECO_RAREZA))
+        y = min(base + hueco_rareza, self.height() - ALTO_TARJETA - 2 * HUECO - 24)
         return QRect(izquierda, y, total, ALTO_TARJETA + 2 * HUECO + 24)
 
     def rectangulos_tarjetas(self, panel: QRect) -> list[QRect]:

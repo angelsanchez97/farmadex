@@ -3,6 +3,8 @@
 Fuentes (todas con licencia libre y sin credenciales):
   - WFCD/warframe-items  : catalogo de objetos, componentes, reliquias y nodos.
   - drops.warframestat.us: tablas de drops oficiales de Digital Extremes.
+  - warframe.com/droptables: la pagina original de esas tablas, que DE publica antes de
+    que WFCD la vuelque a JSON (ver tabla_oficial.py). Es un extra: si falla, se sigue.
 
 Nada de esto toca el juego: son ficheros JSON publicos.
 """
@@ -19,6 +21,8 @@ import httpx
 
 from ..config import DIR_DATOS, RUTA_ESTADO_DATOS, USER_AGENT, crear_carpetas
 from ..registro_log import obtener
+from .tabla_oficial import NOMBRE_FICHERO as FICHERO_TABLA_OFICIAL
+from .tabla_oficial import URL_TABLA_OFICIAL, fecha_publicacion
 
 log = obtener("descargas")
 
@@ -109,6 +113,9 @@ class EstadoDatos:
     publicado_items_sha: str = ""
     publicado_drops_hash: str = ""
     comprobado_en: str = ""
+    # Version (ETag o Last-Modified) y fecha de "Last Update" de la tabla oficial de DE.
+    oficial_version: str = ""
+    oficial_fecha: str = ""
 
     # Nombre de cada fuente tal como lo da indice.desfase_con_el_juego.
     FUENTES = {
@@ -268,6 +275,10 @@ class Descargador:
     def rutas_drops(self) -> dict[str, Path]:
         return {f.removesuffix(".json"): DIR_DATOS / "drops" / f for f in FICHEROS_DROPS}
 
+    @staticmethod
+    def ruta_tabla_oficial() -> Path:
+        return DIR_DATOS / "drops" / FICHERO_TABLA_OFICIAL
+
     def _faltan(self, rutas: Iterable[Path]) -> bool:
         return any(not r.exists() or r.stat().st_size == 0 for r in rutas)
 
@@ -333,13 +344,51 @@ class Descargador:
         else:
             log.info("Tablas de drops al dia (%s)", self.estado.drops_modified or "sin version")
 
+        if self._sincronizar_tabla_oficial(forzar):
+            cambios = True
+
         if cambios:
             self.estado.descargado_en = time.strftime("%Y-%m-%dT%H:%M:%S")
             self.estado.ficheros = {
-                k: v.stat().st_size for k, v in {**rutas_items, **rutas_drops}.items() if v.exists()
+                k: v.stat().st_size
+                for k, v in {
+                    **rutas_items, **rutas_drops, "tabla_oficial": self.ruta_tabla_oficial()
+                }.items()
+                if v.exists()
             }
             self.estado.guardar()
         return cambios
+
+    def _sincronizar_tabla_oficial(self, forzar: bool = False) -> bool:
+        """Baja la tabla oficial de DE si ha cambiado. True si hay una nueva.
+
+        Nunca lanza: sin ella el indice se construye solo con WFCD, como siempre. La
+        descarga es atomica (fichero .tmp), asi que no puede quedar una pagina a medias.
+        """
+        ruta = self.ruta_tabla_oficial()
+        try:
+            r = self.cliente.head(URL_TABLA_OFICIAL, timeout=20.0)
+            r.raise_for_status()
+            version = r.headers.get("etag") or r.headers.get("last-modified") or ""
+        except httpx.HTTPError as e:
+            log.warning("No se pudo consultar la tabla oficial de DE (%s); se sigue con WFCD", e)
+            return False
+        hay = ruta.exists() and ruta.stat().st_size > 0
+        if hay and not forzar and version and version == self.estado.oficial_version:
+            log.info("Tabla oficial de DE al dia (%s)", self.estado.oficial_fecha or version)
+            return False
+        self.progreso("Descargando la tabla oficial de DE", 0, 0)
+        try:
+            self._descargar_una_vez(URL_TABLA_OFICIAL, ruta, "Descargando la tabla oficial de DE")
+            with ruta.open(encoding="utf-8", errors="replace") as f:
+                fecha = fecha_publicacion(f.read(20_000))
+        except (RuntimeError, OSError) as e:
+            log.warning("No se pudo descargar la tabla oficial de DE (%s); se sigue con WFCD", e)
+            return False
+        self.estado.oficial_version = version
+        self.estado.oficial_fecha = fecha.isoformat() if fecha else ""
+        log.info("Tabla oficial de DE descargada (%s)", self.estado.oficial_fecha or "sin fecha")
+        return True
 
     def _descargar_i18n(self, rutas_items: dict[str, Path]) -> None:
         """i18n.json trae todos los idiomas (~50 MB). Se guarda uno aparte por idioma

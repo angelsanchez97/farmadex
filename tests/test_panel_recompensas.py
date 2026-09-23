@@ -31,7 +31,8 @@ def test_el_panel_va_justo_debajo_de_las_tarjetas_del_juego_y_no_al_borde_inferi
     panel.recompensas = _recompensas()
     rect = panel.rectangulo_panel()
     base_tarjetas = max(c[1] + c[3] for c in CAJAS)
-    assert base_tarjetas < rect.y() <= base_tarjetas + 12
+    # deja ver la marca de rareza de debajo del nombre, sin irse lejos
+    assert base_tarjetas + 30 <= rect.y() <= base_tarjetas + 1440 * 0.05
     assert rect.bottom() < 1440 * 0.62  # la franja inferior queda libre para otro overlay
     assert rect.x() <= CAJAS[0][0] and rect.right() >= CAJAS[2][0] + CAJAS[2][2]
     tarjetas = panel.rectangulos_tarjetas(rect)

@@ -1,5 +1,26 @@
 # Cambios
 
+## 0.2.8
+
+**Lo nuevo del juego llega antes**
+- Farmadex lee también la tabla oficial de drops de Digital Extremes. Cuando
+  sale algo nuevo y los datos de la comunidad aún no lo tienen (como Citrine
+  Prime y la reliquia Neo C11), ya aparece: en la búsqueda, en Primes, en las
+  reliquias y en las rutas de farmeo.
+
+**Reliquias: reconoce mejor lo que sale**
+- El Plano de Daikyu Prime salía "Sin identificar" cuando el arco tapaba una
+  letra del nombre. Arreglado, y con él todos los planos que se leían con una
+  errata.
+- Los Sistemas de Nova, Nyx o Rhino, leídos con la primera letra mal, podían
+  salir como los de Ash. Ya no.
+- Nombres con palabras pegadas ("ChassisBlueprint", "DeChasis") o con
+  "Blueprint" mal leído se reconocen bien.
+- Cuando lo leído vale igual para dos objetos (Bo y Boar, Lex y Aklex), dice
+  que no lo sabe en vez de arriesgarse a poner el que no es.
+- El panel baja un poco para no tapar la marca de rareza (bronce, plata u oro)
+  que el juego pone debajo de cada nombre.
+
 ## 0.2.7
 
 - En Acerca de y en el pie de Ajustes aparece quien hace Farmadex (vaas) con el

@@ -87,7 +87,9 @@ class ImportadorDrops:
         m = RE_RELIQUIA_REFINADA.match(nombre or "")
         if m:
             return self.item_id(m.group(1), difuso=False), m.group(2).title()
-        return self.item_id(nombre), None
+        # Una reliquia que no esta en el catalogo no se casa por parecido: "Neo C10 Relic"
+        # acababa como Neo C11, y la ruta de farmeo mandaba a sitios donde no sale.
+        return self.item_id(nombre, difuso=not (nombre or "").endswith(" Relic")), None
 
     def item_id(self, nombre: str, difuso: bool = True) -> int | None:
         if not nombre or RE_NO_ES_OBJETO.match(nombre):
@@ -398,7 +400,10 @@ class ImportadorDrops:
 
     # -- orquestacion -----------------------------------------------------
 
-    def importar_todo(self, rutas: dict[str, Path], progreso=None) -> None:
+    def importar_todo(self, rutas: dict[str, Path], progreso=None, datos: dict | None = None) -> None:
+        """Importa cada tabla desde su fichero, o desde `datos[clave]` si viene ahi: lo
+        que se toma de la tabla oficial de DE (ver tabla_oficial.preparar) ya leido."""
+        datos = datos or {}
         pasos = [
             ("missionRewards", lambda r: self.mission_rewards(r), "Misiones"),
             ("keyRewards", lambda r: self.mission_rewards(r, tipo="llave"), "Llaves"),
@@ -441,6 +446,20 @@ class ImportadorDrops:
             ruta = rutas.get(clave)
             if progreso:
                 progreso(f"Importando drops: {etiqueta} ({i}/{total})", i - 1, total)
+            if datos.get(clave) is not None:
+                # Si falla a mitad se deshace lo suyo, y entra el fichero de WFCD sin
+                # duplicar nada.
+                nodos, por_nombre = dict(self.nodos), dict(self.nodos_por_nombre)
+                self.con.execute("SAVEPOINT drops_de")
+                try:
+                    funcion(datos[clave])
+                    self.con.execute("RELEASE SAVEPOINT drops_de")
+                    continue
+                except Exception:  # noqa: BLE001 - se prueba con el fichero de WFCD
+                    self.con.execute("ROLLBACK TO SAVEPOINT drops_de")
+                    self.con.execute("RELEASE SAVEPOINT drops_de")
+                    self.nodos, self.nodos_por_nombre = nodos, por_nombre
+                    log.exception("Fallo importando %s de la tabla oficial de DE; se usa WFCD", clave)
             if not ruta or not ruta.exists():
                 log.warning("Falta el fichero de drops %s", clave)
                 continue
@@ -471,6 +490,9 @@ class ImportadorDrops:
             )
 
 
-def _leer(ruta: Path):
+def _leer(ruta):
+    """El JSON de un fichero, o los datos tal cual si ya vienen leidos (tabla de DE)."""
+    if not isinstance(ruta, Path):
+        return ruta
     with ruta.open(encoding="utf-8") as f:
         return json.load(f)

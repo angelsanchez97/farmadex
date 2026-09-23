@@ -16,6 +16,7 @@ import time
 from dataclasses import dataclass
 
 from rapidfuzz import fuzz, process as rf_process
+from rapidfuzz.distance import Levenshtein
 
 from ..datos.items import normalizar
 from ..registro_log import obtener
@@ -576,6 +577,11 @@ class Casador:
         copia.candidatos = {k: v for k, v in self.candidatos.items() if v[0] in ids}
         copia.alias = {k: v for k, v in self.alias.items() if v[0] in ids}
         copia.alias_compactos = {k.replace(" ", ""): v for k, v in copia.alias.items()}
+        # Como en __init__, los alias tambien son candidatos. Aqui hace falta
+        # anadirlos a mano: "daikyu prime" es del arma en el catalogo entero, asi
+        # que el filtro la quitaba y el plano se quedaba sin su clave corta.
+        for clave, valor in copia.alias.items():
+            copia.candidatos.setdefault(clave, valor)
         copia.claves = list(copia.candidatos)
         copia.compactos = {k.replace(" ", ""): v for k, v in copia.candidatos.items()}
         copia.compactos_a_clave = {k.replace(" ", ""): k for k in copia.candidatos}
@@ -600,7 +606,15 @@ class Casador:
 
         # El juego escribe "Chasis de Ash Prime" donde el catalogo dice
         # "Ash Prime Chasis", y el OCR a veces pega las palabras.
-        palabras = [p for p in clave.split() if p not in PALABRAS_VACIAS]
+        # La primera palabra nunca es un articulo en un nombre del juego: si lo
+        # parece es una letra perdida ("las De Odonata Prime" son las Alas), y
+        # quitarla dejaba "odonata prime", el plano principal.
+        # Lo mismo detras de "de": "Plano De las De Odonata Prime" son las Alas.
+        palabras = clave.split()
+        palabras = palabras[:1] + [
+            p for i, p in enumerate(palabras[1:], 1)
+            if p not in PALABRAS_VACIAS or palabras[i - 1] in ("de", "du", "des", "von")
+        ]
         consulta = " ".join(palabras) or clave
         exacto = self.candidatos.get(consulta)
         if exacto:
@@ -611,6 +625,27 @@ class Casador:
         # Sin quitarlo, "plano chasis caliban prime" se parecia casi igual al chasis
         # que al plano principal ("Caliban Prime Plano"), y ganaba el principal.
         con_plano = False
+        # El OCR tambien pega la palabra: "Ash Prime ChassisBlueprint", "PlanoDe Forma".
+        for palabra in self.palabras_plano:
+            ultima = consulta.rsplit(" ", 1)[-1]
+            if ultima.endswith(palabra) and len(ultima) > len(palabra) + 2:
+                consulta = f"{consulta.removesuffix(palabra)} {palabra}"
+            primera = consulta.split(" ", 1)[0]
+            if primera.startswith(palabra) and len(primera) > len(palabra) + 2:
+                resto = primera.removeprefix(palabra)
+                resto = "" if resto in PALABRAS_VACIAS else resto
+                consulta = " ".join(x for x in (palabra, resto, consulta.partition(" ")[2]) if x)
+        # Y la lee mal: "Odonata Prime Wings lueprint". Sin reconocerla, el
+        # plano principal ganaba a las alas.
+        extremos = consulta.split()
+        if len(extremos) >= 3:
+            for i in (-1, 0):
+                if extremos[i] in self.palabras_plano or len(extremos[i]) < 5:
+                    continue
+                parecida = max(self.palabras_plano, key=lambda w: fuzz.ratio(extremos[i], w))
+                if fuzz.ratio(extremos[i], parecida) >= 80 and not self._es_palabra_de_nombre(extremos[i]):
+                    extremos[i] = parecida
+            consulta = " ".join(extremos)
         for palabra in self.palabras_plano:
             prefijo = f"{palabra} "
             if consulta.startswith(prefijo) and consulta != prefijo.strip():
@@ -677,26 +712,43 @@ class Casador:
         )
         if not puntuadas or puntuadas[0][0] < umbral_efectivo:
             return nada
+        def objeto(c: str) -> tuple[int, str]:
+            # Leido con "Plano" y con errata ("Plano De Daiky Prime"): la clave
+            # corta es la del arma, pero lo que salio es su plano.
+            return self.alias[c] if con_plano and c in self.alias else self.candidatos[c]
+
         mejor_puntos, mejor_clave = puntuadas[0]
-        mejor_id = self.candidatos[mejor_clave][0]
+        mejor_id = objeto(mejor_clave)[0]
         if not _lleva_lo_distintivo(mejor_clave, compacta, self.genericas):
             # "EMPUNADURA DE QUASSUS PRIME" se parecia un 84 % a "Nikana Prime
             # Empunadura" solo por las palabras genericas: sin rastro de "nikana"
             # en lo leido, no es ese objeto. Mejor nada que una etiqueta segura y falsa.
             return nada
         for puntos, otra in puntuadas[1:]:
-            if self.candidatos[otra][0] == mejor_id:
+            if objeto(otra)[0] == mejor_id:
                 continue
             # Dos objetos que solo se distinguen por un numeral ("MK I" / "MK IV")
             # exigen una lectura casi perfecta; si no, mejor no decir nada.
             solo_numeral = (set(mejor_clave.split()) ^ set(otra.split())) <= NUMERALES
-            if mejor_puntos < 97.0 and (mejor_puntos - puntos < self.MARGEN or solo_numeral):
+            # "bor prime" esta a una letra de "bo prime" y de "boar prime": no hay
+            # forma de saber cual es, por mucho que uno puntue algo mas.
+            a_una_letra = (
+                Levenshtein.distance(compacta, mejor_clave.replace(" ", "")) <= 1
+                and Levenshtein.distance(compacta, otra.replace(" ", "")) <= 1
+            )
+            if mejor_puntos < 97.0 and (mejor_puntos - puntos < self.MARGEN or solo_numeral or a_una_letra):
                 log.debug("Ambiguo %r: %s (%.0f) frente a %s (%.0f)",
                           texto, mejor_clave, mejor_puntos, otra, puntos)
                 return nada
             break
-        iid, etiqueta = self.candidatos[mejor_clave]
+        iid, etiqueta = objeto(mejor_clave)
         return iid, etiqueta, float(mejor_puntos)
+
+    def _es_palabra_de_nombre(self, palabra: str) -> bool:
+        """Si la palabra aparece tal cual en algun nombre del catalogo (no es una errata)."""
+        if not hasattr(self, "_palabras_de_nombre") or self._palabras_de_nombre is None:
+            self._palabras_de_nombre = {p for clave in self.candidatos for p in clave.split()}
+        return palabra in self._palabras_de_nombre
 
     def _puntuar(self, consulta: str, compacta: str, candidata: str) -> float:
         """Parecido 0-100 entre lo leido y una clave del catalogo.
@@ -779,13 +831,24 @@ def _contenidas(compacta: str, palabras: list[str]) -> float:
     """Cuanto de cada palabra del candidato aparece dentro del texto pegado."""
     if not palabras:
         return 0.0
+    # Cada letra leida cuenta para UNA palabra: se colocan de la mas larga a la
+    # mas corta y lo ya usado se tapa. Sin eso "sistemas hova prime" (Nova con la
+    # N mal leida) llevaba dentro "ash" a caballo de "sistem-as h-ova" y ganaba
+    # Ash Prime Sistemas.
+    libre = compacta
     suma = 0.0
-    for p in palabras:
+    for p in sorted(palabras, key=len, reverse=True):
         if len(p) >= 3:
-            suma += len(p) * fuzz.partial_ratio(p, compacta) / 100.0
-        elif len(p) == 2 and p in compacta:
+            sitio = fuzz.partial_ratio_alignment(p, libre)
+            if sitio is None:
+                continue
+            suma += len(p) * sitio.score / 100.0
+            if sitio.score >= 60:
+                libre = libre[:sitio.dest_start] + "#" * (sitio.dest_end - sitio.dest_start) + libre[sitio.dest_end:]
+        elif len(p) == 2 and p in libre:
             # "mk" se puede comprobar; una sola letra ("i") esta en cualquier sitio.
             suma += len(p)
+            libre = libre.replace(p, "##", 1)
     return 100.0 * suma / sum(len(p) for p in palabras)
 
 

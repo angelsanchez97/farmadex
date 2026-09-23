@@ -12,7 +12,7 @@ from rapidfuzz import fuzz, process as rf_process
 from ..config import DIR_DATOS, DIR_RECURSOS, RUTA_INDICE, crear_carpetas
 from ..registro_log import obtener
 from .descargas import CATEGORIAS_ITEMS, IDIOMAS_EXTRA, Descargador
-from . import nodos
+from . import nodos, tabla_oficial
 from .drops import UMBRAL_SIN_CASAR, ImportadorDrops
 from .items import ImportadorItems, normalizar
 
@@ -27,7 +27,9 @@ log = obtener("indice")
 #    un recurso va en su categoria, y probabilidades siempre numericas.
 # 7: nombres de objetos en fr/de/pt/it/pl (tabla items_nombres) y glosario de componentes
 #    en esos idiomas (glosario_idiomas), para casar y buscar con el juego en esos idiomas.
-VERSION_ESQUEMA = "7"
+# 8: reliquias, misiones y piezas nuevas desde la tabla oficial de DE cuando WFCD va por
+#    detras (tabla_oficial.py): objetos sinteticos "/Farmadex/DE/..." hasta que WFCD los tenga.
+VERSION_ESQUEMA = "8"
 
 # Idiomas con glosario de componentes propio (glosario_<idioma>.json): lo que WFCD no
 # traduce (Chassis, Systems...) se completa a mano, igual que ya se hacia con el espanol.
@@ -168,6 +170,11 @@ def desfase_con_el_juego(meta: dict, fecha_build) -> list[tuple[str, str]]:
     atrasadas = []
     for clave, fuente in (("items_fecha", "catalogo de objetos"), ("drops_modified", "tablas de drops")):
         fecha = fecha_de_meta(meta.get(clave))
+        if clave == "drops_modified":
+            # Si el indice uso la tabla oficial de DE, las tablas son de esa fecha.
+            oficial = fecha_de_meta(meta.get("oficial_fecha"))
+            if oficial and (fecha is None or oficial > fecha):
+                fecha = oficial
         if fecha and fecha < fecha_build:
             atrasadas.append((fuente, fecha.isoformat()))
     return atrasadas
@@ -252,6 +259,43 @@ def poblar_busqueda(con: sqlite3.Connection) -> int:
     return len(lote)
 
 
+def _leer_json(ruta: Path | None):
+    if not ruta or not ruta.exists():
+        return None
+    try:
+        return json.loads(ruta.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def usar_tabla_oficial(con: sqlite3.Connection, importador: ImportadorItems,
+                       rutas_drops: dict[str, Path], estado) -> tuple[dict, str]:
+    """Lo que se toma de la tabla oficial de DE para este indice.
+
+    Devuelve (datos para ImportadorDrops.importar_todo, fecha de la tabla si se uso algo).
+    Cualquier fallo deja ({}, ""): el indice se construye con WFCD como siempre.
+    """
+    try:
+        tabla = tabla_oficial.cargar(DIR_DATOS / "drops" / tabla_oficial.NOMBRE_FICHERO)
+        if tabla is None:
+            return {}, ""
+        reliquias = _leer_json(rutas_drops.get("relics"))
+        reliquias = reliquias.get("relics") if isinstance(reliquias, dict) else reliquias
+        misiones = _leer_json(rutas_drops.get("missionRewards"))
+        misiones = misiones.get("missionRewards") if isinstance(misiones, dict) else misiones
+        datos = tabla_oficial.preparar(
+            con, importador, tabla,
+            [r for r in reliquias if isinstance(r, dict)] if isinstance(reliquias, list) else [],
+            misiones if isinstance(misiones, dict) else None,
+            fecha_de_meta(getattr(estado, "drops_modified", "")),
+        )
+    except Exception:  # noqa: BLE001 - la tabla de DE es un extra
+        log.exception("No se pudo usar la tabla oficial de DE")
+        return {}, ""
+    usada = bool(datos) and "missionRewards" in datos and tabla.fecha
+    return datos, tabla.fecha.isoformat() if usada else ""
+
+
 def construir(progreso=None, forzar: bool = False) -> dict:
     """Descarga lo que falte y reconstruye el indice entero. Devuelve un resumen."""
     crear_carpetas()
@@ -320,8 +364,14 @@ def construir(progreso=None, forzar: bool = False) -> dict:
         rutas_drops = {
             f.stem: f for f in (DIR_DATOS / "drops").glob("*.json")
         }
+        avisar("Comparando con la tabla oficial de DE", 0, 0)
+        # Antes de ImportadorDrops: los objetos que se creen aqui tienen que estar ya en
+        # el mapa de alias para que las tablas los casen.
+        datos_oficiales, fecha_oficial = usar_tabla_oficial(
+            con, importador, rutas_drops, descargador.estado
+        )
         idrops = ImportadorDrops(con, importador.alias)
-        idrops.importar_todo(rutas_drops, progreso=avisar)
+        idrops.importar_todo(rutas_drops, progreso=avisar, datos=datos_oficiales)
         avisar("Completando el mapa con los nodos que DE no publica", 0, 0)
         try:
             # Despues de los drops: asi los nodos que estos dieron de alta por nombre
@@ -355,6 +405,8 @@ def construir(progreso=None, forzar: bool = False) -> dict:
                 ("items_fecha", estado.items_fecha),
                 ("drops_hash", estado.drops_hash),
                 ("drops_modified", estado.drops_modified),
+                # Fecha de la tabla oficial de DE si sus misiones sustituyeron a las de WFCD.
+                ("oficial_fecha", fecha_oficial),
                 ("construido_en", time.strftime("%Y-%m-%dT%H:%M:%S")),
             ],
         )
@@ -379,6 +431,7 @@ def construir(progreso=None, forzar: bool = False) -> dict:
         "misiones_enlazadas": reenlace["enlazadas"],
         "misiones_sin_nodo": reenlace["sin_nodo"],
         "sin_casar": len(idrops.sin_casar),
+        "tabla_oficial": sorted(datos_oficiales),
         "segundos": round(time.time() - inicio, 1),
     }
     log.info("Indice construido: %s", resumen)
