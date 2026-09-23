@@ -113,10 +113,20 @@ def _enlace_reliquia(reliquia: dict, color: str) -> str:
     )
 
 
-def _rotacion(mision: dict) -> str:
+def _rotacion(mision: dict, color: str) -> str:
+    """'rotacion C' con su explicacion para el modo de la mision al pasar el raton."""
     if mision.get("rotacion"):
-        return t("rotacion {rot}", rot=mision["rotacion"])
+        return glosario.enlace_rotacion(
+            mision.get("modo"), mision["rotacion"], t("rotacion {rot}", rot=mision["rotacion"]), color
+        )
     return html.escape(mision.get("etapa") or "")
+
+
+def _mision(mision: dict, color: str) -> str:
+    """El tipo de mision: que se hace y como van sus recompensas al pasar el raton."""
+    if not mision.get("mision"):
+        return ""
+    return glosario.enlace_mision(mision.get("modo"), mision["mision"], color, mision.get("rotacion"))
 
 
 def _probabilidades_reliquias(reliquias: list[dict], refinamiento: str) -> str:
@@ -181,8 +191,8 @@ def bloque_ficha(con: sqlite3.Connection | None, item_id: int) -> str | None:
                 x for x in (
                     _enlace_reliquia(ruta["reliquia"], p["texto"]),
                     _sitio(m),
-                    html.escape(m["mision"]),
-                    _rotacion(m),
+                    _mision(m, p["suave"]),
+                    _rotacion(m, p["suave"]),
                     _tiempo(ruta["minutos"], p["texto"], detalle=desglose_tiempo.texto_prime(
                         m, escuadra, texto_modo(refinamiento, escuadra))),
                 ) if x
@@ -227,8 +237,8 @@ def _cuerpo_ruta(ruta: dict) -> str:
     detalle = " &middot; ".join(
         x for x in (
             f"<b>{_sitio(mision)}</b>",
-            html.escape(mision["mision"]),
-            _rotacion(mision),
+            _mision(mision, p["suave"]),
+            _rotacion(mision, p["suave"]),
             f"{mision['probabilidad']:.1f}%",
         ) if x
     )
@@ -820,7 +830,7 @@ class PestanaPrimes(QWidget):
             if extra > 0:
                 sitio += (f" <a href='sitios:{i}' style='color:{p['suave']};text-decoration:none'>"
                           f"(+{extra})</a>")
-            detalle = " &middot; ".join(x for x in (html.escape(m["mision"]), _rotacion(m)) if x)
+            detalle = " &middot; ".join(x for x in (_mision(m, p["suave"]), _rotacion(m, p["suave"])) if x)
             if m.get("nivel_min") is not None:
                 detalle += f" &middot; {m['nivel_min']}-{m['nivel_max']}"
             reliquias = ", ".join(_enlace_reliquia(r, p["suave"]) for r in m["reliquias"][:4])

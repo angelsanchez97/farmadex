@@ -154,6 +154,11 @@ class VentanaOverlay(QWidget):
     recompensas_conocidas = Signal(list)  # list[Recompensa] dadas por EE.log, sin caja
 
     cerrar_programa = Signal()
+    # Aviso que tiene que verse aunque la ventana este escondida (lo ensena la bandeja):
+    # reliquia abierta en pantalla completa exclusiva, lector de pantalla que no carga...
+    aviso_bandeja = Signal(str)
+    # Cada cuanto se repite el mismo aviso de bandeja, como mucho.
+    REPETIR_AVISO_S = 10 * 60
 
     def __init__(self):
         super().__init__()
@@ -243,6 +248,14 @@ class VentanaOverlay(QWidget):
         self.ajustes.ritmo_cambiado.connect(self._cambiar_ritmo)
         self.ajustes.salir.connect(self.cerrar_programa.emit)
         self.ajustes.instalar_version.connect(self._instalar_version)
+        self.ajustes.pedir_diagnostico.connect(self.mostrar_diagnostico)
+        self.ajustes.guardar_informe.connect(self.guardar_informe)
+        # Lo que el diagnostico cuenta de la ultima reliquia: cuando se vio la pantalla
+        # (reloj de pared, para decir "hace 3 min"), que se leyo y que se pinto.
+        self._t_reliquia_reloj: float | None = None
+        self._ultima_lectura: tuple[float, int] | None = None
+        self._ultima_pintada: tuple[float, int] | None = None
+        self._avisos_bandeja: dict[str, float] = {}  # clave -> monotonic del ultimo aviso
         for pestana, titulo in self._titulos_pestanas():
             self.pestanas.addTab(pestana, t(titulo))
         self.compacta = VistaCompacta(self.buscador)
@@ -487,7 +500,9 @@ class VentanaOverlay(QWidget):
         self.botin = Botin(self._sumar_botin, bool(self.config.get("botin_eelog_auto", True)))
         self.ajustes.botin_eelog.toggled.connect(lambda activo: setattr(self.botin, "activo", activo))
 
-        self.vigilante = VigilanteEELog(self.config.get("ruta_eelog", ""))
+        self.vigilante = VigilanteEELog(
+            self.config.get("ruta_eelog", ""), ruta_por_defecto=config_modulo.POR_DEFECTO["ruta_eelog"]
+        )
         self.vigilante.evento.connect(self._evento_juego)
         self.vigilante.pista.connect(self.botin.pista)
         self.vigilante.pista.connect(self.lector_recompensas.pista)
@@ -994,7 +1009,9 @@ class VentanaOverlay(QWidget):
             self._t_cerrada = None
         elif nombre == "reliquia_recompensas":
             self._t_reliquia = time.monotonic()
+            self._t_reliquia_reloj = time.time()
             self._t_cerrada = None
+            self._avisar_si_no_se_va_a_ver()
         elif nombre == "reliquia_cerrada":
             self._t_cerrada = time.monotonic()
             self._temporizador_conocidas.stop()
@@ -1088,7 +1105,98 @@ class VentanaOverlay(QWidget):
             return
         QTimer.singleShot(0, self.lector_cursor.leer_ahora)
 
+    # -- avisos que tienen que verse y diagnostico -----------------------------------
+
+    def _aviso_visible(self, clave: str, texto: str) -> None:
+        """Manda `texto` a la bandeja, como mucho una vez cada REPETIR_AVISO_S por clave.
+
+        El banner y la linea de estado viven dentro de la ventana, que durante una
+        reliquia esta escondida: el usuario no veia nada y creia que Farmadex no
+        hacia nada. El globo de la bandeja se ve encima del juego (salvo en pantalla
+        completa exclusiva, donde al menos queda en el centro de notificaciones).
+        """
+        ahora = time.monotonic()
+        ultimo = self._avisos_bandeja.get(clave)
+        if ultimo is not None and ahora - ultimo < self.REPETIR_AVISO_S:
+            return
+        self._avisos_bandeja[clave] = ahora
+        log.warning("Aviso al usuario (%s): %s", clave, texto)
+        self.aviso_bandeja.emit(texto)
+
+    def _avisar_si_no_se_va_a_ver(self) -> None:
+        """Al abrirse una reliquia: si ya se sabe que no va a salir nada, se dice ahora."""
+        if self._refrescar_modo_pantalla() == pantalla.MODO_EXCLUSIVO:
+            self._aviso_visible("exclusivo", t(
+                "Reliquia abierta, pero Warframe esta en pantalla completa exclusiva y Farmadex no "
+                "puede pintar encima. En el juego: Opciones > Pantalla > Modo de pantalla = "
+                "'Ventana sin bordes'."
+            ))
+        lector = getattr(self, "lector_recompensas", None)
+        if lector is not None and lector.motor.fallo:
+            self._aviso_visible("motor", t(
+                "Reliquia abierta, pero el lector de pantalla no carga: no se pueden leer las "
+                "recompensas. Abre Ajustes > Diagnostico de reliquias."
+            ))
+        elif getattr(self, "disparador", None) is not None and not self.disparador.activo:
+            self._aviso_visible("auto", t(
+                "Reliquia abierta, pero la lectura automatica esta desactivada en Ajustes: "
+                "pulsa {atajo} para leerla.", atajo=self.config.get("hotkey_reliquias", ""),
+            ))
+
+    def diagnostico(self):
+        """Todo lo que se sabe de la cadena reliquia -> etiquetas, como `diagnostico.Diagnostico`."""
+        from .. import diagnostico as diag
+
+        hwnd = pantalla.ventana_juego()
+        juego = pantalla.region_ventana(hwnd) if hwnd else None
+        monitor = pantalla.monitor_de(hwnd) if hwnd else None
+        lector = getattr(self, "lector_recompensas", None)
+        motor = lector.motor if lector is not None else None
+        return diag.recoger(
+            eelog=self.vigilante.estado() if self.vigilante is not None else None,
+            ruta_eelog_configurada=str(self.config.get("ruta_eelog", "")),
+            ruta_eelog_por_defecto=str(config_modulo.POR_DEFECTO["ruta_eelog"]),
+            modo_pantalla=self._refrescar_modo_pantalla(),
+            juego=juego,
+            monitor_juego=monitor,
+            escala=pantalla.escala_fisica_logica(hwnd) if hwnd else 1.0,
+            monitores=len(QGuiApplication.screens()),
+            motor_fallo=motor.fallo if motor is not None else None,
+            motor_cargado=motor.cargado if motor is not None else None,
+            motor_nombre=motor.motor if motor is not None else str(self.config.get("motor_ocr", "rapidocr")),
+            config=self.config,
+            datos_listos=self.hilo_captura is not None,
+            hay_indice=indice.hay_indice(),
+            ultima_pantalla=self._t_reliquia_reloj,
+            ultima_lectura=self._ultima_lectura,
+            ultima_pintada=self._ultima_pintada,
+            idioma=idiomas.actual(),
+        )
+
+    def mostrar_diagnostico(self):
+        """Ajustes > 'Comprobar la lectura de reliquias'."""
+        d = self.diagnostico()
+        log.info("Diagnostico de reliquias:\n%s", d.texto())
+        self.ajustes.mostrar_diagnostico(d)
+        return d
+
+    def guardar_informe(self):
+        """Ajustes > 'Guardar informe para enviar': el .zip en el Escritorio, y se ensena."""
+        from .. import diagnostico as diag
+
+        d = self.mostrar_diagnostico()
+        try:
+            ruta = diag.guardar_informe(d)
+        except OSError as e:
+            log.exception("No se pudo guardar el informe de diagnostico")
+            self.ajustes.informe_guardado(None, str(e))
+            return None
+        self.ajustes.informe_guardado(ruta)
+        diag.revelar(ruta)
+        return ruta
+
     def _pintar_recompensas(self, recompensas: list) -> None:
+        self._ultima_lectura = (time.time(), len(recompensas))
         if not recompensas:
             return
         t0 = time.perf_counter()
@@ -1105,6 +1213,11 @@ class VentanaOverlay(QWidget):
         log.info("Recompensas: %s", resumen)
         if self._refrescar_modo_pantalla() == pantalla.MODO_EXCLUSIVO:
             self.estado.setText(t("Recompensas (no se pueden pintar encima del juego): {resumen}", resumen=resumen))
+            self._aviso_visible("exclusivo", t(
+                "Recompensas leidas, pero Warframe esta en pantalla completa exclusiva y no se pueden "
+                "pintar encima: {resumen}. Cambia el juego a 'Ventana sin bordes' (Opciones > Pantalla).",
+                resumen=resumen,
+            ))
             return
         self.estado.setText(resumen)
         if (self._t_cerrada is not None and self._t_lectura_pedida is not None
@@ -1121,6 +1234,7 @@ class VentanaOverlay(QWidget):
             self.panel_recompensas.mostrar(_a_logicas(recompensas), maestria, extras)
         else:
             self.etiquetas.mostrar(_a_logicas(recompensas), maestria)
+        self._ultima_pintada = (time.time(), len(recompensas))
         desde = f"{(time.monotonic() - self._t_reliquia) * 1000:.0f} ms" if self._t_reliquia else "?"
         log.info("Reliquia: completar %.1f ms, pintar %.1f ms; nombres en pantalla %s desde el aviso de EE.log",
                  t_completar * 1000, (time.perf_counter() - t0) * 1000, desde)

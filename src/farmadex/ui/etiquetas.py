@@ -9,7 +9,7 @@ from __future__ import annotations
 import sys
 
 from PySide6.QtCore import QRect, Qt, QTimer
-from PySide6.QtGui import QColor, QFont, QPainter, QPen
+from PySide6.QtGui import QColor, QFont, QGuiApplication, QPainter, QPen
 from PySide6.QtWidgets import QWidget
 
 from ..captura.reliquias import texto_platino
@@ -34,6 +34,59 @@ COLOR_MEJOR = QColor(255, 202, 40)
 COLOR_MEJOR_DUDOSO = QColor(190, 165, 100)
 
 _COLORES_MAESTRIA = {"dominado": COLOR_DOMINADO, "a_medias": COLOR_A_MEDIAS, "sin_tocar": COLOR_SIN_DOMINAR}
+
+
+def emparejar(en_pantalla: list, llegadas: list) -> list[tuple] | None:
+    """Cada recompensa en pantalla con su version del veredicto, o None si no encajan.
+
+    Se empareja por POSICION: con dos recompensas iguales (dos jugadores con el
+    mismo plano) emparejar por objeto dejaba las dos con los datos de la ultima,
+    y si la mejor era la primera, la marca de "mejor" desaparecia de las dos.
+    """
+    ids_pantalla = [r.item_id for r in en_pantalla]
+    ids_llegadas = [r.item_id for r in llegadas]
+    if ids_pantalla == ids_llegadas:
+        return list(zip(en_pantalla, llegadas))
+    if sorted(ids_pantalla) != sorted(ids_llegadas):
+        return None  # es otra pantalla
+    # Mismas recompensas en otro orden: cada una de las que llegan se usa una sola vez.
+    libres = list(llegadas)
+    parejas = []
+    for r in en_pantalla:
+        nuevo = next(x for x in libres if x.item_id == r.item_id)
+        libres.remove(nuevo)
+        parejas.append((r, nuevo))
+    return parejas
+
+
+def pantalla_de_las_cajas(recompensas: list) -> QRect:
+    """Geometria del monitor donde estan las tarjetas, que es el del juego.
+
+    Las cajas vienen en coordenadas de escritorio. Antes la ventana se ponia
+    siempre en el monitor del propio widget (el primario, porque nunca se ha
+    ensenado): con el juego en el segundo monitor, las etiquetas se pintaban a
+    2560 px de un widget de 2560 de ancho, o sea fuera, y no se veian nunca. Si
+    ninguna pantalla contiene las cajas (captura vieja, pruebas sin monitor real)
+    se vuelve al primario, como antes.
+    """
+    pantallas = QGuiApplication.screens()
+    if recompensas and pantallas:
+        x, y, ancho, alto = recompensas[0].caja
+        cx, cy = x + ancho // 2, y + alto // 2
+        for p in pantallas:
+            if p.geometry().contains(cx, cy):
+                return p.geometry()
+    primaria = QGuiApplication.primaryScreen()
+    return primaria.geometry() if primaria else QRect(0, 0, 1920, 1080)
+
+
+def a_coordenadas_locales(recompensas: list, origen: QRect) -> None:
+    """Pasa las cajas de coordenadas de escritorio a las de la ventana en `origen`."""
+    if origen.x() == 0 and origen.y() == 0:
+        return
+    for r in recompensas:
+        x, y, ancho, alto = r.caja
+        r.caja = (x - origen.x(), y - origen.y(), ancho, alto)
 
 
 class EtiquetasRecompensas(QWidget):
@@ -65,8 +118,8 @@ class EtiquetasRecompensas(QWidget):
         if not self.recompensas:
             self.hide()
             return
-        pantalla = self.screen() or self.windowHandle().screen()
-        geometria = pantalla.geometry() if pantalla else QRect(0, 0, 1920, 1080)
+        geometria = pantalla_de_las_cajas(self.recompensas)
+        a_coordenadas_locales(self.recompensas, geometria)
         self.setGeometry(geometria)
         self.show()
         self.raise_()
@@ -86,13 +139,10 @@ class EtiquetasRecompensas(QWidget):
         """
         if not self.recompensas:
             return
-        if {r.item_id for r in self.recompensas} != {r.item_id for r in recompensas}:
+        parejas = emparejar(self.recompensas, recompensas)
+        if parejas is None:
             return
-        actualizadas = {r.item_id: r for r in recompensas}
-        for r in self.recompensas:
-            nuevo = actualizadas.get(r.item_id)
-            if nuevo is None:
-                continue
+        for r, nuevo in parejas:
             r.valor, r.mejor, r.nota, r.platino = nuevo.valor, nuevo.mejor, nuevo.nota, nuevo.platino
             r.criterio_platino = nuevo.criterio_platino
         self._seguro = veredicto.seguro

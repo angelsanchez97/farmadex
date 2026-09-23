@@ -37,6 +37,7 @@ from .etiquetas import (
     COLOR_SIN_DOMINAR,
     COLOR_TEXTO,
     SEGUNDOS_VISIBLE,
+    emparejar,
 )
 from .widgets import imagenes
 
@@ -87,8 +88,11 @@ class PanelRecompensas(QWidget):
         if not self.recompensas:
             self.hide()
             return
-        pantalla = self.screen() or self.windowHandle().screen()
-        geometria = pantalla.geometry() if pantalla else QRect(0, 0, 1920, 1080)
+        # El monitor del juego, no el primario (con dos monitores el panel no se veia).
+        from .etiquetas import a_coordenadas_locales, pantalla_de_las_cajas
+
+        geometria = pantalla_de_las_cajas(self.recompensas)
+        a_coordenadas_locales(self.recompensas, geometria)
         self.setGeometry(geometria)
         self.show()
         self.raise_()
@@ -105,13 +109,10 @@ class PanelRecompensas(QWidget):
     def marcar_veredicto(self, recompensas: list, veredicto) -> None:
         if not self.recompensas:
             return
-        if {r.item_id for r in self.recompensas} != {r.item_id for r in recompensas}:
+        parejas = emparejar(self.recompensas, recompensas)
+        if parejas is None:
             return
-        actualizadas = {r.item_id: r for r in recompensas}
-        for r in self.recompensas:
-            nuevo = actualizadas.get(r.item_id)
-            if nuevo is None:
-                continue
+        for r, nuevo in parejas:
             r.valor, r.mejor, r.nota, r.platino = nuevo.valor, nuevo.mejor, nuevo.nota, nuevo.platino
             r.criterio_platino = nuevo.criterio_platino
         self._seguro = veredicto.seguro

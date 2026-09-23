@@ -145,3 +145,29 @@ def test_de_una_a_cuatro_recompensas_caben_y_con_cero_no_hay_panel():
     vacio = PanelRecompensas()
     vacio.mostrar([])
     assert not vacio.isVisible()
+
+
+def test_con_dos_recompensas_iguales_la_marca_de_mejor_no_se_pierde():
+    """Captura real: dos "Citrine Prime Plano" (el mas caro) y ninguna marcada como mejor.
+
+    El veredicto se emparejaba por objeto y la segunda copia (no mejor) pisaba a la primera.
+    """
+    from types import SimpleNamespace
+
+    _app()
+    panel = PanelRecompensas()
+    panel.resize(1920, 1080)
+    cajas = [(100, 500, 200, 30), (400, 500, 200, 30), (700, 500, 200, 30), (1000, 500, 200, 30)]
+    ids = [1, 2, 3, 3]
+    panel.recompensas = [Recompensa(i, f"obj {i}", "x", c) for i, c in zip(ids, cajas)]
+    llegadas = [Recompensa(i, f"obj {i}", "x", c) for i, c in zip(ids, cajas)]
+    for n, r in enumerate(llegadas):
+        r.mejor = n == 2
+    panel.marcar_veredicto(llegadas, SimpleNamespace(seguro=False))
+    assert [r.mejor for r in panel.recompensas] == [False, False, True, False]
+
+    # En otro orden tambien se reparte bien, sin perder ninguna.
+    panel.recompensas = [Recompensa(i, f"obj {i}", "x", c) for i, c in zip(ids, cajas)]
+    desordenadas = [llegadas[3], llegadas[2], llegadas[0], llegadas[1]]
+    panel.marcar_veredicto(desordenadas, SimpleNamespace(seguro=False))
+    assert sum(r.mejor for r in panel.recompensas) == 1

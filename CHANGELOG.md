@@ -1,5 +1,32 @@
 # Cambios
 
+## 0.3.0
+
+**Misiones explicadas**
+- Pasa el ratón por el tipo de misión (Supervivencia, Defensa, Disrupción...) y
+  te dice qué hay que hacer y cómo van sus recompensas. En la rotación, te dice
+  cuándo cae esa letra en esa misión. Sale en la búsqueda, en Primes, en
+  Objetivos y en las fisuras de Mundo.
+- Los tiempos de Defensa se han corregido: da recompensa cada 3 oleadas, no
+  cada 5, así que salen más cortos.
+
+**Reliquias**
+- Si el juego está en otro monitor, el panel ya sale encima del juego y no en
+  el monitor principal.
+- Si el juego está en pantalla completa (donde ningún programa puede pintar
+  encima), Farmadex te avisa con una notificación al abrir la reliquia.
+- Cuando dos compañeros sacan lo mismo, la mejor opción ya se marca bien.
+- Las cartas se leen otra vez cuando el nombre termina de aparecer, y una
+  lectura peor ya no sustituye a una buena (dos Chasis de Citrine salían como
+  su Plano).
+- Tu propia recompensa se reconoce aunque sea de un Prime recién salido.
+
+**Si algo no va**
+- En Ajustes hay un "Diagnóstico de reliquias": comprueba paso a paso si
+  Farmadex ve el juego, su registro y la pantalla de recompensas, y te dice qué
+  falla. Con "Guardar informe para enviar" deja un .zip en el Escritorio para
+  mandarlo (no incluye nada de tu cuenta del juego).
+
 ## 0.2.9
 
 - Arreglado el aviso "Datos sin actualizar: [WinError 32] ... indice.sqlite-wal"

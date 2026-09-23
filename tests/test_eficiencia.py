@@ -37,7 +37,7 @@ def test_captura_corta_gana_a_supervivencia_rotacion_c_con_mas_porcentaje():
 
 
 def test_la_rotacion_a_cuesta_menos_que_la_c_en_la_misma_mision():
-    minutos = {r: eficiencia.minutos_por_intento(_fuente(modo="Defense", rotacion=r))[0] for r in "ABC"}
+    minutos = {r: eficiencia.minutos_por_intento(_fuente(modo="Survival", rotacion=r))[0] for r in "ABC"}
     # Saliendo tras la segunda A se llevan dos A en 10 min + carga: 5.75 cada una.
     assert minutos["A"] == 5.75
     assert minutos["A"] < minutos["B"] < minutos["C"]
@@ -275,3 +275,10 @@ def test_todo_motivo_sin_estimacion_tiene_su_etiqueta():
     codigo = Path(__file__).resolve().parents[1].joinpath("src/farmadex/datos/eficiencia.py").read_text(encoding="utf-8")
     motivos = set(re.findall(r'return None, "(\w+)"', codigo)) - {"desconocido"}
     assert motivos <= set(MOTIVOS_SIN_ESTIMACION), motivos - set(MOTIVOS_SIN_ESTIMACION)
+
+
+def test_defensa_da_premio_cada_tres_oleadas():
+    """La wiki (2026-09): recompensa cada 3 oleadas, no cada 5; la C en la oleada 12."""
+    c = eficiencia.minutos_por_intento(_fuente(modo="Defense", rotacion="C"))[0]
+    s = eficiencia.minutos_por_intento(_fuente(modo="Survival", rotacion="C"))[0]
+    assert c < s

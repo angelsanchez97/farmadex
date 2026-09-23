@@ -44,6 +44,9 @@ class Fisura:
     expira: datetime | None
     acero: bool = False
     tormenta: bool = False
+    # Tipo de mision en ingles (Survival), para explicarlo al pasar el raton; `mision`
+    # es el mismo ya traducido.
+    modo: str = ""
 
 
 @dataclass
@@ -441,6 +444,7 @@ def analizar(datos: dict, traductor: Traductor) -> Mundo:
                     expira=_momento(f.get("expiry")),
                     acero=_bandera(f.get("isHard")) or False,
                     tormenta=tormenta,
+                    modo=str(f.get("missionTypeKey") or f.get("missionType") or ""),
                 )
             )
         orden = {"Lith": 0, "Meso": 1, "Neo": 2, "Axi": 3, "Requiem": 4, "Omnia": 5}

@@ -163,6 +163,11 @@ class MotorOCR:
         """Motivo por el que este motor no se pudo cargar, o None si va bien."""
         return MotorOCR._fallidos.get(self.motor)
 
+    @property
+    def cargado(self) -> bool:
+        """True si el motor (propio o compartido) ya esta en memoria; para el diagnostico."""
+        return self._ocr is not None or self.motor in MotorOCR._compartidos
+
     def _cargar(self):
         """Carga (o recupera) el motor. Lanza `ErrorMotorOCR` si no se puede."""
         if self._ocr is not None:
@@ -539,7 +544,9 @@ class Casador:
         # Los alias van detras: "Cycron" es el arma, no "Cycron Plano". Se
         # guardan aparte para cuando lo leido SI traia "Plano" al final.
         self.alias = alias
+        self.claves_alias = list(alias)
         self.alias_compactos = {k.replace(" ", ""): v for k, v in alias.items()}
+        self.alias_compacto_a_clave = {k.replace(" ", ""): k for k in alias}
         for clave, valor in alias.items():
             self.candidatos.setdefault(clave, valor)
         self.claves = list(self.candidatos)
@@ -577,11 +584,12 @@ class Casador:
         copia.candidatos = {k: v for k, v in self.candidatos.items() if v[0] in ids}
         copia.alias = {k: v for k, v in self.alias.items() if v[0] in ids}
         copia.alias_compactos = {k.replace(" ", ""): v for k, v in copia.alias.items()}
-        # Como en __init__, los alias tambien son candidatos. Aqui hace falta
-        # anadirlos a mano: "daikyu prime" es del arma en el catalogo entero, asi
-        # que el filtro la quitaba y el plano se quedaba sin su clave corta.
-        for clave, valor in copia.alias.items():
-            copia.candidatos.setdefault(clave, valor)
+        # Los alias ("daikyu prime" -> su plano) NO entran como candidatos: leido
+        # a secas, "Citrine Prime" es la segunda linea de "Plano De Chasis De /
+        # Citrine Prime", no el plano principal (dos chasis salieron como plano).
+        # Solo se buscan cuando lo leido trae "Plano" (ver casar).
+        copia.claves_alias = list(copia.alias)
+        copia.alias_compacto_a_clave = {k.replace(" ", ""): k for k in copia.alias}
         copia.claves = list(copia.candidatos)
         copia.compactos = {k.replace(" ", ""): v for k, v in copia.candidatos.items()}
         copia.compactos_a_clave = {k.replace(" ", ""): k for k in copia.candidatos}
@@ -689,6 +697,21 @@ class Casador:
                 consulta, self.claves, scorer=fuzz.token_sort_ratio, limit=8, score_cutoff=55
             )
         }
+        if con_plano:
+            # "Plano De Daiky Prime": la clave corta del plano es un alias.
+            posibles |= {
+                m[0] for m in rf_process.extract(
+                    consulta, self.claves_alias, scorer=fuzz.token_sort_ratio, limit=8, score_cutoff=55
+                )
+            }
+            # Por letras tambien: con la primera letra perdida ("rost prime") el orden
+            # de palabras despistaba a la preseleccion y "frost prime" ni entraba.
+            posibles |= {
+                self.alias_compacto_a_clave[m[0]]
+                for m in rf_process.extract(
+                    compacta, list(self.alias_compacto_a_clave), scorer=fuzz.ratio, limit=8, score_cutoff=55
+                )
+            }
         posibles |= {
             self.compactos_a_clave[m[0]]
             for m in rf_process.extract(
@@ -715,7 +738,7 @@ class Casador:
         def objeto(c: str) -> tuple[int, str]:
             # Leido con "Plano" y con errata ("Plano De Daiky Prime"): la clave
             # corta es la del arma, pero lo que salio es su plano.
-            return self.alias[c] if con_plano and c in self.alias else self.candidatos[c]
+            return self.alias[c] if con_plano and c in self.alias else self.candidatos.get(c) or self.alias[c]
 
         mejor_puntos, mejor_clave = puntuadas[0]
         mejor_id = objeto(mejor_clave)[0]

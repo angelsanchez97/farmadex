@@ -552,7 +552,7 @@ class PestanaMundo(QWidget):
             partes.append(glosario.enlace("era", f.era, p["acento"], negrita=True))
         partes.append(f"<b>{html.escape(f.nodo)}</b>")
         if f.mision:
-            partes.append(html.escape(f.mision))
+            partes.append(glosario.enlace_mision(f.modo, f.mision, p["texto"]))
         if f.enemigo:
             partes.append(f"<span style='color:{p['suave']}'>{html.escape(f.enemigo)}</span>")
         if f.acero:

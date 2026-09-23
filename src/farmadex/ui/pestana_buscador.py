@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
 from ..config import cargar, guardar
 from .. import perfil
 from ..estado import inventario as estado_inventario
-from ..datos import eficiencia, indice, items, relaciones
+from ..datos import eficiencia, indice, items, modos_mision, relaciones
 from ..datos.nodos import etapa_bonita, nombre_bonito
 from ..idiomas import es_castellano, glosa, nombre as nombre_idioma, t
 from . import desglose_tiempo, glosario, pestana_primes, relleno_filas
@@ -710,8 +710,9 @@ class PestanaBuscador(QWidget):
                     x
                     for x in (
                         html.escape(m["donde"]),
-                        html.escape(m["mision"]),
-                        _rotacion(self.con, m["rotacion"], p["texto"]),
+                        glosario.enlace_mision(m.get("modo"), m["mision"], p["texto"], m["rotacion"])
+                        if m["mision"] else "",
+                        _rotacion(self.con, m["rotacion"], p["texto"], m.get("modo")),
                         f"{m['probabilidad']:.1f}%" if m["probabilidad"] else "",
                         _tiempo(m.get("minutos_medios"), p["texto"], fila=m),
                     )
@@ -730,9 +731,9 @@ class PestanaBuscador(QWidget):
             return ""
         trozos = [f"<b>{html.escape(m.get('donde') or '')}</b>"]
         if m.get("mision"):
-            trozos.append(html.escape(m["mision"]))
+            trozos.append(glosario.enlace_mision(m.get("modo"), m["mision"], p["texto"], m.get("rotacion")))
         if m.get("rotacion"):
-            trozos.append(_rotacion(self.con, m["rotacion"], p["suave"]))
+            trozos.append(_rotacion(self.con, m["rotacion"], p["suave"], m.get("modo")))
         if m.get("rareza"):
             trozos.append(glosario.enlace("rareza", _glosa(self.con, "rareza", m["rareza"]), color_rareza(m["rareza"])))
         prob = ruta.get("probabilidad")
@@ -777,8 +778,9 @@ class PestanaBuscador(QWidget):
             misiones = relaciones.misiones_de(self.con, r["reliquia_id"])[:3]
             donde = "".join(
                 f"<div style='color:{p['suave']}'>{html.escape(m['donde'])}"
-                + (f" &middot; {html.escape(m['mision'])}" if m["mision"] else "")
-                + (f" &middot; {_rotacion(self.con, m['rotacion'], p['suave'])}" if m["rotacion"] else "")
+                + (f" &middot; {glosario.enlace_mision(m.get('modo'), m['mision'], p['suave'], m['rotacion'])}"
+                   if m["mision"] else "")
+                + (f" &middot; {_rotacion(self.con, m['rotacion'], p['suave'], m.get('modo'))}" if m["rotacion"] else "")
                 + (f" &middot; {m['probabilidad']:.1f}%" if m["probabilidad"] else "")
                 + (f" &middot; {_tiempo(m['minutos_medios'], p['suave'], fila=m)}" if m["minutos_medios"] is not None else "")
                 + "</div>"
@@ -831,22 +833,31 @@ class PestanaBuscador(QWidget):
         if referencia is None:
             referencia = relleno_filas.escala(f.get("minutos_medios") for f in visibles)
         for f in visibles:
+            # El tipo de mision es un enlace del glosario: al pasar el raton dice que se
+            # hace en ella y como van sus recompensas (modos_mision).
+            modo = f.get("modo") or f.get("mision_en")
             if f.get("jefe"):
                 # "Alad V (Temisto, Jupiter) - Asesinato": el nodo lo pone relaciones.
-                donde = f["donde"] + (f" - {f['mision']}" if f.get("mision") else "")
+                donde = html.escape(f["donde"]) + (
+                    " - " + glosario.enlace_mision(modo, f["mision"], p["texto"], f["rotacion"])
+                    if f.get("mision") else ""
+                )
             elif f["nodo_en"]:
                 planeta = nombre_idioma(f, "planeta")
                 mision = _glosa(self.con, "mision", f["mision_en"])
-                donde = f"{nombre_idioma(f, 'nodo')}, {planeta}".strip(", ")
+                donde = html.escape(f"{nombre_idioma(f, 'nodo')}, {planeta}".strip(", "))
                 if mision:
-                    donde += f" - {mision}"
+                    donde += " - " + glosario.enlace_mision(modo, mision, p["texto"], f["rotacion"])
             else:
-                donde = nombre_bonito(self.con, f["origen_texto"])
+                # Sin nodo (Railjack, Arbitraje, Tormenta del Vacio): el modo, si se sabe,
+                # sirve al menos para explicar la rotacion.
+                modo = modo or modos_mision.modo_de_origen(f["origen_texto"])
+                donde = html.escape(nombre_bonito(self.con, f["origen_texto"]))
             extra = []
             if f.get("recurso_planeta"):
                 extra.append(html.escape(t("recurso del planeta")))
             if f["rotacion"]:
-                extra.append(_rotacion(self.con, f["rotacion"], p["suave"]))
+                extra.append(_rotacion(self.con, f["rotacion"], p["suave"], modo))
             if f["etapa"]:
                 extra.append(html.escape(etapa_bonita(f["etapa"])))
             if f["standing"]:
@@ -860,7 +871,7 @@ class PestanaBuscador(QWidget):
             tiempo = _tiempo(f.get("minutos_medios"), p["texto"], fila=f) or _sin_estimacion(f.get("motivo"), p["suave"])
             # La marca no es un enlace (sin href): solo dice cuanto rellenar la fila.
             ancla = relleno_filas.marca(relleno_filas.fraccion(f.get("minutos_medios"), referencia))
-            nombre = f"<b>{html.escape(donde)}</b>"
+            nombre = f"<b>{donde}</b>"
             if ancla:
                 nombre = f"<a name='{ancla}'>{nombre}</a>"
             filas.append(
@@ -967,11 +978,15 @@ def _sin_estimacion(motivo: str | None, color: str) -> str:
     return glosario.enlace("tiempo_medio", t(texto), color) if texto else ""
 
 
-def _rotacion(con, rotacion: str | None, color: str) -> str:
-    """'Rotacion C' con su explicacion al pasar el raton; vacio si no hay rotacion."""
+def _rotacion(con, rotacion: str | None, color: str, modo: str | None = None) -> str:
+    """'Rotacion C' con su explicacion al pasar el raton; vacio si no hay rotacion.
+
+    Con el modo de la fila la explicacion es la de ese modo (en Supervivencia la C es
+    el minuto 20; en Espionaje, la tercera boveda); sin el, la generica.
+    """
     if not rotacion:
         return ""
-    return glosario.enlace("rotacion", _glosa(con, "rotacion", rotacion), color)
+    return glosario.enlace_rotacion(modo, rotacion, _glosa(con, "rotacion", rotacion), color)
 
 
 def _tarjeta(cuerpo: str, color: str) -> str:

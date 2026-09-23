@@ -129,8 +129,22 @@ def _claves_del_codigo() -> set[str]:
                 continue
             if isinstance(literal, ast.Constant) and isinstance(literal.value, str):
                 claves.add(literal.value)
+        # Los atajos de Ajustes que pasan por _fijo con la clave como variable:
+        # self._boton("..."), self._grupo("..."), self._nota("...") y self._fila(form, "...", campo).
+        for nodo in ast.walk(ast.parse(ruta.read_text(encoding="utf-8"))):
+            if not (isinstance(nodo, ast.Call) and isinstance(nodo.func, ast.Attribute)):
+                continue
+            if nodo.func.attr in ("_boton", "_grupo", "_nota") and nodo.args:
+                literal = nodo.args[0]
+            elif nodo.func.attr == "_fila" and len(nodo.args) >= 2:
+                literal = nodo.args[1]
+            else:
+                continue
+            if isinstance(literal, ast.Constant) and isinstance(literal.value, str):
+                claves.add(literal.value)
     # Textos que llegan a t() desde constantes, no como literal en la llamada.
     from farmadex.captura import reliquias
+    from farmadex.datos import modos_mision
     from farmadex.online import worldstate
     from farmadex.ui import glosario, pestana_buscador, pestana_mundo, pestana_perfil, pestana_primes, widgets
     from farmadex.ui.pestana_ajustes import PestanaAjustes
@@ -147,6 +161,8 @@ def _claves_del_codigo() -> set[str]:
         # Titulos de las pestanas (VentanaOverlay._titulos_pestanas los pasa por t()).
         ("Buscar", "Objetivos", "Primes", "Mundo", "Perfil", "Ajustes"),
         pestana_primes.NOMBRES_REFINAMIENTO.values(),
+        # Que hacer y como van las recompensas de cada tipo de mision.
+        modos_mision.textos(),
     ):
         claves.update(grupo)
     return claves

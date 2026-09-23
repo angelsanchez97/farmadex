@@ -45,6 +45,9 @@ class PestanaAjustes(QWidget):
     ritmo_cambiado = Signal(str)
     comprobar_version = Signal()
     instalar_version = Signal(object)
+    # Diagnostico de reliquias: la ventana es quien sabe como va todo; aqui solo se pide.
+    pedir_diagnostico = Signal()
+    guardar_informe = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -257,6 +260,41 @@ class PestanaAjustes(QWidget):
         grupo_version = self._grupo("Version")
         grupo_version.setLayout(version)
 
+        # -- diagnostico de reliquias ----------------------------------------------
+        # Para el "no me sale nada al abrir una reliquia" de quien no sabe mandar el
+        # registro: una lista de comprobaciones con veredicto y un .zip en el Escritorio.
+        self.boton_diagnostico = self._boton("Comprobar la lectura de reliquias")
+        self.boton_diagnostico.clicked.connect(self.pedir_diagnostico.emit)
+        self.boton_informe = self._boton("Guardar informe para enviar")
+        self.boton_informe.clicked.connect(self.guardar_informe.emit)
+        self.resultado_diagnostico = QLabel("")
+        self.resultado_diagnostico.setTextFormat(Qt.RichText)
+        self.resultado_diagnostico.setWordWrap(True)
+        self.resultado_diagnostico.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.resultado_diagnostico.hide()
+        self.estado_informe = QLabel("")
+        self.estado_informe.setWordWrap(True)
+        self.estado_informe.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.estado_informe.setStyleSheet(f"color: {p['suave']}; font-size: 12px;")
+        self.estado_informe.hide()
+        botones_diagnostico = QHBoxLayout()
+        botones_diagnostico.addWidget(self.boton_diagnostico)
+        botones_diagnostico.addWidget(self.boton_informe)
+        botones_diagnostico.addStretch(1)
+        diagnostico = QVBoxLayout()
+        diagnostico.setSpacing(8)
+        diagnostico.addWidget(self._nota(
+            "Si al abrir una reliquia no sale nada encima del juego, pulsa 'Comprobar': dice si "
+            "EE.log se esta leyendo, en que modo de pantalla va el juego y si el lector esta listo. "
+            "'Guardar informe' deja un .zip en el Escritorio con el registro de Farmadex para "
+            "enviarlo; nunca incluye EE.log ni datos de tu cuenta."
+        ))
+        diagnostico.addWidget(self.resultado_diagnostico)
+        diagnostico.addLayout(botones_diagnostico)
+        diagnostico.addWidget(self.estado_informe)
+        grupo_diagnostico = self._grupo("Diagnostico de reliquias")
+        grupo_diagnostico.setLayout(diagnostico)
+
         # -- salida ---------------------------------------------------------------
         boton_salir = QPushButton()
         self._fijo(lambda s: boton_salir.setText(s.format(app=NOMBRE_APP)), "Salir de {app}")
@@ -273,6 +311,7 @@ class PestanaAjustes(QWidget):
         rejilla.addWidget(grupo_aspecto, 0, 1)
         rejilla.addWidget(grupo_datos, 1, 0)
         rejilla.addWidget(grupo_version, 1, 1)
+        rejilla.addWidget(grupo_diagnostico, 2, 0, 1, 2)
         rejilla.setColumnStretch(0, 1)
         rejilla.setColumnStretch(1, 1)
 
@@ -382,6 +421,28 @@ class PestanaAjustes(QWidget):
         self.estado_juego.setText(t("Modo de pantalla detectado: {modo}", modo=etiqueta))
         color = PALETA["aviso"] if modo == "exclusivo" else PALETA["suave"]
         self.estado_juego.setStyleSheet(f"color: {color}; font-size: 12px;")
+
+    # -- diagnostico de reliquias --------------------------------------------------
+
+    def mostrar_diagnostico(self, diagnostico) -> None:
+        """Pinta el resultado (`diagnostico.Diagnostico`) con el color de cada veredicto."""
+        p = PALETA
+        colores = {"ok": p.get("ok", p["acento"]), "mal": p["aviso"], "aviso": p["aviso"], "dato": p["suave"]}
+        self._ultimo_diagnostico = diagnostico
+        self.resultado_diagnostico.setText(diagnostico.html(colores))
+        self.resultado_diagnostico.show()
+
+    def informe_guardado(self, ruta, error: str = "") -> None:
+        """Donde quedo el .zip, o por que no se pudo escribir."""
+        if error:
+            self.estado_informe.setStyleSheet(f"color: {PALETA['aviso']}; font-size: 12px;")
+            self.estado_informe.setText(t("No se pudo guardar el informe: {error}", error=error))
+        else:
+            self.estado_informe.setStyleSheet(f"color: {PALETA['suave']}; font-size: 12px;")
+            self.estado_informe.setText(
+                t("Informe guardado en {ruta}. Enviaselo a quien te ayude; no contiene EE.log.", ruta=ruta)
+            )
+        self.estado_informe.show()
 
     def avisar_parche(self, texto: str | None, aviso: bool = True) -> None:
         """Aviso de que los datos son anteriores al parche del juego; None lo quita.

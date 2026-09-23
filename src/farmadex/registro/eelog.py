@@ -255,6 +255,27 @@ def leer_eventos(ruta: Path, posicion: int) -> tuple[list[str], int]:
     return [e for e in (clasificar(linea) for linea in lineas) if e], posicion
 
 
+@dataclass
+class EstadoEELog:
+    """Foto de como va la vigilancia, para el diagnostico de Ajustes.
+
+    Solo datos sobre el fichero y sobre lo que se ha reconocido; ninguna linea
+    suya (lleva correo, IP e id de jugador).
+    """
+
+    ruta: str = ""
+    existe: bool = False
+    tamano: int = 0
+    modificado: float | None = None  # mtime del fichero (epoch)
+    posicion: int = 0  # hasta donde se ha leido
+    ultima_lectura: float | None = None  # epoch de la ultima vez que se leyeron lineas nuevas
+    lineas: int = 0  # lineas leidas desde que arranco Farmadex
+    eventos: int = 0  # eventos reconocidos (reliquia_abierta, ...)
+    ultimo_evento: str = ""
+    ultimo_evento_en: float | None = None  # epoch
+    error: str = ""  # el ultimo OSError al leer, si lo hubo (vacio si va bien)
+
+
 class VigilanteEELog(QThread):
     """Sigue el final del fichero y avisa de los eventos reconocidos."""
 
@@ -268,10 +289,30 @@ class VigilanteEELog(QThread):
     # media 250 ms a ciegas. Un stat() cada 100 ms no se nota.
     INTERVALO = 0.1
 
-    def __init__(self, ruta: str | Path, parent=None):
+    def __init__(self, ruta: str | Path, parent=None, ruta_por_defecto: str | Path | None = None):
         super().__init__(parent)
         self.ruta = Path(ruta)
+        # Donde escribe el juego si nadie ha tocado la configuracion. Si la ruta
+        # configurada no existe pero esta si (config.json copiado de otro equipo, o
+        # editado a mano), se pasa a esta en vez de esperar para siempre en silencio.
+        self.ruta_por_defecto = Path(ruta_por_defecto) if ruta_por_defecto else None
         self._parar = False
+        # Lo que el diagnostico pregunta. Lo escribe este hilo y lo lee el de la
+        # ventana: cada campo se asigna de una vez, y una foto un poco vieja no importa.
+        self._estado = EstadoEELog(ruta=str(self.ruta))
+
+    def estado(self) -> EstadoEELog:
+        """Como va la vigilancia ahora mismo (copia; ver `EstadoEELog`)."""
+        e = self._estado
+        e.ruta = str(self.ruta)
+        try:
+            e.existe = self.ruta.exists()
+            if e.existe:
+                st = self.ruta.stat()
+                e.tamano, e.modificado = st.st_size, st.st_mtime
+        except OSError as err:
+            e.existe, e.error = False, str(err)
+        return EstadoEELog(**e.__dict__)
 
     def run(self) -> None:  # noqa: D102
         posicion = -1  # todavia no se ha visto el fichero
@@ -279,12 +320,16 @@ class VigilanteEELog(QThread):
         while not self._parar:
             try:
                 if not self.ruta.exists():
+                    if self._cambiar_a_la_ruta_por_defecto():
+                        continue
                     if not avisado:
                         log.info("Todavia no existe %s; se espera a que arranque el juego", self.ruta)
                         avisado = True
+                    self._estado.existe = False
                     time.sleep(2)
                     continue
                 tamano = self.ruta.stat().st_size
+                self._estado.existe, self._estado.tamano = True, tamano
                 if posicion < 0:
                     posicion = tamano  # al arrancar solo interesa lo nuevo
                     self._anunciar_cabecera()
@@ -296,11 +341,29 @@ class VigilanteEELog(QThread):
                     self._anunciar_cabecera()
                 if tamano > posicion:
                     lineas, posicion = leer_lineas(self.ruta, posicion)
+                    self._estado.lineas += len(lineas)
+                    self._estado.ultima_lectura = time.time()
                     self._procesar(lineas)
+                self._estado.posicion = posicion
+                self._estado.error = ""
             except OSError as e:
                 log.warning("No se pudo leer EE.log: %s", e)
+                self._estado.error = str(e)
                 time.sleep(2)
             time.sleep(self.INTERVALO)
+
+    def _cambiar_a_la_ruta_por_defecto(self) -> bool:
+        """True si la ruta configurada no existe pero la de siempre si, y se cambia a ella."""
+        alternativa = self.ruta_por_defecto
+        if alternativa is None or alternativa == self.ruta or not alternativa.exists():
+            return False
+        log.warning(
+            "EE.log no esta en la ruta configurada (%s) pero si en la de siempre (%s): se usa esta",
+            self.ruta, alternativa,
+        )
+        self.ruta = alternativa
+        self._estado.ruta = str(alternativa)
+        return True
 
     def _procesar(self, lineas: list[str]) -> None:
         """Emite, en el orden del fichero, los eventos y las pistas de las lineas nuevas."""
@@ -308,6 +371,8 @@ class VigilanteEELog(QThread):
             evento = clasificar(linea)
             if evento:
                 log.info("EE.log: %s", evento)
+                self._estado.eventos += 1
+                self._estado.ultimo_evento, self._estado.ultimo_evento_en = evento, time.time()
                 self.evento.emit(evento)
                 continue
             encontrada = pista(linea)

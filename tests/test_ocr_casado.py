@@ -42,7 +42,9 @@ def test_plano_delante_con_errata_es_el_plano_no_el_objeto(indice_poblado):
     assert casador.casar("Plano De Ash Primme")[0] == plano
     restringido = casador.restringido({plano})
     assert restringido.casar("Plano De Ash Primme")[0] == plano
-    assert restringido.casar("Ash Primme")[0] == plano
+    # Sin "Plano" delante no se sabe que pieza es: puede ser la segunda linea de
+    # "Plano De Chasis De / Ash Prime" (dos chasis de Citrine salieron como plano).
+    assert restringido.casar("Ash Prime")[0] != plano
 
 
 def test_cada_letra_leida_cuenta_para_una_sola_palabra():

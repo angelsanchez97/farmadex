@@ -72,7 +72,7 @@ def test_desglose_de_formido_cuadra_con_lo_que_se_ensena(config_temporal):
         ({"tipo": "mision", "modo": "Capture", "probabilidad": 5.0}, "~4.5 min por partida, contando la carga."),
         ({"tipo": "mision", "modo": "Survival", "rotacion": "C", "probabilidad": 10.0},
          "hasta la rotacion C: 4 rotaciones de ~5 min"),
-        ({"tipo": "mision", "modo": "Defense", "rotacion": "A", "probabilidad": 10.0},
+        ({"tipo": "mision", "modo": "Survival", "rotacion": "A", "probabilidad": 10.0},
          "que dan 2 intentos: ~5.8 min por intento"),
         ({"tipo": "bounty", "origen_texto": "Cetus Bounty", "rotacion": "A", "probabilidad": 20.0},
          "vuelve cada 3 contratos: 3 tandas de ~11.5 min"),
@@ -113,7 +113,7 @@ def test_desglose_prime_con_el_modelo_de_ruta_prime(config_temporal):
 
     # Io, Defensa rotacion A; 25 % de que caiga la reliquia; pieza al 20 % en Radiante,
     # escuadra de 4 (59 % por fisura).
-    sitio = {"tipo": "mision", "modo": "Defense", "rotacion": "A", "origen_texto": "Jupiter/Io (Defense)",
+    sitio = {"tipo": "mision", "modo": "Survival", "rotacion": "A", "origen_texto": "Jupiter/Io (Survival)",
              "reliquias": [{"probabilidad_mision": 25.0, "probabilidad": 20.0}]}
     intento, _ = eficiencia.minutos_por_intento(sitio)
     sitio["minutos"] = round(ruta_prime.minutos_pieza(intento, [(25.0, 20.0)], 4), 1)

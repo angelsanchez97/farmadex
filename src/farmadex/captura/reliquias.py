@@ -204,6 +204,8 @@ class LectorRecompensas(LectorBase):
         self._t_aviso: float | None = None  # cuando EE.log aviso de la pantalla
         self.tarjetas = 0  # lineas "Missing icon data!" de esta pantalla: una por recompensa
         self._miradas = 0  # lecturas de esta pantalla; las dos primeras solo miran la fila
+        self._previas: list[Recompensa] = []  # lo mejor leido de cada tarjeta en esta pantalla
+        self._confirmaciones = 0  # miradas de mas con todas las tarjetas ya leidas
 
     @Slot()
     def iniciar(self) -> None:
@@ -236,6 +238,9 @@ class LectorRecompensas(LectorBase):
 
     @Slot(str)
     def evento(self, nombre: str) -> None:
+        if nombre in ("reliquia_abierta", "reliquia_cerrada"):
+            self._previas = []
+            self._confirmaciones = 0
         if nombre == "reliquia_abierta":
             self.conocidas = []
             self._casador_conocidas = None
@@ -296,6 +301,18 @@ class LectorRecompensas(LectorBase):
     REINTENTO_MS = 150
     PLAZO_REINTENTO_S = 3.0
 
+    CONFIRMACIONES = 2
+    CONFIRMACION_MS = 400
+
+    def _toca_confirmar(self) -> bool:
+        if self._t_aviso is None or self._confirmaciones >= self.CONFIRMACIONES:
+            return False
+        return time.monotonic() - self._t_aviso <= self.PLAZO_REINTENTO_S
+
+    def _confirmar(self) -> None:
+        if self._t_aviso is not None:  # si la pantalla ya se cerro, no hay nada que mirar
+            self.leer_ahora()
+
     def _toca_reintentar(self, halladas: int) -> bool:
         if self._t_aviso is None:
             return False
@@ -341,6 +358,8 @@ class LectorRecompensas(LectorBase):
             )
             for r in fila
         ]
+        recompensas = conservar_mejores(self._previas, recompensas)
+        self._previas = recompensas
         log.info(
             "Recompensas leidas: %s",
             ", ".join(f"{r.texto_ocr} -> {r.nombre}" for r in recompensas) or "ninguna",
@@ -353,6 +372,13 @@ class LectorRecompensas(LectorBase):
         if self._toca_reintentar(len(recompensas)):
             # Se pinta ya lo que hay y se completa con la siguiente mirada.
             self._reintentar()
+        elif self._toca_confirmar():
+            # Ya estan todas, pero el juego pinta los nombres con un fundido: a los
+            # 0,6 s "Plano De Chasis De" aun salia a medias y la tarjeta quedaba como
+            # el plano. Una mirada mas tarde, con el texto entero, lo corrige
+            # (conservar_mejores se queda con la lectura mas completa).
+            self._confirmaciones += 1
+            QTimer.singleShot(self.CONFIRMACION_MS, self._confirmar)
 
 
     def _ids_conocidas(self) -> set[int]:
@@ -481,6 +507,45 @@ def _se_tocan(a, b) -> bool:
 
 
 RE_NOMBRE_PLAUSIBLE = re.compile(r"^[^\d]{6,}$")
+
+
+def _letras(texto: str) -> int:
+    return sum(c.isalnum() for c in texto or "")
+
+
+def conservar_mejores(previas: list, nuevas: list) -> list:
+    """Cada tarjeta se queda con su mejor lectura de esta pantalla.
+
+    Se lee varias veces mientras la pantalla se pinta, para completar las tarjetas
+    que faltan. Visto en un registro real: la primera mirada leyo "Plano chasisDe
+    CitrinePrime" (el chasis) y la segunda, de la misma tarjeta, solo "Citrine
+    Prime", y esa lectura peor sustituyo a la buena. Ahora, para la misma tarjeta
+    (misma posicion), una lectura nueva solo gana si identifica algo que la vieja
+    no, o si lee al menos tanto texto como ella.
+    """
+    if not previas:
+        return nuevas
+    salida = []
+    usadas = set()
+    for nueva in nuevas:
+        centro = nueva.caja[0] + nueva.caja[2] / 2
+        vieja = next(
+            (v for v in previas if abs(v.caja[0] + v.caja[2] / 2 - centro) < max(v.caja[2], nueva.caja[2]) / 2),
+            None,
+        )
+        if vieja is not None:
+            usadas.add(id(vieja))
+        if vieja is None or vieja.item_id == SIN_IDENTIFICAR or vieja.item_id == nueva.item_id:
+            salida.append(nueva)
+        elif nueva.item_id == SIN_IDENTIFICAR or _letras(nueva.texto_ocr) < _letras(vieja.texto_ocr):
+            vieja.caja = nueva.caja  # la posicion buena es la ultima (la tarjeta pudo moverse)
+            salida.append(vieja)
+        else:
+            salida.append(nueva)
+    # Una tarjeta que ya se habia leido y esta mirada no ve (un destello, el cursor
+    # encima) no desaparece.
+    salida += [v for v in previas if id(v) not in usadas and v.item_id != SIN_IDENTIFICAR]
+    return sorted(salida, key=lambda r: r.caja[0])
 
 
 def elegir_fila(

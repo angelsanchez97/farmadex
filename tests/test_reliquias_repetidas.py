@@ -116,12 +116,13 @@ def escenario(catalogo, monkeypatch, tmp_path):  # noqa: F811
     def abrir(modo: str, extra: str = "") -> list:
         comportamiento["modo"] = modo
         antes = len(leidas)
+        cerradas = eventos.count("reliquia_cerrada")
         with ruta.open("a", encoding="utf-8") as f:
             f.write(ABIERTA + extra + GOT)
         assert _esperar(lambda: len(leidas) > antes), f"la lectura en modo {modo!r} no llego"
         with ruta.open("a", encoding="utf-8") as f:
             f.write(ELEGIDA + CERRADA)
-        assert _esperar(lambda: eventos.count("reliquia_cerrada") == antes + 1)
+        assert _esperar(lambda: eventos.count("reliquia_cerrada") == cerradas + 1)
         return leidas[-1]
 
     yield abrir, eventos, lector, app
@@ -223,3 +224,29 @@ def test_una_lectura_corta_se_reintenta_solo_dentro_del_plazo():
     assert not lector._toca_reintentar(0)
     lector._t_aviso, lector.jugadores = time.monotonic(), None  # sin saber cuantos: al menos una
     assert lector._toca_reintentar(0) and not lector._toca_reintentar(1)
+
+
+def test_una_segunda_lectura_peor_no_pisa_a_la_buena():
+    """Registro real: la 1a mirada leyo "Plano chasisDe CitrinePrime" (el chasis) y la 2a,
+    de la misma tarjeta, solo "Citrine Prime": salia el plano en vez del chasis."""
+    from farmadex.captura.reliquias import SIN_IDENTIFICAR, Recompensa, conservar_mejores
+
+    primera = [
+        Recompensa(1, "Daikyu Prime Plano", "Plano De Daiky Prime", (100, 500, 250, 30)),
+        Recompensa(2, "Vadarya Prime Receptor", "Receptor De Vadarya Prime", (420, 500, 250, 30)),
+        Recompensa(3, "Citrine Prime Chasis", "Plano chasisDe CitrinePrime", (740, 490, 250, 50)),
+    ]
+    segunda = [
+        Recompensa(1, "Daikyu Prime Plano", "Plano De Daikyu Prime", (100, 500, 250, 30)),
+        Recompensa(2, "Vadarya Prime Receptor", "Receptor De Vadarya Prime", (420, 500, 250, 30)),
+        Recompensa(SIN_IDENTIFICAR, "Sin identificar", "Citrine Prime", (760, 510, 200, 30)),
+        Recompensa(4, "Citrine Prime Plano", "Plano Citrine Prime", (1060, 500, 250, 30)),
+    ]
+    juntas = conservar_mejores(primera, segunda)
+    assert [r.item_id for r in juntas] == [1, 2, 3, 4]
+    assert juntas[2].caja == (760, 510, 200, 30)  # posicion de la ultima mirada
+
+    # Una lectura nueva con mas texto y otro objeto si gana; y lo que no se ve no se pierde.
+    mejor = [Recompensa(5, "Otra", "Plano De Chasis De Citrine Prime", (740, 490, 250, 50))]
+    juntas = conservar_mejores(primera, mejor)
+    assert [r.item_id for r in juntas] == [1, 2, 5]

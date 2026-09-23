@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sqlite3
 import time
 from pathlib import Path
@@ -121,7 +122,50 @@ def fila_por_ruta(con: sqlite3.Connection, ruta: str, columnas: str = "id"):
         fila = con.execute(f"SELECT {columnas} FROM items WHERE unique_name = ?", (candidata,)).fetchone()
         if fila:
             return fila
+    for candidata in _rutas_sinteticas(con, ruta):
+        fila = con.execute(f"SELECT {columnas} FROM items WHERE unique_name = ?", (candidata,)).fetchone()
+        if fila:
+            return fila
     return None
+
+
+RE_RUTA_PRIME = re.compile(r"^([A-Z][A-Za-z]*?)Prime([A-Z][A-Za-z]*)?$")
+# El juego llama "Helmet" a las neuropticas en sus rutas.
+PIEZA_EN_RUTA = {"Helmet": "Neuroptics"}
+
+
+def _rutas_sinteticas(con: sqlite3.Connection, ruta: str) -> list[str]:
+    """Rutas `/Farmadex/DE/...` que puede tener la recompensa de EE.log de un prime recien salido.
+
+    Lo que solo esta en la tabla oficial de DE lleva una ruta inventada, porque no se
+    sabe la real: sin esto la recompensa propia no se reconocia por el registro del
+    juego (dos chasis de Citrine Prime acabaron leidos como su plano). La ruta del
+    juego puede usar el nombre interno del warframe (Citrine es "Geode"), asi que se
+    prueba tambien el nombre comercial del objeto normal con esa ruta.
+    """
+    tramo = ruta.rstrip("/").rsplit("/", 1)[-1]
+    m = RE_RUTA_PRIME.match(tramo)
+    if not m:
+        return []
+    base, resto = m.group(1), m.group(2) or ""
+    pieza = resto
+    for sufijo in ("Blueprint", "Component"):
+        if pieza.endswith(sufijo) and pieza != sufijo:
+            pieza = pieza.removesuffix(sufijo)
+            break
+    if not pieza:
+        return []
+    pieza = PIEZA_EN_RUTA.get(pieza, pieza)
+    nombres = [base]
+    for (nombre,) in con.execute(
+        "SELECT nombre_en FROM items WHERE unique_name LIKE ? AND unique_name NOT LIKE '/Farmadex/%'",
+        (f"%/{base}",),
+    ):
+        nombres.append(nombre.replace(" ", ""))
+    salida = []
+    for nombre in nombres:
+        salida += [f"/Farmadex/DE/{nombre}Prime{pieza}", f"/Farmadex/DE/{nombre}Prime{pieza}Component"]
+    return salida
 
 
 def hay_indice(ruta: Path = RUTA_INDICE) -> bool:

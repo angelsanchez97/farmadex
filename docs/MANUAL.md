@@ -233,7 +233,21 @@ suficientemente buena, no dice nada en vez de arriesgarse a equivocarse.
 bordes» o en ventana con DX12; mira en Ajustes qué modo ha detectado
 Farmadex. Si dice «pantalla completa exclusiva», cambia el modo de pantalla
 del juego en Opciones > Pantalla, o mueve Farmadex a un segundo monitor si
-tienes uno: en pantalla completa exclusiva el overlay se abre ahí solo.
+tienes uno: en pantalla completa exclusiva el overlay se abre ahí solo. Si
+abres una reliquia en ese modo, Farmadex te lo avisa con un globo desde la
+bandeja, porque en ese momento la ventana está escondida y no verías nada.
+
+**No sale nada al abrir una reliquia y no sé por qué.** En Ajustes, abajo del
+todo, está «Diagnóstico de reliquias». Pulsa «Comprobar la lectura de
+reliquias»: cada línea dice en claro si va bien o mal: si se ha encontrado
+`EE.log` y se está leyendo (con su ruta), cuándo se vio la última pantalla de
+recompensas y si se leyó y se pintó, en qué modo de pantalla va el juego, si
+el lector de pantalla ha cargado, si la lectura automática está activada y
+qué estilo de recompensas tienes. Lo mejor es hacerlo justo después de abrir
+una reliquia que no ha salido. Si no sacas nada en claro, pulsa «Guardar
+informe para enviar»: deja un `.zip` en el Escritorio con ese diagnóstico y el
+registro de Farmadex, listo para mandarlo a quien te ayude. Ese informe no
+lleva `EE.log` ni nada de tu cuenta.
 
 **El atajo no responde.** Puede que otro programa (o el propio juego) ya use
 esa combinación de teclas: Windows solo deja que un programa la reciba.

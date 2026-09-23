@@ -56,12 +56,12 @@ UNA_VEZ = {
 }
 DURACION_DESCONOCIDA = 8.0  # un modo que no esta en ninguna tabla
 
-# Misiones sin fin: minutos por rotacion (5 oleadas de Defensa, 5 minutos de
+# Misiones sin fin: minutos por rotacion (3 oleadas de Defensa, 5 minutos de
 # Supervivencia, una excavadora, una ronda de Intercepcion...). Las recompensas van
 # A, A, B, C: la primera C llega en la cuarta rotacion.
 SIN_FIN = {
     "Survival": 5.0,
-    "Defense": 5.0,
+    "Defense": 3.0,  # premio cada 3 oleadas (wiki, 2026-09); antes se suponian 5
     "Excavation": 2.5,
     "Interception": 3.5,
     "Disruption": 4.0,

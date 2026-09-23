@@ -20,7 +20,15 @@ from ..datos import indice as indice_datos
 from ..estado import objetivos as estado_objetivos
 from ..estado import usuario_db
 from ..idiomas import es_castellano, nombre as nombre_idioma, t
+from . import glosario
 from .widgets import COLOR_BOVEDA, COLOR_DISPONIBLE, PALETA, Tarjeta
+
+
+def _rotacion(mision: dict, color: str) -> str:
+    """'rotacion C' explicando, al pasar el raton, cuando llega en el modo de esa mision."""
+    return glosario.enlace_rotacion(
+        mision.get("modo"), mision["rotacion"], t("rotacion {rot}", rot=mision["rotacion"]), color
+    )
 
 
 class FilaObjetivo(Tarjeta):
@@ -76,6 +84,8 @@ class FilaObjetivo(Tarjeta):
         self.donde.setTextFormat(Qt.RichText)
         self.donde.setWordWrap(True)
         self.donde.setStyleSheet(f"color: {p['suave']};")
+        # El tipo de mision y la rotacion explican el modo al pasar el raton.
+        glosario.conectar_etiqueta(self.donde)
 
         self.caja.addLayout(arriba)
         self.caja.addWidget(self.donde)
@@ -92,9 +102,10 @@ class FilaObjetivo(Tarjeta):
                 return t("Sin ruta conocida: puede venir de una mision de historia o del mercado.")
             trozos = [f"<b>{html.escape(mision.get('donde') or '')}</b>"]
             if mision.get("mision"):
-                trozos.append(html.escape(mision["mision"]))
+                trozos.append(glosario.enlace_mision(
+                    mision.get("modo"), mision["mision"], p["texto"], mision.get("rotacion")))
             if mision.get("rotacion"):
-                trozos.append(t("rotacion {rot}", rot=mision["rotacion"]))
+                trozos.append(_rotacion(mision, p["texto"]))
             if ruta.get("probabilidad"):
                 trozos.append(f"{ruta['probabilidad']:.1f}%")
             return f"<span style='color:{p['texto']}'>{' &middot; '.join(trozos)}</span>"
@@ -110,9 +121,10 @@ class FilaObjetivo(Tarjeta):
         mision = ruta["mision"]
         detalle = f"{html.escape(mision['donde'])}" if mision else t("sin mision conocida")
         if mision and mision["mision"]:
-            detalle += f" &middot; {html.escape(mision['mision'])}"
+            detalle += " &middot; " + glosario.enlace_mision(
+                mision.get("modo"), mision["mision"], p["texto"], mision.get("rotacion"))
         if mision and mision["rotacion"]:
-            detalle += " &middot; " + t("rotacion {rot}", rot=mision["rotacion"])
+            detalle += " &middot; " + _rotacion(mision, p["texto"])
         return (
             f"<span style='color:{p['texto']}'><b>{nombre}</b></span> ({radiante}) "
             f"&middot; {t('farmeala en')} <span style='color:{p['texto']}'>{detalle}</span>"

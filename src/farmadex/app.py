@@ -33,6 +33,9 @@ class Aplicacion:
         self.ventana.ajustes.opacidad_cambiada.connect(self.ventana.aplicar_opacidad)
 
         self.bandeja = self._crear_bandeja()
+        # Avisos que tienen que verse con la ventana escondida (reliquia en pantalla
+        # completa exclusiva, lector que no carga): globo de la bandeja.
+        self.ventana.aviso_bandeja.connect(self._aviso_bandeja)
         self.hotkeys: GestorHotkeys | None = None
         self.recargar_hotkeys(
             {
@@ -75,6 +78,9 @@ class Aplicacion:
     def _abrir_ajustes(self) -> None:
         self.ventana.mostrar()
         self.ventana.pestanas.setCurrentWidget(self.ventana.ajustes)
+
+    def _aviso_bandeja(self, texto: str) -> None:
+        self.bandeja.showMessage(NOMBRE_APP, texto, self.icono, 10000)
 
     # -- atajos --------------------------------------------------------------
 

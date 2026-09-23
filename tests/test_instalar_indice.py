@@ -76,3 +76,23 @@ def test_reemplazar_aguanta_un_destino_bloqueado_un_momento(tmp_path, monkeypatc
     fallos["n"] = 99  # bloqueado todo el rato: se escribe encima igualmente
     ficheros.escribir_texto(destino, "otra vez")
     assert destino.read_text(encoding="utf-8") == "otra vez"
+
+
+def test_recompensa_de_ee_log_casa_con_el_objeto_sacado_de_la_tabla_de_de():
+    """Lo recien salido tiene ruta inventada; la de EE.log puede usar el nombre interno."""
+    from farmadex.datos.indice import fila_por_ruta
+
+    con = sqlite3.connect(":memory:")
+    con.execute("CREATE TABLE items (id INTEGER PRIMARY KEY, unique_name TEXT, nombre_en TEXT)")
+    con.executemany("INSERT INTO items VALUES (?, ?, ?)", [
+        (1, "/Lotus/Powersuits/Geode/Geode", "Citrine"),
+        (2, "/Farmadex/DE/CitrinePrimeChassisComponent", "Chassis"),
+        (3, "/Farmadex/DE/CitrinePrimeBlueprint", "Blueprint"),
+        (4, "/Farmadex/DE/CitrinePrimeNeuropticsComponent", "Neuroptics"),
+    ])
+    rutas = "/Lotus/StoreItems/Types/Recipes/WarframeRecipes/"
+    assert fila_por_ruta(con, rutas + "GeodePrimeChassisBlueprint") == (2,)
+    assert fila_por_ruta(con, rutas + "CitrinePrimeChassisBlueprint") == (2,)
+    assert fila_por_ruta(con, rutas + "GeodePrimeHelmetBlueprint") == (4,)
+    assert fila_por_ruta(con, rutas + "GeodePrimeBlueprint") == (3,)
+    assert fila_por_ruta(con, rutas + "AshPrimeChassisBlueprint") is None

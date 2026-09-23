@@ -11,6 +11,8 @@ basta con `aplicar(widget, clave)`.
 Un enlace puede llevar ademas un detalle propio (`glosa:<clave>?<texto>`): el
 tooltip ensena entonces ese texto en vez de la explicacion generica. Asi cada
 tiempo de la ficha explica SUS numeros (minutos por partida, partidas de media).
+En los terminos de TERMINOS_TITULO_PROPIO la primera linea del detalle es el titulo:
+el tooltip del tipo de mision se titula "Supervivencia", no "Tipo de mision".
 """
 
 from __future__ import annotations
@@ -22,13 +24,15 @@ from PySide6.QtCore import QEvent
 from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import QLabel, QTextBrowser, QToolTip, QWidget
 
-from ..datos import eficiencia
+from ..datos import eficiencia, modos_mision
 from ..idiomas import t
 
 PREFIJO = "glosa:"
 
 # Terminos de tiempo estimado: su tooltip dice ademas con que ritmo de juego se calculo.
 TERMINOS_TIEMPO = ("tiempo_medio", "tiempo_pieza")
+# Terminos cuyo detalle trae su propio titulo en la primera linea.
+TERMINOS_TITULO_PROPIO = ("mision",)
 NOMBRES_RITMO = {"rapido": "Rapido", "normal": "Normal", "tranquilo": "Tranquilo"}
 
 # clave -> (titulo, explicacion). Los dos pasan por t(); la explicacion, corta.
@@ -52,6 +56,11 @@ TERMINOS: dict[str, tuple[str, str]] = {
         "Rotacion",
         "En las misiones sin fin (Supervivencia, Defensa...) las recompensas van en ciclos "
         "A, A, B, C. La rotacion C es la cuarta recompensa: el minuto 20 o la oleada 20.",
+    ),
+    "mision": (
+        "Tipo de mision",
+        "Cada tipo de mision tiene su objetivo (aguantar, defender, capturar...) y su forma "
+        "de dar recompensas: una sola al terminar o una cada cierto tiempo mientras sigas.",
     ),
     "tiempo_medio": (
         "Tiempo medio estimado",
@@ -162,14 +171,18 @@ def texto(clave: str) -> str:
     if not termino:
         return ""
     titulo, explicacion = termino
+    titulo = t(titulo)
+    lineas = unquote(detalle).splitlines()
+    if detalle and clave in TERMINOS_TITULO_PROPIO and len(lineas) > 1:
+        titulo, lineas = lineas[0], lineas[1:]
     cuerpo = (
-        "<br>".join(html.escape(linea) for linea in unquote(detalle).splitlines())
+        "<br>".join(html.escape(linea) for linea in lineas)
         if detalle
         else html.escape(t(explicacion))
     )
     if clave in TERMINOS_TIEMPO:
         cuerpo += f"<br><i>{html.escape(nota_ritmo())}</i>"
-    contenido = f"<p style='white-space:normal'><b>{html.escape(t(titulo))}</b><br>{cuerpo}</p>"
+    contenido = f"<p style='white-space:normal'><b>{html.escape(titulo)}</b><br>{cuerpo}</p>"
     if detalle:
         # El desglose son varias lineas con numeros: sin ancho fijo, Qt parte el tooltip
         # en una columna estrecha y cada linea ocupa tres.
@@ -188,6 +201,24 @@ def enlace(clave: str, visible: str, color: str, negrita: bool = False, detalle:
         cuerpo = f"<b>{cuerpo}</b>"
     destino = PREFIJO + clave + (f"?{quote(detalle, safe='')}" if detalle else "")
     return f"<a href='{destino}' style='color:{color};text-decoration:none'>{cuerpo}</a>"
+
+
+def enlace_mision(modo: str | None, visible: str, color: str, rotacion: str | None = None) -> str:
+    """El tipo de mision de una fila ('Supervivencia') con lo que se hace y como da premios.
+
+    `modo` es el nombre ingles del juego (Survival); `visible`, lo que ya ensenaba la
+    fila. Si el modo no esta en modos_mision se pinta tal cual, sin tooltip: mejor nada
+    que una explicacion generica que no dice que hacer en esa mision concreta.
+    """
+    detalle = modos_mision.explicacion(modo, rotacion)
+    if not detalle:
+        return html.escape(visible)
+    return enlace("mision", visible, color, detalle=detalle)
+
+
+def enlace_rotacion(modo: str | None, rotacion: str, visible: str, color: str) -> str:
+    """'Rotacion C' explicando cuando llega esa rotacion en ESE modo; si no, la generica."""
+    return enlace("rotacion", visible, color, detalle=modos_mision.explicacion_rotacion(modo, rotacion))
 
 
 def es_glosa(url: str) -> bool:
