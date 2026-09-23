@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import time
 from pathlib import Path
@@ -34,6 +35,65 @@ VERSION_ESQUEMA = "8"
 # Idiomas con glosario de componentes propio (glosario_<idioma>.json): lo que WFCD no
 # traduce (Chassis, Systems...) se completa a mano, igual que ya se hacia con el espanol.
 IDIOMAS_GLOSARIO = ("fr", "de", "pt")
+
+def instalar_indice(nuevo: Path, destino: Path) -> None:
+    """Pone el indice recien construido en el sitio del viejo, aunque este abierto.
+
+    Antes se borraban `indice.sqlite`, `-wal` y `-shm` y se renombraba el nuevo.
+    Con el propio Farmadex leyendo el indice (lector de reliquias, pestanas...),
+    Windows no deja borrar un fichero abierto y la actualizacion de datos moria
+    con "[WinError 32] ... indice.sqlite-wal" justo tras actualizar el programa,
+    que es cuando un esquema nuevo obliga a reconstruir. Ahora el contenido se
+    copia DENTRO de la base abierta con la copia de seguridad de SQLite: es una
+    sola transaccion (o todo o nada), respeta los bloqueos de los demas y las
+    conexiones abiertas ven los datos nuevos en su siguiente consulta.
+    """
+    if not destino.exists():
+        nuevo.replace(destino)
+        return
+    origen = sqlite3.connect(nuevo)
+    try:
+        for intento in range(3):
+            viejo = sqlite3.connect(destino, timeout=30)
+            try:
+                origen.backup(viejo)
+                break
+            except sqlite3.OperationalError as ocupado:
+                # "database is locked": alguien escribe o lee largo; se espera y reintenta.
+                if intento == 2:
+                    raise RuntimeError(
+                        "No se pudo cambiar el indice de datos porque esta ocupado. "
+                        "Se volvera a intentar la proxima vez que abras Farmadex."
+                    ) from ocupado
+                log.warning("Indice ocupado al instalar el nuevo (%s); reintento", ocupado)
+                time.sleep(2)
+            finally:
+                viejo.close()
+    except RuntimeError:
+        raise
+    except sqlite3.DatabaseError as error:
+        # El viejo esta roto (no es una base de datos): ahi si se sustituye el fichero.
+        log.warning("Indice viejo ilegible (%s); se sustituye el fichero", error)
+        origen.close()
+        try:
+            for sufijo in ("-wal", "-shm"):
+                Path(str(destino) + sufijo).unlink(missing_ok=True)
+            destino.unlink(missing_ok=True)
+        except OSError as bloqueo:
+            raise RuntimeError(
+                "No se pudo cambiar el indice de datos porque esta en uso. "
+                "Cierra Farmadex del todo y vuelve a abrirlo."
+            ) from bloqueo
+        nuevo.replace(destino)
+        return
+    finally:
+        origen.close()
+    for sufijo in ("", "-wal", "-shm"):
+        try:
+            Path(str(nuevo) + sufijo).unlink(missing_ok=True)
+        except OSError:  # un temporal que sobra no puede tumbar la actualizacion
+            log.warning("No se pudo borrar el temporal %s%s", nuevo, sufijo)
+
 
 def conectar(ruta: Path = RUTA_INDICE) -> sqlite3.Connection:
     con = sqlite3.connect(ruta)
@@ -317,7 +377,11 @@ def construir(progreso=None, forzar: bool = False) -> dict:
         return {"reconstruido": False}
 
     tmp = RUTA_INDICE.with_suffix(".nuevo")
-    tmp.unlink(missing_ok=True)
+    try:
+        tmp.unlink(missing_ok=True)
+    except OSError:  # un resto de otra vez que Windows aun tiene cogido
+        tmp = RUTA_INDICE.with_suffix(f".nuevo{os.getpid()}")
+        tmp.unlink(missing_ok=True)
     con = conectar(tmp)
     try:
         crear_esquema(con)
@@ -417,11 +481,8 @@ def construir(progreso=None, forzar: bool = False) -> dict:
     finally:
         con.close()
 
-    # Intercambio atomico: el indice viejo solo se sustituye si el nuevo acabo bien.
-    for sufijo in ("-wal", "-shm"):
-        Path(str(RUTA_INDICE) + sufijo).unlink(missing_ok=True)
-    RUTA_INDICE.unlink(missing_ok=True)
-    tmp.replace(RUTA_INDICE)
+    # El indice viejo solo se sustituye si el nuevo acabo bien.
+    instalar_indice(tmp, RUTA_INDICE)
 
     resumen = {
         "reconstruido": True,

@@ -1,5 +1,15 @@
 # Cambios
 
+## 0.2.9
+
+- Arreglado el aviso "Datos sin actualizar: [WinError 32] ... indice.sqlite-wal"
+  que salía justo después de actualizar. Farmadex intentaba borrar sus datos
+  mientras él mismo los estaba usando; ahora los cambia sin borrar nada, con el
+  programa abierto. Si ya te salió, al abrir la 0.2.9 se rehacen solos.
+- Los ajustes, el estado de las descargas y el texto para OBS se guardan aunque
+  otro programa (OBS, el antivirus) tenga el fichero abierto en ese momento.
+- Tema de color nuevo: Cherry (cereza), en Ajustes > Tema.
+
 ## 0.2.8
 
 **Lo nuevo del juego llega antes**

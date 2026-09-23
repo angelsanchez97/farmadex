@@ -1,6 +1,6 @@
 """Renderiza el overlay con datos reales, en cada tema, y deja los PNG en herramientas/capturas/.
 
-Uso: .venv/Scripts/python.exe herramientas/render_ui.py [vacio|orokin|tenno|todos]
+Uso: .venv/Scripts/python.exe herramientas/render_ui.py [vacio|orokin|tenno|cherry|todos]
 
 No toca los datos del usuario: copia el indice real a una carpeta temporal y trabaja
 ahi (FARMADEX_DATOS), con su propio config.json y su propia base de objetivos.
@@ -20,11 +20,11 @@ from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parents[1]
 CAPTURAS = RAIZ / "herramientas" / "capturas"
-TEMAS = ("vacio", "orokin", "tenno")
+TEMAS = ("vacio", "orokin", "tenno", "cherry")
 
 
 def preparar_sandbox() -> Path:
-    real = Path(os.environ.get("LOCALAPPDATA", "")) / "Farmadex" / "db" / "indice.sqlite"
+    real = Path(os.environ.get("FARMADEX_INDICE_ORIGEN") or Path(os.environ.get("LOCALAPPDATA", "")) / "Farmadex" / "db" / "indice.sqlite")
     if not real.exists():
         sys.exit("No hay indice real construido; abre la app una vez primero.")
     raiz = Path(tempfile.gettempdir()) / "farmadex_render"

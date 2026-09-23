@@ -98,7 +98,7 @@ media escena de OBS.
 - **Glosario.** Palabras como «rotación», «refinamiento» o «bóveda» salen
   subrayadas; pasas el ratón y te lo explica en una línea. Pensado para quien
   empieza.
-- **Idiomas y colores.** Español, inglés, francés, alemán y portugués, y tres
+- **Idiomas y colores.** Español, inglés, francés, alemán y portugués, y cuatro
   temas de color.
 - **Se actualiza solo.** Baja la versión nueva por detrás y se instala cuando
   cierras Farmadex, nunca en mitad de una partida. Se puede desactivar.

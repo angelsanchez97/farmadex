@@ -15,7 +15,7 @@ from ..registro_log import obtener
 log = obtener("ui")
 
 # -- temas ------------------------------------------------------------------------
-# Tres aspectos para que el usuario elija. Todos con fondo muy oscuro y opaco,
+# Cuatro aspectos para que el usuario elija. Todos con fondo muy oscuro y opaco,
 # porque la ventana se lee encima de una partida, no sobre un fondo neutro.
 TEMAS = {
     "vacio": {
@@ -35,6 +35,12 @@ TEMAS = {
         "fondo": "#0b1416", "panel": "#12201f", "panel2": "#182b29", "borde": "#24403c",
         "texto": "#e6f1ef", "suave": "#8fb0aa", "acento": "#39d0c0", "acento_texto": "#04201c",
         "aviso": "#f2b04a", "ok": "#7ee08a", "fondo_rgb": "11, 20, 22",
+    },
+    "cherry": {
+        "titulo": "Cherry (cereza)",
+        "fondo": "#150c0f", "panel": "#211217", "panel2": "#2c181f", "borde": "#47242f",
+        "texto": "#f4e8eb", "suave": "#b39aa1", "acento": "#e8456a", "acento_texto": "#1f060c",
+        "aviso": "#f2a444", "ok": "#7fd88a", "fondo_rgb": "21, 12, 15",
     },
 }
 TEMA_POR_DEFECTO = "orokin"

@@ -22,7 +22,6 @@ OBS no lea nunca un fichero a medias.
 from __future__ import annotations
 
 import json
-import os
 import sqlite3
 from collections import Counter
 from dataclasses import dataclass, field
@@ -32,6 +31,7 @@ from pathlib import Path
 from ..config import DIR_BASE
 from ..idiomas import t
 from ..registro_log import obtener
+from ..ficheros import reemplazar
 
 log = obtener("historial")
 
@@ -296,7 +296,7 @@ def exportar_obs(
     texto = renderizar(resumen, plantilla)
     tmp = ruta.with_suffix(ruta.suffix + ".tmp")
     tmp.write_text(texto, encoding="utf-8")
-    os.replace(tmp, ruta)
+    reemplazar(tmp, ruta)
     return ruta
 
 

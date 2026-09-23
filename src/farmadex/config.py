@@ -8,6 +8,7 @@ import threading
 from pathlib import Path
 
 from . import NOMBRE_APP, URL_CONTACTO, VERSION
+from .ficheros import reemplazar
 
 USER_AGENT = f"{NOMBRE_APP}/{VERSION} (+{URL_CONTACTO})" if URL_CONTACTO else f"{NOMBRE_APP}/{VERSION}"
 
@@ -138,7 +139,7 @@ def guardar(config: dict) -> None:
         texto = json.dumps(dict(config), indent=2, ensure_ascii=False)
         tmp = RUTA_CONFIG.with_suffix(".tmp")
         tmp.write_text(texto, encoding="utf-8")
-        tmp.replace(RUTA_CONFIG)
+        reemplazar(tmp, RUTA_CONFIG)
         if _compartida is not None and _compartida[1] is not config:
             # Alguien ha guardado un diccionario suyo: lo que hubiera en memoria ya no
             # vale, y la proxima lectura vuelve al fichero.

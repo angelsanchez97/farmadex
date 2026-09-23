@@ -23,6 +23,7 @@ from ..config import DIR_DATOS, RUTA_ESTADO_DATOS, USER_AGENT, crear_carpetas
 from ..registro_log import obtener
 from .tabla_oficial import NOMBRE_FICHERO as FICHERO_TABLA_OFICIAL
 from .tabla_oficial import URL_TABLA_OFICIAL, fecha_publicacion
+from ..ficheros import reemplazar
 
 log = obtener("descargas")
 
@@ -147,7 +148,7 @@ class EstadoDatos:
         crear_carpetas()
         tmp = RUTA_ESTADO_DATOS.with_suffix(".tmp")
         tmp.write_text(json.dumps(self.__dict__, indent=2), encoding="utf-8")
-        tmp.replace(RUTA_ESTADO_DATOS)
+        reemplazar(tmp, RUTA_ESTADO_DATOS)
 
 
 def fuentes_pendientes(estado: EstadoDatos, atrasadas: list[tuple[str, str]]) -> list[tuple[str, str]]:

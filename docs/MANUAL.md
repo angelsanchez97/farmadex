@@ -131,7 +131,7 @@ dominado, a medias o sin tocar.
 - **Atajos de teclado**: los tres atajos globales de Farmadex, editables.
   Escribe la combinación y pulsa «Aplicar atajos»; si la combinación no vale
   o ya la usa otro programa, se avisa antes de aplicarla.
-- **Tema de color**: Vacío (azul), Orokin (dorado) o Tenno (turquesa). Cambia
+- **Tema de color**: Vacío (azul), Orokin (dorado), Tenno (turquesa) o Cherry (cereza). Cambia
   al momento.
 - **Idioma**: Automático (el de Windows, si está traducido) o uno fijo entre
   español, inglés, francés, alemán y portugués de Brasil. El menú de la
