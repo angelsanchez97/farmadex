@@ -103,3 +103,44 @@ def test_ajustes_cambia_el_estilo_y_la_ventana_lo_sigue(monkeypatch, tmp_path):
     assert ajustes.estilo_recompensas.currentData() == "etiquetas"
     ajustes.estilo_recompensas.setCurrentIndex(1)
     assert recibidos == ["panel"] and ajustes.config["estilo_recompensas"] == "panel"
+
+
+def _panel_con(cajas):
+    from farmadex.ui.panel_recompensas import PanelRecompensas
+
+    _app()
+    panel = PanelRecompensas()
+    panel.resize(2560, 1440)
+    panel.recompensas = [Recompensa(i + 1, f"R{i}", "x", c, ducados=15) for i, c in enumerate(cajas)]
+    return panel
+
+
+def test_cada_tarjeta_queda_centrada_bajo_su_recompensa():
+    """Captura real: Trumna, Euphona y Caliban con nombres de anchos distintos."""
+    # Cajas del texto de cada recompensa: anchos muy distintos, centros equiespaciados.
+    cajas = [(700, 560, 360, 36), (1150, 560, 360, 36), (1520, 540, 340, 70)]
+    panel = _panel_con(cajas)
+    rects = panel.rectangulos_tarjetas(panel.rectangulo_panel())
+    for (x, _, w, _), rect in zip(cajas, rects):
+        assert abs(rect.center().x() - (x + w // 2)) <= 2
+    for a, b in zip(rects, rects[1:]):
+        assert a.right() < b.left(), "no se pisan"
+
+
+def test_de_una_a_cuatro_recompensas_caben_y_con_cero_no_hay_panel():
+    from farmadex.ui.panel_recompensas import PanelRecompensas
+
+    for n in (1, 2, 3, 4):
+        paso = 380
+        inicio = 1280 - paso * (n - 1) // 2
+        cajas = [(inicio + i * paso - 150, 560, 300, 36) for i in range(n)]
+        panel = _panel_con(cajas)
+        rects = panel.rectangulos_tarjetas(panel.rectangulo_panel())
+        assert len(rects) == n
+        assert all(r.left() >= 0 and r.right() <= 2560 for r in rects)
+        for a, b in zip(rects, rects[1:]):
+            assert a.right() < b.left()
+    _app()
+    vacio = PanelRecompensas()
+    vacio.mostrar([])
+    assert not vacio.isVisible()

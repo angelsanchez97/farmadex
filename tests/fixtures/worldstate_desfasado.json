@@ -1,0 +1,583 @@
+{
+  "timestamp": "2026-09-22T17:29:13.000Z",
+  "fissures": [
+    {
+      "id": "6ab29fea01a42adf24a430ef",
+      "activation": "2026-09-22T15:34:02.924Z",
+      "expiry": "2026-09-22T17:32:29.669Z",
+      "node": "Oxomoco (Void)",
+      "missionType": "Extermination",
+      "missionTypeKey": "Extermination",
+      "enemy": "Orokin",
+      "enemyKey": "Orokin",
+      "nodeKey": "Oxomoco (Void)",
+      "tier": "Neo",
+      "tierNum": 3,
+      "isStorm": false,
+      "isHard": true,
+      "active": null,
+      "expired": null
+    },
+    {
+      "id": "6ab2a1525e043014dfec89ca",
+      "activation": "2026-09-22T15:40:02.397Z",
+      "expiry": "2026-09-22T17:33:44.469Z",
+      "node": "Naga (Sedna)",
+      "missionType": "Rescue",
+      "missionTypeKey": "Rescue",
+      "enemy": "Grineer",
+      "enemyKey": "Grineer",
+      "nodeKey": "Naga (Sedna)",
+      "tier": "Axi",
+      "tierNum": 4,
+      "isStorm": false,
+      "isHard": true,
+      "active": null,
+      "expired": null
+    },
+    {
+      "id": "6ab2a2f69fd93a61e45064b0",
+      "activation": "2026-09-22T15:47:02.467Z",
+      "expiry": "2026-09-22T17:39:07.577Z",
+      "node": "Pago (Kuva Fortress)",
+      "missionType": "Spy",
+      "missionTypeKey": "Spy",
+      "enemy": "Grineer",
+      "enemyKey": "Grineer",
+      "nodeKey": "Pago (Kuva Fortress)",
+      "tier": "Requiem",
+      "tierNum": 5,
+      "isStorm": false,
+      "isHard": false,
+      "active": null,
+      "expired": null
+    },
+    {
+      "id": "6ab2a2f69fd93a61e45064b1",
+      "activation": "2026-09-22T15:47:02.467Z",
+      "expiry": "2026-09-22T17:39:40.939Z",
+      "node": "Dakata (Kuva Fortress)",
+      "missionType": "Extermination",
+      "missionTypeKey": "Extermination",
+      "enemy": "Grineer",
+      "enemyKey": "Grineer",
+      "nodeKey": "Dakata (Kuva Fortress)",
+      "tier": "Requiem",
+      "tierNum": 5,
+      "isStorm": false,
+      "isHard": false,
+      "active": null,
+      "expired": null
+    },
+    {
+      "id": "6ab2a49a68002f796f198311",
+      "activation": "2026-09-22T15:54:02.200Z",
+      "expiry": "2026-09-22T17:41:03.146Z",
+      "node": "Arval (Mars)",
+      "missionType": "Spy",
+      "missionTypeKey": "Spy",
+      "enemy": "Grineer",
+      "enemyKey": "Grineer",
+      "nodeKey": "Arval (Mars)",
+      "tier": "Lith",
+      "tierNum": 1,
+      "isStorm": false,
+      "isHard": true,
+      "active": null,
+      "expired": null
+    },
+    {
+      "id": "6ab2a5c68c558c1addf23e46",
+      "activation": "2026-09-22T15:59:02.633Z",
+      "expiry": "2026-09-22T17:45:38.738Z",
+      "node": "Ukko (Void)",
+      "missionType": "Capture",
+      "missionTypeKey": "Capture",
+      "enemy": "Orokin",
+      "enemyKey": "Orokin",
+      "nodeKey": "Ukko (Void)",
+      "tier": "Axi",
+      "tierNum": 4,
+      "isStorm": false,
+      "isHard": false,
+      "active": null,
+      "expired": null
+    },
+    {
+      "id": "6ab2a5c68c558c1addf23e47",
+      "activation": "2026-09-22T15:59:02.633Z",
+      "expiry": "2026-09-22T17:56:22.090Z",
+      "node": "Acheron (Pluto)",
+      "missionType": "Extermination",
+      "missionTypeKey": "Extermination",
+      "enemy": "Corpus",
+      "enemyKey": "Corpus",
+      "nodeKey": "Acheron (Pluto)",
+      "tier": "Axi",
+      "tierNum": 4,
+      "isStorm": false,
+      "isHard": false,
+      "active": null,
+      "expired": null
+    },
+    {
+      "id": "6ab2a72e24a572d80580e6b4",
+      "activation": "2026-09-22T16:05:02.866Z",
+      "expiry": "2026-09-22T18:03:50.862Z",
+      "node": "Vallis (Mars)",
+      "missionType": "Mobile Defense",
+      "missionTypeKey": "Mobile Defense",
+      "enemy": "Grineer",
+      "enemyKey": "Grineer",
+      "nodeKey": "Vallis (Mars)",
+      "tier": "Lith",
+      "tierNum": 1,
+      "isStorm": false,
+      "isHard": false,
+      "active": null,
+      "expired": null
+    }
+  ],
+  "voidTrader": {
+    "id": "5d1e07a0a38e4a4fdd7cefca",
+    "activation": "2026-10-02T13:00:00.000Z",
+    "expiry": "2026-10-04T13:00:00.000Z",
+    "character": "Baro Ki'Teer",
+    "location": "Kronia Relay (Saturn)",
+    "inventory": [],
+    "psId": "5d1e07a0a38e4a4fdd7cefca0",
+    "initialStart": "1970-01-01T00:00:00.000Z",
+    "schedule": [],
+    "active": null
+  },
+  "sortie": {
+    "id": "6ab2a27e1c0f0d69c2100a45",
+    "activation": "2026-09-22T16:00:00.000Z",
+    "expiry": "2026-09-23T16:00:00.000Z",
+    "rewardPool": "Sortie Rewards",
+    "variants": [
+      {
+        "missionType": "Rescue",
+        "missionTypeKey": "Rescue",
+        "modifier": "Enhanced Enemy Shields",
+        "modifierDescription": "Enemies have vastly Improved Shields. Magnetic Procs are advised.",
+        "node": "Cerberus (Pluto)",
+        "nodeKey": "Cerberus (Pluto)"
+      },
+      {
+        "missionType": "Disruption",
+        "missionTypeKey": "Disruption",
+        "modifier": "Energy Reduction",
+        "modifierDescription": "Maximum Warframe Energy capacity is quartered. Energy Siphon is less effective.",
+        "node": "Apollo (Lua)",
+        "nodeKey": "Apollo (Lua)"
+      },
+      {
+        "missionType": "Hijack",
+        "missionTypeKey": "Hijack",
+        "modifier": "Eximus Stronghold",
+        "modifierDescription": "Eximus units have a much higher spawn rate in this mission. Some of their auras stack.",
+        "node": "Kokabiel (Europa)",
+        "nodeKey": "Kokabiel (Europa)"
+      }
+    ],
+    "missions": [],
+    "boss": "Ambulas",
+    "faction": "Corpus",
+    "factionKey": "Corpus"
+  },
+  "archonHunt": {
+    "id": "6ab06ffe1b8ef8b6adee9ba9",
+    "activation": "2026-09-21T00:00:00.000Z",
+    "expiry": "2026-09-28T00:00:00.000Z",
+    "rewardPool": "Archon Sortie Rewards",
+    "variants": [],
+    "missions": [
+      {
+        "node": "Cervantes (Earth)",
+        "nodeKey": "Cervantes (Earth)",
+        "type": "Sabotage",
+        "typeKey": "Sabotage",
+        "nightmare": false,
+        "archwingRequired": false,
+        "isSharkwing": false,
+        "advancedSpawners": [],
+        "requiredItems": [],
+        "requiredItemUniqueNames": [],
+        "levelAuras": []
+      },
+      {
+        "node": "Everest (Earth)",
+        "nodeKey": "Everest (Earth)",
+        "type": "Interception",
+        "typeKey": "Interception",
+        "nightmare": false,
+        "archwingRequired": false,
+        "isSharkwing": false,
+        "advancedSpawners": [],
+        "requiredItems": [],
+        "requiredItemUniqueNames": [],
+        "levelAuras": []
+      },
+      {
+        "node": "Oro (Earth)",
+        "nodeKey": "Oro (Earth)",
+        "type": "Assassination",
+        "typeKey": "Assassination",
+        "nightmare": false,
+        "archwingRequired": false,
+        "isSharkwing": false,
+        "advancedSpawners": [],
+        "requiredItems": [],
+        "requiredItemUniqueNames": [],
+        "levelAuras": []
+      }
+    ],
+    "boss": "Archon Boreal",
+    "faction": "Narmer",
+    "factionKey": "Narmer"
+  },
+  "invasions": [
+    {
+      "id": "6ab0b2ca31d033b82f8750df",
+      "activation": "2026-09-21T04:47:35.380Z",
+      "node": "Anthe (Saturn)",
+      "nodeKey": "Anthe (Saturn)",
+      "desc": "Corpus Siege",
+      "attacker": {
+        "reward": {
+          "items": [],
+          "countedItems": [
+            {
+              "uniqueName": "/Lotus/Types/Recipes/Components/FormaBlueprint",
+              "type": "Forma Blueprint",
+              "key": "Forma Blueprint",
+              "count": 1
+            }
+          ],
+          "credits": 0,
+          "thumbnail": "https://cdn.warframestat.us/img/forma.png",
+          "color": 11638087
+        },
+        "faction": "Corpus",
+        "factionKey": "Corpus"
+      },
+      "defender": {
+        "reward": {
+          "items": [],
+          "countedItems": [
+            {
+              "uniqueName": "/Lotus/Types/Recipes/Components/FormaBlueprint",
+              "type": "Forma Blueprint",
+              "key": "Forma Blueprint",
+              "count": 1
+            }
+          ],
+          "credits": 0,
+          "thumbnail": "https://cdn.warframestat.us/img/forma.png",
+          "color": 11638087
+        },
+        "faction": "Grineer",
+        "factionKey": "Grineer"
+      },
+      "vsInfestation": false,
+      "count": 41815,
+      "requiredRuns": 90000,
+      "completion": 73.23055555555555,
+      "completed": false,
+      "rewardTypes": [
+        "forma",
+        "forma"
+      ]
+    },
+    {
+      "id": "6ab0e9def5de0b75f1935fd3",
+      "activation": "2026-09-21T08:25:02.033Z",
+      "node": "Psamathe (Neptune)",
+      "nodeKey": "Psamathe (Neptune)",
+      "desc": "Phorid Manifestation",
+      "attacker": {
+        "faction": "Infested",
+        "factionKey": "Infested"
+      },
+      "defender": {
+        "reward": {
+          "items": [],
+          "countedItems": [
+            {
+              "uniqueName": "/Lotus/Types/Items/Research/EnergyComponent",
+              "type": "Fieldron",
+              "key": "Fieldron",
+              "count": 3
+            }
+          ],
+          "credits": 0,
+          "thumbnail": "https://cdn.warframestat.us/img/fieldron.png",
+          "color": 5068118
+        },
+        "faction": "Corpus",
+        "factionKey": "Corpus"
+      },
+      "vsInfestation": true,
+      "count": -30003,
+      "requiredRuns": 30000,
+      "completion": -0.009999999999998899,
+      "completed": true,
+      "rewardTypes": [
+        "fieldron"
+      ]
+    }
+  ],
+  "earthCycle": {
+    "id": "earthCycle1790107200000",
+    "activation": "2026-09-22T16:00:00.185Z",
+    "expiry": "2026-09-22T20:00:00.185Z",
+    "isDay": true,
+    "state": "day",
+    "timeLeft": "2h 30m 0s"
+  },
+  "cetusCycle": {
+    "id": "cetusCycle1790099820000",
+    "activation": "2026-09-22T16:17:00.000Z",
+    "expiry": "2026-09-22T17:57:00.000Z",
+    "isDay": true,
+    "state": "day",
+    "timeLeft": "27m 0s",
+    "isCetus": true
+  },
+  "vallisCycle": {
+    "id": "vallisCycle1790097180000",
+    "activation": "2026-09-22T17:13:00.000Z",
+    "expiry": "2026-09-22T17:33:28.000Z",
+    "isWarm": false,
+    "state": "cold"
+  },
+  "cambionCycle": {
+    "id": "cambionCycle1790099820000",
+    "activation": "2026-09-22T16:17:00.000Z",
+    "expiry": "2026-09-22T17:57:00.000Z",
+    "timeLeft": "27m 0s",
+    "state": "fass"
+  },
+  "zarimanCycle": {
+    "id": "zarimanCycle1790102820000",
+    "activation": "2026-09-22T16:17:00.000Z",
+    "expiry": "2026-09-22T18:47:00.000Z",
+    "isCorpus": false,
+    "state": "grineer",
+    "timeLeft": "1h 16m 54s"
+  },
+  "duviriCycle": {
+    "id": "duviriCycleenvy1790100000000",
+    "activation": "2026-09-22T16:00:00.000Z",
+    "expiry": "2026-09-22T18:00:00.000Z",
+    "state": "envy",
+    "choices": [
+      {
+        "category": "normal",
+        "categoryKey": "EXC_NORMAL",
+        "choices": [
+          "Loki",
+          "Mag",
+          "Rhino"
+        ]
+      },
+      {
+        "category": "hard",
+        "categoryKey": "EXC_HARD",
+        "choices": [
+          "Lex",
+          "Magistar",
+          "Boltor",
+          "Bronco",
+          "CeramicDagger"
+        ]
+      }
+    ]
+  },
+  "steelPath": {
+    "currentReward": {
+      "name": "50,000 Kuva",
+      "cost": 55
+    },
+    "activation": "2026-09-21T00:00:00.000Z",
+    "expiry": "2026-09-27T23:59:59.000Z",
+    "remaining": "5d 6h 29m 58s",
+    "rotation": [
+      {
+        "name": "Umbra Forma Blueprint",
+        "cost": 150
+      },
+      {
+        "name": "50,000 Kuva",
+        "cost": 55
+      },
+      {
+        "name": "Kitgun Riven Mod",
+        "cost": 75
+      },
+      {
+        "name": "3x Forma",
+        "cost": 75
+      },
+      {
+        "name": "Zaw Riven Mod",
+        "cost": 75
+      },
+      {
+        "name": "30,000 Endo",
+        "cost": 150
+      },
+      {
+        "name": "Rifle Riven Mod",
+        "cost": 75
+      },
+      {
+        "name": "Shotgun Riven Mod",
+        "cost": 75
+      }
+    ],
+    "evergreens": [
+      {
+        "name": "Veiled Riven Cipher",
+        "cost": 20
+      },
+      {
+        "name": "Bishamo Pauldrons Blueprint",
+        "cost": 15
+      },
+      {
+        "name": "Bishamo Cuirass Blueprint",
+        "cost": 25
+      },
+      {
+        "name": "Bishamo Helmet Blueprint",
+        "cost": 20
+      },
+      {
+        "name": "Bishamo Greaves Blueprint",
+        "cost": 25
+      },
+      {
+        "name": "10k Kuva",
+        "cost": 15
+      },
+      {
+        "name": "Primary Arcane Adapter",
+        "cost": 15
+      },
+      {
+        "name": "Secondary Arcane Adapter",
+        "cost": 15
+      },
+      {
+        "name": "Relic Pack",
+        "cost": 15
+      },
+      {
+        "name": "Stance Forma Blueprint",
+        "cost": 10
+      },
+      {
+        "name": "Trio Orbit Ephermera",
+        "cost": 3
+      },
+      {
+        "name": "Crania Ephemera",
+        "cost": 85
+      },
+      {
+        "name": "Counterbalance",
+        "cost": 35
+      },
+      {
+        "name": "Noggle Statue - Teshin",
+        "cost": 35
+      },
+      {
+        "name": "Gauss in Action Glyph",
+        "cost": 15
+      },
+      {
+        "name": "Grendel in Action Glyph",
+        "cost": 15
+      },
+      {
+        "name": "Protea in Action Glyph",
+        "cost": 15
+      },
+      {
+        "name": "Orokin Tea Set",
+        "cost": 15
+      },
+      {
+        "name": "Xaku in Action Glyph",
+        "cost": 15
+      }
+    ],
+    "incursions": {
+      "id": "spi:1790035200000",
+      "activation": "2026-09-22T00:00:00.000Z",
+      "expiry": "2026-09-22T23:59:59.000Z"
+    }
+  },
+  "nightwave": {
+    "id": "nightwave1804464000000",
+    "activation": "2026-08-12T15:30:00.000Z",
+    "expiry": "2027-03-08T00:00:00.000Z",
+    "season": 18,
+    "tag": "Radio Legion Intermission16 Syndicate",
+    "phase": 0,
+    "params": {},
+    "possibleChallenges": [],
+    "activeChallenges": [
+      {
+        "id": "1790121600000seasondailykillenemieswithgas",
+        "activation": "2026-09-20T00:00:00.000Z",
+        "expiry": "2026-09-23T00:00:00.000Z",
+        "isDaily": true,
+        "isElite": false,
+        "desc": "Kill 150 Enemies with Gas Damage",
+        "title": "Biohazard",
+        "reputation": 1000,
+        "isPermanent": false
+      },
+      {
+        "id": "1790208000000seasondailydeployairsupport",
+        "activation": "2026-09-21T00:00:00.000Z",
+        "expiry": "2026-09-24T00:00:00.000Z",
+        "isDaily": true,
+        "isElite": false,
+        "desc": "Deploy an Air Support Charge in a Mission",
+        "title": "Air It Out",
+        "reputation": 1000,
+        "isPermanent": false
+      },
+      {
+        "id": "1790294400000seasondailycompletemissionmelee",
+        "activation": "2026-09-22T00:00:00.000Z",
+        "expiry": "2026-09-25T00:00:00.000Z",
+        "isDaily": true,
+        "isElite": false,
+        "desc": "Complete a Mission with only a Melee Weapon equipped",
+        "title": "Swordsman",
+        "reputation": 1000,
+        "isPermanent": false
+      }
+    ]
+  },
+  "alerts": [],
+  "arbitration": {
+    "id": "00585e073437d864ee23b57f467c6890d6726025c4f6ad09f9a86e7f86544e4a",
+    "node": "SolNode000",
+    "nodeKey": "SolNode000",
+    "activation": "1970-01-01T00:00:00.000Z",
+    "expiry": "+275760-09-13T00:00:00.000Z",
+    "enemy": "Tenno",
+    "type": "Unknown",
+    "typeKey": "Unknown",
+    "archwing": false,
+    "sharkwing": false,
+    "expired": true
+  }
+}

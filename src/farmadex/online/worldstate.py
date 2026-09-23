@@ -27,7 +27,7 @@ URL = "https://api.warframestat.us/{plataforma}"
 RE_NODO = re.compile(r"^(.*?)\s*\((.*)\)\s*$")
 # Pasados estos minutos desde el 'timestamp' de la respuesta, el estado del mundo se
 # da por viejo: el dia del parche la API sigue contestando, pero con lo de antes.
-MINUTOS_VIEJO = 20
+MINUTOS_VIEJO = 15
 ERAS_CONOCIDAS = ("Lith", "Meso", "Neo", "Axi", "Requiem", "Omnia")
 _eras_avisadas: set[str] = set()
 
@@ -156,6 +156,8 @@ class Mundo:
     baro_detalle: Baro | None = None
     acero: list[Recompensa] = field(default_factory=list)
     error: str = ""
+    # De donde salio: "warframestat" (la API de siempre) o "de" (el crudo oficial, de respaldo).
+    fuente: str = "warframestat"
     # Claves de primer nivel que la API manda y este codigo no conoce (para el log).
     claves_nuevas: list[str] = field(default_factory=list)
 
@@ -179,17 +181,24 @@ class Traductor:
     def __init__(self, con: sqlite3.Connection | None):
         self.con = con
         self.nodos: dict[tuple[str, str], tuple[str, str]] = {}
+        # Por id de DE ("SolNode48"): lo que hace falta para leer el worldState crudo.
+        self.por_id: dict[str, dict] = {}
         self.glosario: dict[tuple[str, str], str] = {}
         if con is None:
             return
         try:
-            for nombre_en, nombre_es, planeta_en, planeta_es in con.execute(
-                "SELECT nombre_en, nombre_es, planeta_en, planeta_es FROM nodos"
+            for unique_name, nombre_en, nombre_es, planeta_en, planeta_es, mision_en, faccion_en in con.execute(
+                "SELECT unique_name, nombre_en, nombre_es, planeta_en, planeta_es, mision_en, faccion_en FROM nodos"
             ):
                 self.nodos[(nombre_en, planeta_en)] = (
                     nombre_es or nombre_en,
                     planeta_es or planeta_en,
                 )
+                if unique_name:
+                    self.por_id[unique_name] = {
+                        "nombre_en": nombre_en, "planeta_en": planeta_en,
+                        "mision_en": mision_en, "faccion_en": faccion_en,
+                    }
             for dominio, en, es in con.execute("SELECT dominio, en, es FROM glosario"):
                 self.glosario[(dominio, en)] = es
         except sqlite3.Error as e:  # pragma: no cover - indice a medio construir
@@ -199,6 +208,16 @@ class Traductor:
         if not en:
             return ""
         return self.glosario.get((dominio, en), en)
+
+    def datos_nodo(self, unique_name) -> dict:
+        return self.por_id.get(str(unique_name or ""), {})
+
+    def clave_nodo(self, unique_name) -> str:
+        """'SolNode48' -> 'Hydron (Sedna)', la forma que usa warframestat; si no se conoce, el id."""
+        info = self.datos_nodo(unique_name)
+        if info.get("nombre_en") and info.get("planeta_en"):
+            return f"{info['nombre_en']} ({info['planeta_en']})"
+        return str(unique_name or "")
 
     def nodo(self, texto: str | None) -> str:
         if not texto:
@@ -263,6 +282,21 @@ def restante(expira: datetime | None, ahora: datetime | None = None) -> str:
     if minutos:
         return f"{minutos}m {segs}s"
     return f"{segs}s"
+
+
+def _bandera(valor) -> bool | None:
+    """Un campo booleano de la API. Presente pero nulo (o de otro tipo) es "no se sabe".
+
+    El 2026-09-22 warframestat mando todas las fisuras con "active": null y
+    "expired": null; leerlos con bool() vaciaba la pestana entera.
+    """
+    if isinstance(valor, bool):
+        return valor
+    if isinstance(valor, int) and valor in (0, 1):
+        return bool(valor)
+    if isinstance(valor, str) and valor.strip().lower() in ("true", "false"):
+        return valor.strip().lower() == "true"
+    return None
 
 
 def _dic(valor) -> dict:
@@ -387,18 +421,26 @@ def analizar(datos: dict, traductor: Traductor) -> Mundo:
     def fisuras():
         salida = []
         for f in _dicts(datos.get("fissures")):
-            if f.get("expired"):
+            # "expired" nulo no es "abierta": se decide por la fecha de fin (lo hace la
+            # pestana, con su reloj, para que la lista no se congele entre consultas).
+            if _bandera(f.get("expired")) is True:
                 continue
             _avisar_era(str(f.get("tier") or ""))
+            nodo = str(f.get("nodeKey") or f.get("node") or "")
+            tormenta = _bandera(f.get("isStorm"))
+            if tormenta is None:
+                # Nodos de Railjack; se mira el nombre y la clave, que no siempre coinciden.
+                crudo = f"{f.get('node') or ''} {f.get('nodeKey') or ''}"
+                tormenta = "Proxima" in crudo or "Veil" in crudo
             salida.append(
                 Fisura(
                     era=str(f.get("tier") or ""),
-                    nodo=traductor.nodo(f.get("nodeKey") or f.get("node")),
+                    nodo=traductor.nodo(nodo),
                     mision=traductor.termino("mision", f.get("missionTypeKey") or f.get("missionType")),
                     enemigo=traductor.termino("faccion", f.get("enemyKey") or f.get("enemy")),
                     expira=_momento(f.get("expiry")),
-                    acero=bool(f.get("isHard")),
-                    tormenta=bool(f.get("isStorm")),
+                    acero=_bandera(f.get("isHard")) or False,
+                    tormenta=tormenta,
                 )
             )
         orden = {"Lith": 0, "Meso": 1, "Neo": 2, "Axi": 3, "Requiem": 4, "Omnia": 5}
@@ -425,7 +467,13 @@ def analizar(datos: dict, traductor: Traductor) -> Mundo:
     def invasiones():
         salida = []
         for i in _dicts(datos.get("invasions")):
-            if i.get("completed"):
+            completada = _bandera(i.get("completed"))
+            if completada is None:
+                try:
+                    completada = abs(float(i.get("completion") or 0)) >= 100
+                except (TypeError, ValueError):
+                    completada = False
+            if completada:
                 continue
             premios = []
             for bando in ("attacker", "defender"):
@@ -568,9 +616,8 @@ def analizar_baro(crudo, traductor: Traductor) -> Baro | None:
         return None
     llegada = _momento(v.get("activation"))
     expira = _momento(v.get("expiry"))
-    if "active" in v:
-        activo = bool(v.get("active"))
-    else:
+    activo = _bandera(v.get("active"))
+    if activo is None:
         ahora = datetime.now(timezone.utc)
         activo = bool(v.get("inventory")) or bool(llegada and expira and llegada <= ahora < expira)
     inventario = []
@@ -642,25 +689,53 @@ class ServicioMundo(QObject):
                 (self.SEGUNDOS_VISIBLE if visible else self.SEGUNDOS_OCULTO) * 1000
             )
 
+    def _respaldo(self) -> Mundo | None:
+        """El worldState crudo de DE, solo si esta al dia; si no, None y se anota."""
+        from . import worldstate_de
+
+        try:
+            crudo = worldstate_de.comprobar_crudo(self.cliente.json(worldstate_de.URL_DE, segundos_cache=30))
+            mundo = analizar(worldstate_de.normalizar(crudo, self.traductor), self.traductor)
+        except (RuntimeError, worldstate_de.ErrorCrudo) as e:
+            log.warning("El respaldo de DE tampoco sirve: %s", e)
+            return None
+        if mundo.momento is None or mundo.esta_viejo():
+            log.warning("El respaldo de DE tambien esta desfasado (%s)", mundo.momento)
+            return None
+        mundo.fuente = "de"
+        return mundo
+
     def refrescar(self) -> None:
+        error = ""
+        mundo: Mundo | None = None
         try:
             datos = comprobar_respuesta(
                 self.cliente.json(URL.format(plataforma=PLATAFORMA), segundos_cache=30)
             )
+            mundo = analizar(datos, self.traductor)
         except (RuntimeError, ErrorMundo) as e:
+            error = str(e)
             log.warning("Estado del mundo no disponible: %s", e)
-            self.fallo.emit(str(e))
+        # Si warframestat falla o publica un estado viejo (las horas siguientes a un
+        # parche), se prueba el crudo oficial de DE; solo vale si esta al dia.
+        if mundo is None or mundo.esta_viejo() or mundo.momento is None:
+            respaldo = self._respaldo()
+            if respaldo is not None:
+                if mundo is not None:
+                    log.info("warframestat desfasado; se usa el worldState de DE")
+                mundo = respaldo
+        if mundo is None:
+            self.fallo.emit(error)
             return
-        mundo = analizar(datos, self.traductor)
         self.ultimo = mundo
         self.actualizado.emit(mundo)
-        # La API contesta, pero con datos de hace rato: se ensenan, marcados como viejos,
-        # en vez de dejarlos pasar por buenos (pasa las horas siguientes a un parche).
+        # Sin respaldo, los datos viejos se ensenan marcados como tales en vez de
+        # dejarlos pasar por buenos.
         if mundo.esta_viejo():
             minutos = int(mundo.minutos_de_antiguedad() or 0)
             log.warning("El estado del mundo tiene %d minutos de antiguedad", minutos)
             self.fallo.emit(t("la API devuelve datos de hace {n} min", n=minutos))
-        elif mundo.momento is None and datos:
+        elif mundo.momento is None:
             self.fallo.emit(t("la API no dice de cuando son sus datos"))
 
     def cerrar(self) -> None:

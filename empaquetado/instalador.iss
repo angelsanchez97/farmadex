@@ -52,8 +52,9 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 Filename: "{tmp}\vc_redist.x64.exe"; Parameters: "/install /quiet /norestart"; \
   StatusMsg: "Instalando el runtime de Visual C++..."; Check: FaltaVCRedist; Flags: skipifdoesntexist waituntilterminated
 Filename: "{app}\{#NombreApp}.exe"; Description: "Abrir {#NombreApp}"; Flags: nowait postinstall skipifsilent
-; Actualizacion automatica lanzada por el propio Farmadex (/VERYSILENT /AUTOACTUALIZAR=1):
-; la entrada de arriba no corre en silencio, asi que esta vuelve a abrir el programa.
+; Actualizacion automatica lanzada por el propio Farmadex (/SILENT /AUTOACTUALIZAR=1):
+; la entrada de arriba se salta con skipifsilent (vale para /SILENT y /VERYSILENT),
+; asi que esta vuelve a abrir el programa.
 Filename: "{app}\{#NombreApp}.exe"; Flags: nowait; Check: EsActualizacionAutomatica
 
 [UninstallDelete]

@@ -1,6 +1,7 @@
 """Pestana Mundo sin pantalla: jerarquia, caducadas fuera, objetivos marcados, Baro."""
 
 import os
+import re
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -192,3 +193,100 @@ def test_baro_que_ya_se_ha_ido_no_dice_se_va_en_terminado(mundo):
     mundo.actualizar(m)
     texto = mundo.tarjetas["baro"].extra.text()
     assert "se va en" not in texto and "terminado" in texto
+
+
+# -- que dice la pestana cuando no hay nada que pintar ----------------------------
+
+
+def _vacio(pestana, clave) -> str:
+    textos = _textos(pestana.tarjetas[clave])
+    assert len(textos) == 1, textos
+    return re.sub(r"<[^>]+>", "", textos[0])
+
+
+def test_con_datos_frescos_y_filtro_que_no_deja_pasar_nada_se_culpa_al_filtro(mundo):
+    mundo.filtro_era.setCurrentIndex(list(pestana_mundo.ERAS).index("Requiem"))
+    texto = _vacio(mundo, "fisuras")
+    assert "ninguna pasa el filtro" in texto and "Requiem" in texto
+    assert "6 fisuras abiertas" in texto  # las 7 del fixture menos la terminada
+    assert mundo.aviso.text() == ""
+    assert mundo.estado_datos() == "fresco"
+
+
+def test_con_datos_frescos_y_de_verdad_sin_fisuras_no_se_menciona_el_filtro(app):
+    idiomas.cargar("es")
+    pestana = pestana_mundo.PestanaMundo()
+    datos = _mundo()
+    datos.fisuras = []
+    pestana.actualizar(datos)
+    assert _vacio(pestana, "fisuras") == "Ahora mismo no hay ninguna fisura abierta"
+
+
+def test_si_solo_pasan_las_de_acero_se_dice_donde_estan(mundo):
+    mundo._eras_necesarias = {}
+    mundo.filtro_modo.setCurrentIndex(list(pestana_mundo.MODOS).index("Camino de Acero"))
+    mundo.pintar()
+    assert "bloques de Acero y Tormenta" in _vacio(mundo, "fisuras")
+    assert _textos(mundo.tarjetas["acero"])
+
+
+def test_con_la_api_desfasada_se_dice_de_cuando_son_los_datos(app):
+    idiomas.cargar("es")
+    pestana = pestana_mundo.PestanaMundo()
+    pestana._eras_necesarias = {"Neo": ["Canon de Athodai Prime"]}
+    datos = _mundo()
+    datos.momento = datetime.now(timezone.utc) - timedelta(hours=2, minutes=10)
+    for f in datos.fisuras:
+        f.expira = _en(-60)  # todas caducadas, como el 2026-09-22
+    datos.ciclos = []
+    datos.sortie = []
+    pestana.actualizar(datos)
+    assert pestana.estado_datos() == "viejo"
+    assert pestana.aviso.text() == "El estado del mundo que publica la API es de hace 2 h 10 min"
+    for clave in ("fisuras", "ciclos", "sortie", "objetivos"):
+        texto = _vacio(pestana, clave)
+        assert "es de hace 2 h 10 min" in texto, (clave, texto)
+        assert "filtro" not in texto
+    # El aviso del servicio ("la API devuelve datos de hace N min") no lo tapa.
+    pestana.marcar_desactualizado("la API devuelve datos de hace 130 min")
+    assert "hace 2 h 10 min" in pestana.aviso.text()
+    assert "es de hace 2 h 10 min" in _vacio(pestana, "fisuras")
+    # Y en ingles cambia el texto, no la logica.
+    idiomas.cargar("en")
+    pestana.retraducir()
+    assert "2 h 10 min old" in pestana.aviso.text()
+    idiomas.cargar("es")
+
+
+def test_la_edad_se_escribe_en_minutos_u_horas(app):
+    pestana = pestana_mundo.PestanaMundo()
+    datos = _mundo()
+    for minutos, esperado in ((35, "35 min"), (120, "2 h"), (61, "1 h 1 min")):
+        datos.momento = datetime.now(timezone.utc) - timedelta(minutes=minutos, seconds=5)
+        pestana.mundo = datos
+        assert pestana._edad() == esperado
+
+
+def test_si_la_consulta_fallo_y_no_hay_nada_se_dice_el_motivo(app):
+    idiomas.cargar("es")
+    pestana = pestana_mundo.PestanaMundo()
+    pestana.marcar_desactualizado("HTTP 502")
+    assert pestana.estado_datos() == "fallo"
+    assert "HTTP 502" in pestana.aviso.text()
+    assert "No se ha podido consultar el estado del mundo (HTTP 502)" in _vacio(pestana, "fisuras")
+
+
+def test_si_la_consulta_falla_con_datos_frescos_se_ensena_lo_ultimo(mundo):
+    mundo.marcar_desactualizado("HTTP 502")
+    assert mundo.estado_datos() == "fresco"
+    assert "lo ultimo conocido" in mundo.aviso.text()
+    assert any("Lith" in x for x in _textos(mundo.tarjetas["fisuras"]))
+
+
+def test_con_el_respaldo_de_de_se_avisa_en_suave(app):
+    idiomas.cargar("es")
+    pestana = pestana_mundo.PestanaMundo()
+    datos = _mundo()
+    datos.fuente = "de"
+    pestana.actualizar(datos)
+    assert "worldState oficial de DE" in pestana.aviso.text()

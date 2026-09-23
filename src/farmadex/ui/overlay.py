@@ -271,6 +271,8 @@ class VentanaOverlay(QWidget):
         self.actualizacion_lista: tuple[object, object] | None = None
         self._fallo_actualizacion: tuple[str, str] | None = None
         self._instalador_lanzado = False
+        # El aviso que tapa el hueco entre lanzar el setup y que este proceso muera.
+        self._aviso_actualizando: QWidget | None = None
 
         self.progreso = BarraProgreso()
         self.estado = QLabel("")
@@ -854,11 +856,44 @@ class VentanaOverlay(QWidget):
             )
             return False
         if instalacion.instalar_silencioso(ruta, version.etiqueta):
+            self._mostrar_aviso_actualizando(version.etiqueta)
             self._instalador_lanzado = True
             return True
         self.actualizacion_lista = None
         self._fallo_descarga(version, t("no se pudo lanzar el instalador"))
         return False
+
+    def _mostrar_aviso_actualizando(self, etiqueta: str) -> None:
+        """Aviso breve, encima de todo y sin bordes, justo antes de lanzar el instalador.
+
+        Este proceso muere en cuanto arranca el setup, asi que el aviso no se
+        mantiene vivo durante la instalacion: de eso ya se encarga la ventana de
+        progreso del propio instalador (/SILENT). Solo tapa el hueco entre que se
+        lanza el setup y que Farmadex termina de cerrarse.
+        """
+        aviso = QWidget(None, Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
+        aviso.setAttribute(Qt.WA_DeleteOnClose)
+        aviso.setStyleSheet(
+            hoja_estilos() + f"QWidget {{ border: 1px solid {PALETA['acento']}; border-radius: 10px; }}"
+        )
+        diseno = QVBoxLayout(aviso)
+        diseno.setContentsMargins(26, 20, 26, 20)
+        texto = QLabel(t(
+            "Actualizando Farmadex a la version {version}. Se cerrara y volvera a abrirse sola.",
+            version=etiqueta,
+        ))
+        texto.setWordWrap(True)
+        texto.setStyleSheet(f"color: {PALETA['texto']}; font-size: 14px;")
+        diseno.addWidget(texto)
+        aviso.adjustSize()
+        pantalla = QGuiApplication.primaryScreen()
+        if pantalla is not None:
+            geo = pantalla.geometry()
+            aviso.move(geo.center().x() - aviso.width() // 2, geo.center().y() - aviso.height() // 2)
+        aviso.show()
+        aviso.raise_()
+        QGuiApplication.processEvents()
+        self._aviso_actualizando = aviso
 
     def _comprobar_version(self) -> None:
         """Comprobacion a mano desde Ajustes: siempre contesta algo.

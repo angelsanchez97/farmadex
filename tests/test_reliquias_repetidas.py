@@ -198,3 +198,28 @@ def test_las_etiquetas_vuelven_a_salir_tras_esconderse():
     etiquetas.mostrar(recompensas)
     assert etiquetas.isVisible()
     etiquetas.hide()
+
+
+def test_la_espera_fija_ya_no_se_come_el_segundo():
+    """En el video de un usuario los nombres se leen en el primer fotograma."""
+    from farmadex.captura.reliquias import DisparadorAutomatico
+
+    assert DisparadorAutomatico.ESPERA_MS <= 200
+
+
+def test_una_lectura_corta_se_reintenta_solo_dentro_del_plazo():
+    import time
+
+    from farmadex.captura.reliquias import LectorRecompensas
+
+    lector = LectorRecompensas.__new__(LectorRecompensas)
+    lector.jugadores = 3
+    lector._t_aviso = time.monotonic()
+    assert lector._toca_reintentar(0) and lector._toca_reintentar(2)
+    assert not lector._toca_reintentar(3)
+    lector._t_aviso = time.monotonic() - 10  # la pantalla ya lleva un rato: no se insiste
+    assert not lector._toca_reintentar(0)
+    lector._t_aviso = None  # lectura a mano (atajo): una sola vez, como siempre
+    assert not lector._toca_reintentar(0)
+    lector._t_aviso, lector.jugadores = time.monotonic(), None  # sin saber cuantos: al menos una
+    assert lector._toca_reintentar(0) and not lector._toca_reintentar(1)

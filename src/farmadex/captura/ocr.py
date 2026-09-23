@@ -306,6 +306,10 @@ def _imagen_de_prueba(ancho: int = 1536, alto: int = 454):
     return imagen
 
 
+def _orden_libre(clave: str) -> str:
+    """La clave con las palabras ordenadas: 'chasis caliban prime' == 'caliban prime chasis'."""
+    return " ".join(sorted(clave.split()))
+
 def preparar(imagen):
     """Deja la captura como la quiere el OCR: gris, con contraste y contigua.
 
@@ -441,6 +445,14 @@ class Casador:
         for clave, valor in alias.items():
             self.candidatos.setdefault(clave, valor)
         self.claves = list(self.candidatos)
+        # Las mismas claves sin importar el orden de las palabras: el juego escribe
+        # "Plano de Chasis de Caliban Prime" y el catalogo "Caliban Prime Chasis".
+        self.por_palabras = {}
+        for clave, valor in self.candidatos.items():
+            self.por_palabras.setdefault(_orden_libre(clave), valor)
+        self.alias_por_palabras = {}
+        for clave, valor in alias.items():
+            self.alias_por_palabras.setdefault(_orden_libre(clave), valor)
         # El OCR pega las palabras a menudo ("CHASISDEASHPRIME"), asi que se
         # guarda tambien cada nombre sin espacios para poder casarlo.
         self.compactos = {k.replace(" ", ""): v for k, v in self.candidatos.items()}
@@ -473,6 +485,8 @@ class Casador:
         for k in copia.candidatos:
             copia.ordenadas.setdefault("".join(sorted(k.replace(" ", ""))), k)
         copia.claves_ordenadas = list(copia.ordenadas)
+        copia.por_palabras = {k: v for k, v in self.por_palabras.items() if v[0] in ids}
+        copia.alias_por_palabras = {k: v for k, v in self.alias_por_palabras.items() if v[0] in ids}
         return copia
 
     def casar(self, texto: str, umbral: int = 82) -> tuple[int | None, str, float]:
@@ -494,16 +508,35 @@ class Casador:
             return exacto[0], exacto[1], 100.0
         # "Ash Prime Systems Blueprint" y "Sistemas de Ash Prime (Plano)" son la
         # misma pieza que el catalogo guarda sin el sufijo.
+        # En castellano el juego lo pone DELANTE: "Plano de Chasis de Caliban Prime".
+        # Sin quitarlo, "plano chasis caliban prime" se parecia casi igual al chasis
+        # que al plano principal ("Caliban Prime Plano"), y ganaba el principal.
         con_plano = False
+        for prefijo in ("plano ", "blueprint "):
+            if consulta.startswith(prefijo) and consulta != prefijo.strip():
+                con_plano = True
+                consulta = consulta.removeprefix(prefijo)
+                break
         for sufijo in (" blueprint", " plano"):
             if consulta.endswith(sufijo):
                 con_plano = True
                 consulta = consulta.removesuffix(sufijo)
-                # "IVARAPRIME BLUEPRINT" es la pieza, no la warframe.
-                exacto = self.alias.get(consulta) or self.candidatos.get(consulta)
-                if exacto:
-                    return exacto[0], exacto[1], 100.0
                 break
+        if con_plano:
+            # "IVARAPRIME BLUEPRINT" es la pieza, no la warframe; y "Plano de Caliban
+            # Prime" es el plano principal, no la warframe entera.
+            exacto = (
+                self.alias.get(consulta)
+                or self.candidatos.get(consulta)
+                or self.alias_por_palabras.get(_orden_libre(consulta))
+                or self.por_palabras.get(_orden_libre(consulta))
+            )
+            if exacto:
+                return exacto[0], exacto[1], 100.0
+        else:
+            exacto = self.por_palabras.get(_orden_libre(consulta))
+            if exacto:
+                return exacto[0], exacto[1], 100.0
         compacta = consulta.replace(" ", "")
         exacto = (self.alias_compactos.get(compacta) if con_plano else None) or             self.compactos.get(compacta)
         if exacto:

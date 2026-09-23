@@ -388,10 +388,7 @@ class PestanaMundo(QWidget):
         glosario.aplicar(self.filtro_era, "era")
         glosario.aplicar(self.filtro_modo, "camino_de_acero")
         glosario.aplicar(self.etiqueta_fisuras, "fisura")
-        if self.mundo is None and self._motivo_fallo is None:
-            self.aviso.setText(t("Consultando el estado del mundo..."))
-        elif self._motivo_fallo is not None:
-            self.marcar_desactualizado(self._motivo_fallo)
+        self._pintar_aviso()
         self.pintar()
 
     # -- datos -------------------------------------------------------------
@@ -421,20 +418,76 @@ class PestanaMundo(QWidget):
     def actualizar(self, mundo: Mundo) -> None:
         self.mundo = mundo
         self._motivo_fallo = None
-        self._motivo_fallo = None
         if self.indice is not None:
             self._eras_necesarias = self._calcular_eras()
-        self.aviso.setText("")
-        self.aviso.setStyleSheet(f"color: {PALETA['suave']};")
+        self._pintar_aviso()
         self.pintar()
 
     def marcar_desactualizado(self, motivo: str) -> None:
         self._motivo_fallo = motivo
+        self._pintar_aviso()
+        # Los bloques vacios dicen por que lo estan; hay que repintarlos con el motivo.
+        self.pintar()
+
+    # -- estado de los datos ---------------------------------------------------
+
+    def estado_datos(self) -> str:
+        """'consultando' (aun nada), 'fallo' (nada y la consulta fallo), 'viejo' (la API
+        publica un estado desfasado) o 'fresco' (datos al dia, con o sin fallo posterior)."""
         if self.mundo is None:
-            self.aviso.setText(t("Sin conexion con el estado del mundo ({motivo})", motivo=motivo))
+            return "fallo" if self._motivo_fallo else "consultando"
+        if self.mundo.esta_viejo():
+            return "viejo"
+        return "fresco"
+
+    def _edad(self) -> str:
+        """Cuanto hace del 'timestamp' que publica la API: '35 min', '2 h', '2 h 10 min'."""
+        minutos = int(self.mundo.minutos_de_antiguedad() or 0) if self.mundo else 0
+        horas, minutos = divmod(minutos, 60)
+        if not horas:
+            return t("{n} min", n=minutos)
+        if not minutos:
+            return t("{n} h", n=horas)
+        return t("{h} h {m} min", h=horas, m=minutos)
+
+    def _texto_sin_datos(self) -> str | None:
+        """Lo que va en un bloque vacio cuando la culpa no es del filtro; None si los datos valen."""
+        estado = self.estado_datos()
+        if estado == "viejo":
+            return t(
+                "Sin datos al dia: el estado del mundo que publica la API es de hace {tiempo}",
+                tiempo=self._edad(),
+            )
+        if estado == "fallo":
+            return t(
+                "No se ha podido consultar el estado del mundo ({motivo}). "
+                "Se reintenta solo cada minuto.",
+                motivo=self._motivo_fallo,
+            )
+        return None
+
+    def _vacia(self, seccion: Seccion, texto: str) -> None:
+        """Un bloque sin nada: el texto normal, o la verdad si los datos no estan al dia."""
+        seccion.vacia(self._texto_sin_datos() or texto)
+
+    def _pintar_aviso(self) -> None:
+        estado = self.estado_datos()
+        p = PALETA
+        color = p["aviso"]
+        if estado == "consultando":
+            texto, color = t("Consultando el estado del mundo..."), p["suave"]
+        elif estado == "fallo":
+            texto = t("Sin conexion con el estado del mundo ({motivo})", motivo=self._motivo_fallo)
+        elif estado == "viejo":
+            texto = t("El estado del mundo que publica la API es de hace {tiempo}", tiempo=self._edad())
+        elif self._motivo_fallo:
+            texto = t("Datos del mundo sin actualizar; se muestra lo ultimo conocido")
+        elif getattr(self.mundo, "fuente", "") == "de":
+            texto, color = t("warframestat no esta al dia; se usa el worldState oficial de DE"), p["suave"]
         else:
-            self.aviso.setText(t("Datos del mundo sin actualizar; se muestra lo ultimo conocido"))
-        self.aviso.setStyleSheet(f"color: {PALETA['aviso']};")
+            texto, color = "", p["suave"]
+        self.aviso.setText(texto)
+        self.aviso.setStyleSheet(f"color: {color};")
 
     def _tic(self) -> None:
         for tarjeta in self.tarjetas.values():
@@ -449,21 +502,17 @@ class PestanaMundo(QWidget):
         if mundo is None:
             # Sin datos todavia. Si es porque la consulta fallo, se dice; si no,
             # se deja el aviso de "consultando" que ya esta arriba.
-            if self._motivo_fallo:
+            texto = self._texto_sin_datos()
+            if texto:
                 seccion = self.tarjetas["fisuras"]
                 seccion.show()
-                seccion.vacia(
-                    t(
-                        "No se ha podido consultar el estado del mundo ({motivo}). "
-                        "Se reintenta solo cada minuto.",
-                        motivo=self._motivo_fallo,
-                    )
-                )
+                seccion.vacia(texto)
             return
         self._pintar_ahora(mundo)
         abiertas = self._fisuras_abiertas(mundo)
         para_objetivos = self._pintar_objetivos(abiertas)
-        self._pintar_fisuras(abiertas, ya_pintadas=para_objetivos)
+        sin_filtro = sum(1 for f in mundo.fisuras if not _terminado(f.expira))
+        self._pintar_fisuras(abiertas, ya_pintadas=para_objetivos, sin_filtro=sin_filtro)
         self._pintar_ciclos(mundo)
         self._pintar_invasiones(mundo)
         self._pintar_sortie(mundo)
@@ -546,6 +595,9 @@ class PestanaMundo(QWidget):
             seccion.extra.setText(
                 t("{n} de {total}", n=len(utiles), total=total) if total > len(utiles) else str(total)
             )
+        elif self._texto_sin_datos():
+            # Con datos viejos "ninguna sirve" seria mentira: no se sabe.
+            self._vacia(seccion, "")
         else:
             eras = ", ".join(
                 f"{glosario.enlace('era', era, PALETA['acento'], negrita=True)} "
@@ -559,7 +611,26 @@ class PestanaMundo(QWidget):
             )
         return {id(f) for f in utiles}
 
-    def _pintar_fisuras(self, abiertas: list[Fisura], ya_pintadas: set[int]) -> None:
+    def _texto_sin_fisuras(self, abiertas: list[Fisura], sin_filtro: int) -> str:
+        """Por que el bloque de fisuras esta vacio, sin echarle la culpa al filtro sin motivo."""
+        texto = self._texto_sin_datos()
+        if texto:
+            return texto
+        if any(not f.acero and not f.tormenta for f in abiertas):
+            return t("Todas las fisuras abiertas que pasan el filtro estan arriba, en tus objetivos")
+        if abiertas:
+            return t(
+                "Las {n} fisuras abiertas que pasan el filtro estan en los bloques de Acero y Tormenta",
+                n=len(abiertas),
+            )
+        if sin_filtro:
+            return t(
+                "Hay {n} fisuras abiertas, pero ninguna pasa el filtro ({era}, {modo})",
+                n=sin_filtro, era=self.filtro_era.currentText(), modo=self.filtro_modo.currentText(),
+            )
+        return t("Ahora mismo no hay ninguna fisura abierta")
+
+    def _pintar_fisuras(self, abiertas: list[Fisura], ya_pintadas: set[int], sin_filtro: int = 0) -> None:
         grupos = {"fisuras": [], "acero": [], "tormentas": []}
         for f in abiertas:
             if id(f) in ya_pintadas:
@@ -572,18 +643,9 @@ class PestanaMundo(QWidget):
             if not fisuras:
                 if clave == "fisuras":
                     seccion.show()
-                    # Sin datos por un fallo de la API no es lo mismo que "no hay
-                    # fisuras": decir lo segundo cuando pasa lo primero es mentir.
-                    if self._motivo_fallo and not self.mundo:
-                        seccion.vacia(
-                            t(
-                                "No se ha podido consultar el estado del mundo "
-                                "({motivo}). Se reintenta solo cada minuto.",
-                                motivo=self._motivo_fallo,
-                            )
-                        )
-                    else:
-                        seccion.vacia(t("No hay fisuras abiertas con ese filtro"))
+                    # Sin datos al dia no es lo mismo que "no hay fisuras": decir lo
+                    # segundo cuando pasa lo primero es mentir.
+                    seccion.vacia(self._texto_sin_fisuras(abiertas, sin_filtro))
                 else:
                     seccion.hide()
                 continue
@@ -626,14 +688,14 @@ class PestanaMundo(QWidget):
         elif mundo.baro_cabecera:
             seccion.linea(f"<b>{html.escape(mundo.baro_cabecera)}</b>")
         if not celdas and baro is None and not mundo.baro_cabecera:
-            seccion.vacia(t("Sin datos de ciclos"))
+            self._vacia(seccion, t("Sin datos de ciclos"))
 
     def _pintar_ciclos(self, mundo: Mundo) -> None:
         seccion = self.tarjetas["ciclos"]
         for c in mundo.ciclos:
             seccion.linea(f"<b>{html.escape(c.nombre)}</b>: {html.escape(c.estado)}", c.expira)
         if not mundo.ciclos:
-            seccion.vacia(t("Sin datos de ciclos"))
+            self._vacia(seccion, t("Sin datos de ciclos"))
 
     def _pintar_invasiones(self, mundo: Mundo) -> None:
         p = PALETA
@@ -663,7 +725,7 @@ class PestanaMundo(QWidget):
         if sobran > 0:
             seccion.vacia(t("y {n} invasiones mas", n=sobran))
         if not total:
-            seccion.vacia(t("No hay invasiones ni alertas activas"))
+            self._vacia(seccion, t("No hay invasiones ni alertas activas"))
 
     def _pintar_sortie(self, mundo: Mundo) -> None:
         p = PALETA
@@ -681,7 +743,7 @@ class PestanaMundo(QWidget):
             for r in mundo.arcontes:
                 seccion.linea(f"&nbsp;&nbsp;{html.escape(r.texto)}")
         if not (mundo.sortie or mundo.arcontes):
-            seccion.vacia(t("Sin incursion ni caza de arcontes"))
+            self._vacia(seccion, t("Sin incursion ni caza de arcontes"))
 
     def _pintar_nightwave(self, mundo: Mundo) -> None:
         p = PALETA
@@ -702,7 +764,7 @@ class PestanaMundo(QWidget):
         if sobran > 0:
             seccion.vacia(t("y {n} retos mas", n=sobran))
         if not (mundo.nightwave or mundo.acero):
-            seccion.vacia(t("Sin retos activos"))
+            self._vacia(seccion, t("Sin retos activos"))
 
     def _html_baro_cabecera(self, baro) -> str:
         p = PALETA

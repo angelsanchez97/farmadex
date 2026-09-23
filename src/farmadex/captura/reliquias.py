@@ -251,6 +251,23 @@ class LectorRecompensas(LectorBase):
         finally:
             self._ocupado = False
 
+    # Si la lectura sale corta (menos tarjetas que jugadores, o ninguna), se vuelve
+    # a mirar enseguida en vez de esperar a ciegas; hasta PLAZO_REINTENTO_S desde el
+    # aviso de EE.log, que es mucho menos que los 15 s de la cuenta atras.
+    REINTENTO_MS = 150
+    PLAZO_REINTENTO_S = 3.0
+
+    def _toca_reintentar(self, halladas: int) -> bool:
+        if self._t_aviso is None:
+            return False
+        if time.monotonic() - self._t_aviso > self.PLAZO_REINTENTO_S:
+            return False
+        esperadas = self.jugadores or 1
+        return halladas < esperadas
+
+    def _reintentar(self) -> None:
+        QTimer.singleShot(self.REINTENTO_MS, self.leer_ahora)
+
     def _leer(self) -> None:
         if not self._preparado():
             self.leidas.emit([])
@@ -269,6 +286,12 @@ class LectorRecompensas(LectorBase):
         encontrados = self._leer_y_casar(imagen, tiempos)
         if encontrados is None:
             self.leidas.emit([])
+            return
+        if not encontrados and self._toca_reintentar(0):
+            # Pronto para la pantalla: se vuelve a mirar en 150 ms sin gastar una
+            # segunda lectura de la ventana entera ni borrar lo que haya pintado.
+            self._anotar_tiempos(tiempos, imagen, ventana, 0)
+            self._reintentar()
             return
         if not encontrados:
             # Si un parche mueve las tarjetas fuera de la franja habitual, se lee
@@ -316,6 +339,9 @@ class LectorRecompensas(LectorBase):
             t("No se reconocio ninguna recompensa")
         )
         self.leidas.emit(recompensas)
+        if self._toca_reintentar(len(recompensas)):
+            # Se pinta ya lo que hay y se completa con la siguiente mirada.
+            self._reintentar()
 
 
     def _ids_conocidas(self) -> set[int]:
@@ -550,7 +576,12 @@ class DisparadorAutomatico(QObject):
 
     disparar = Signal()
 
-    ESPERA_MS = 1500  # lo que tarda la animacion de la pantalla de recompensas
+    # Medido en el video de un usuario: en el primer fotograma de la pantalla (cuenta
+    # atras en 15) los nombres ya se leen, y EE.log escribe "Got rewards" ~0,4 s
+    # despues de abrirse. La espera fija de 1,5 s era margen sin medir y era el
+    # trozo mas grande del retraso. Si la primera lectura llega antes de tiempo, el
+    # lector reintenta solo (LectorRecompensas.REINTENTO_MS).
+    ESPERA_MS = 150
 
     def __init__(self, activo: bool = True, parent=None):
         super().__init__(parent)

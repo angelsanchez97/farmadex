@@ -1,5 +1,36 @@
 # Cambios
 
+## 0.2.5
+
+**Reliquias en menos de un segundo**
+- Se ha quitado la espera fija de 1,5 s antes de leer la pantalla. En el video
+  de un usuario, los nombres de las tarjetas ya se leen en el primer fotograma,
+  y el juego avisa de que tiene todas las recompensas 0,4 s despues de abrirse.
+  Ahora se lee al momento, y si todavia faltan tarjetas se vuelve a mirar cada
+  150 ms en vez de esperar a ciegas.
+- "Plano de Chasis de Caliban Prime" se identificaba como "Caliban Prime". En
+  castellano el juego pone "Plano" delante del nombre y solo sabiamos quitarlo
+  cuando iba detras. Lo mismo pasaba con cualquier pieza de warframe.
+
+**Panel de recompensas**
+- Cada tarjeta queda centrada justo debajo de su recompensa.
+- Los ducados salen siempre, tambien en la mejor opcion; si no hay dato, lo
+  dice.
+- Funciona de 1 a 4 recompensas, y con 0 no aparece.
+
+**Estado del mundo**
+- Si la API de la comunidad se queda atascada, Farmadex tira de la fuente
+  oficial de DE. Hace dos dias se quedo dos horas publicando datos viejos, y
+  las fisuras desaparecieron.
+- Una fisura con el campo "activa" vacio ya no se da por cerrada: se decide por
+  sus fechas.
+- Si no hay fisuras que ensenar, se dice por que: tu filtro, datos viejos (y de
+  cuando son) o que la consulta fallo.
+
+**Actualizaciones**
+- Al actualizarse, se ve la ventana de progreso del instalador, y Farmadex
+  avisa antes de cerrarse.
+
 ## 0.2.4
 
 - **Si una actualizacion automatica falla, ahora se sabe por que.** El aviso
@@ -9,7 +40,8 @@
   descartada y habia que instalarla a mano.
 - **Registro a prueba de fallos**, para poder diagnosticar lo que reporta la
   gente: cualquier problema del propio registro se apunta aparte en
-  `logsegistro_errores.txt`, la primera linea dice la version y donde se esta
+  `logs
+egistro_errores.txt`, la primera linea dice la version y donde se esta
   escribiendo, y avisa si Windows lo esta redirigiendo a otra carpeta.
 
 ## 0.2.3

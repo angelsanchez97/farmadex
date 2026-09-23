@@ -193,3 +193,162 @@ def test_el_servicio_avisa_del_fallo_y_conserva_lo_ultimo_bueno(datos, traductor
     assert fallos and "WorldState Not Found" in fallos[-1]
     assert servicio.ultimo is buenos[0]
     servicio.cerrar()
+
+
+# -- campos booleanos nulos (respuesta real del 2026-09-22) --------------------
+
+FIXTURE_DESFASADO = Path(__file__).parent / "fixtures" / "worldstate_desfasado.json"
+
+
+@pytest.fixture()
+def desfasado():
+    """Copia recortada de lo que publicaba api.warframestat.us el 2026-09-22 a las 19:35 UTC:
+    'timestamp' de dos horas antes, todas las fisuras caducadas y "active"/"expired" a null."""
+    return json.loads(FIXTURE_DESFASADO.read_text(encoding="utf-8"))
+
+
+def test_bandera_distingue_nulo_de_falso():
+    assert worldstate._bandera(True) is True and worldstate._bandera(False) is False
+    assert worldstate._bandera(None) is None
+    assert worldstate._bandera("") is None and worldstate._bandera("si") is None
+    assert worldstate._bandera("true") is True and worldstate._bandera("FALSE") is False
+    assert worldstate._bandera(1) is True and worldstate._bandera(0) is False
+    assert worldstate._bandera(7) is None and worldstate._bandera([]) is None
+
+
+def test_expired_nulo_no_borra_las_fisuras(desfasado, traductor):
+    assert all(f["expired"] is None for f in desfasado["fissures"])
+    mundo = worldstate.analizar(desfasado, traductor)
+    assert len(mundo.fisuras) == len(desfasado["fissures"])
+    # Lo que si venia bien se conserva.
+    assert any(f.acero for f in mundo.fisuras)
+    assert mundo.esta_viejo()  # el timestamp es de hace horas: se dice, no se esconde
+
+
+def test_expired_true_si_se_respeta_y_los_tipos_raros_no(desfasado, traductor):
+    desfasado["fissures"][0]["expired"] = True
+    desfasado["fissures"][1]["expired"] = "no"  # ni booleano ni nada: no se sabe
+    desfasado["fissures"][2]["isHard"] = None
+    desfasado["fissures"][2]["isStorm"] = None
+    desfasado["fissures"][2]["node"] = "Sover Strait (Earth Proxima)"
+    mundo = worldstate.analizar(desfasado, traductor)
+    assert len(mundo.fisuras) == len(desfasado["fissures"]) - 1
+    tormenta = [f for f in mundo.fisuras if f.tormenta]
+    assert len(tormenta) == 1 and not tormenta[0].acero  # deducida del nodo de Railjack
+
+
+def test_active_nulo_en_baro_se_deduce_de_las_fechas(desfasado, traductor):
+    assert desfasado["voidTrader"]["active"] is None
+    baro = worldstate.analizar_baro(desfasado["voidTrader"], traductor)
+    assert baro is not None and not baro.activo  # llega el 2 de octubre
+
+    ahora = datetime.now(timezone.utc)
+    v = dict(desfasado["voidTrader"])
+    v["activation"] = (ahora - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    v["expiry"] = (ahora + timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    assert worldstate.analizar_baro(v, traductor).activo  # nulo + fechas dentro = esta
+    v["active"] = False
+    assert not worldstate.analizar_baro(v, traductor).activo  # un False de verdad manda
+
+
+def test_completed_nulo_en_invasiones_se_deduce_del_porcentaje(desfasado, traductor):
+    for i in desfasado["invasions"]:
+        i["completed"] = None
+    desfasado["invasions"][0]["completion"] = 100
+    desfasado["invasions"][1]["completion"] = 37.5
+    mundo = worldstate.analizar(desfasado, traductor)
+    assert len(mundo.invasiones) == 1 and mundo.invasiones[0].porcentaje == 37.5
+
+
+# -- respaldo con el worldState de DE -------------------------------------------
+
+FIXTURE_DE = Path(__file__).parent / "fixtures" / "worldstate_de.json"
+
+
+def _crudo_de_ahora():
+    """El fixture de DE con su reloj y sus fechas movidos a ahora, para que este al dia."""
+    crudo = json.loads(FIXTURE_DE.read_text(encoding="utf-8"))
+    ahora = datetime.now(timezone.utc)
+    desplazamiento = int(ahora.timestamp()) - int(crudo["Time"])
+    crudo["Time"] = int(ahora.timestamp())
+
+    def mover(nodo):
+        if isinstance(nodo, dict):
+            if "$date" in nodo and isinstance(nodo["$date"], dict):
+                nodo["$date"]["$numberLong"] = str(int(nodo["$date"]["$numberLong"]) + desplazamiento * 1000)
+            else:
+                for v in nodo.values():
+                    mover(v)
+        elif isinstance(nodo, list):
+            for v in nodo:
+                mover(v)
+
+    mover(crudo)
+    return crudo
+
+
+def _servicio_con(respuestas, traductor):
+    from PySide6.QtWidgets import QApplication
+
+    QApplication.instance() or QApplication([])
+    servicio = worldstate.ServicioMundo(None)
+    servicio.traductor = traductor
+    buenos, fallos = [], []
+    servicio.actualizado.connect(buenos.append)
+    servicio.fallo.connect(fallos.append)
+
+    def json_por_url(url, **_):
+        respuesta = respuestas[url]
+        if isinstance(respuesta, Exception):
+            raise respuesta
+        return respuesta
+
+    servicio.cliente.json = json_por_url
+    return servicio, buenos, fallos
+
+
+def test_si_warframestat_esta_desfasado_se_usa_el_crudo_de_de(desfasado, traductor):
+    from farmadex.online.worldstate_de import URL_DE
+
+    url = worldstate.URL.format(plataforma=worldstate.PLATAFORMA)
+    servicio, buenos, fallos = _servicio_con({url: desfasado, URL_DE: _crudo_de_ahora()}, traductor)
+    servicio.refrescar()
+    assert len(buenos) == 1 and fallos == []
+    mundo = buenos[0]
+    assert mundo.fuente == "de" and not mundo.esta_viejo()
+    assert len(mundo.fisuras) == 7 and mundo.baro_detalle is not None
+
+
+def test_si_warframestat_falla_del_todo_tambien_entra_el_respaldo(traductor):
+    from farmadex.online.worldstate_de import URL_DE
+
+    url = worldstate.URL.format(plataforma=worldstate.PLATAFORMA)
+    servicio, buenos, fallos = _servicio_con({url: RuntimeError("HTTP 502"), URL_DE: _crudo_de_ahora()}, traductor)
+    servicio.refrescar()
+    assert len(buenos) == 1 and buenos[0].fuente == "de" and fallos == []
+
+
+def test_si_el_respaldo_tambien_falla_se_ensena_lo_viejo_y_se_avisa(desfasado, traductor):
+    from farmadex.online.worldstate_de import URL_DE
+
+    url = worldstate.URL.format(plataforma=worldstate.PLATAFORMA)
+    servicio, buenos, fallos = _servicio_con({url: desfasado, URL_DE: RuntimeError("HTTP 404")}, traductor)
+    servicio.refrescar()
+    assert len(buenos) == 1 and buenos[0].fuente == "warframestat" and buenos[0].esta_viejo()
+    assert fallos and "min" in fallos[0]
+
+    # Y si el respaldo esta tan viejo como la principal, tampoco vale.
+    viejo = json.loads(FIXTURE_DE.read_text(encoding="utf-8"))  # Time del 2026-09-22
+    servicio, buenos, fallos = _servicio_con({url: desfasado, URL_DE: viejo}, traductor)
+    servicio.refrescar()
+    assert buenos[0].fuente == "warframestat" and fallos
+
+
+def test_con_warframestat_al_dia_no_se_toca_el_respaldo(desfasado, traductor):
+    from farmadex.online.worldstate_de import URL_DE
+
+    url = worldstate.URL.format(plataforma=worldstate.PLATAFORMA)
+    desfasado["timestamp"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    servicio, buenos, fallos = _servicio_con({url: desfasado, URL_DE: AssertionError("no debia pedirse")}, traductor)
+    servicio.refrescar()
+    assert len(buenos) == 1 and buenos[0].fuente == "warframestat" and fallos == []

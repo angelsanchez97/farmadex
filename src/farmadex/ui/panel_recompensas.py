@@ -50,6 +50,8 @@ PLATINO = QColor(120, 190, 255)
 DUCADOS = QColor(240, 190, 90)
 ALTO_TARJETA = 128
 ANCHO_MINIMO_TARJETA = 190
+ANCHO_UNA_TARJETA = 260
+ANCHO_MAXIMO_TARJETA = 300
 HUECO = 8
 LADO_IMAGEN = 56
 _COLORES_MAESTRIA = {"dominado": COLOR_DOMINADO, "a_medias": COLOR_A_MEDIAS, "sin_tocar": COLOR_SIN_DOMINAR}
@@ -116,25 +118,44 @@ class PanelRecompensas(QWidget):
 
     # -- geometria ----------------------------------------------------------------
 
+    def _centros(self) -> list[int]:
+        return [r.caja[0] + r.caja[2] // 2 for r in self.recompensas]
+
+    def _ancho_tarjeta(self) -> int:
+        """El hueco entre dos recompensas vecinas: asi cada tarjeta cabe bajo la suya."""
+        centros = sorted(self._centros())
+        if len(centros) > 1:
+            paso = min(b - a for a, b in zip(centros, centros[1:]))
+            ancho = paso - HUECO
+        else:
+            ancho = ANCHO_UNA_TARJETA
+        return max(ANCHO_MINIMO_TARJETA, min(ancho, ANCHO_MAXIMO_TARJETA))
+
     def rectangulo_panel(self) -> QRect:
-        """Bajo la fila de tarjetas del juego, del ancho de esa fila (minimo por tarjeta)."""
-        n = len(self.recompensas)
-        izquierda = min(r.caja[0] for r in self.recompensas)
-        derecha = max(r.caja[0] + r.caja[2] for r in self.recompensas)
+        """Bajo la fila de tarjetas del juego, abarcando justo las nuestras."""
+        ancho = self._ancho_tarjeta()
+        centros = self._centros()
         base = max(r.caja[1] + r.caja[3] for r in self.recompensas)
-        ancho = max(derecha - izquierda + 2 * HUECO, n * (ANCHO_MINIMO_TARJETA + HUECO) + HUECO)
-        centro = (izquierda + derecha) // 2
-        x = max(0, min(centro - ancho // 2, self.width() - ancho))
+        izquierda = min(centros) - ancho // 2 - HUECO
+        total = max(centros) + ancho // 2 + HUECO - izquierda
+        # Si no cabe tal cual (monitor mas pequeno que la captura), se desplaza dentro.
+        izquierda = max(0, min(izquierda, self.width() - total))
         y = min(base + 10, self.height() - ALTO_TARJETA - 2 * HUECO - 24)
-        return QRect(x, y, ancho, ALTO_TARJETA + 2 * HUECO + 24)
+        return QRect(izquierda, y, total, ALTO_TARJETA + 2 * HUECO + 24)
 
     def rectangulos_tarjetas(self, panel: QRect) -> list[QRect]:
-        n = len(self.recompensas)
-        ancho = (panel.width() - HUECO * (n + 1)) // n
-        return [
-            QRect(panel.x() + HUECO + i * (ancho + HUECO), panel.y() + HUECO, ancho, ALTO_TARJETA)
-            for i in range(n)
-        ]
+        """Cada tarjeta centrada bajo SU recompensa.
+
+        Antes se repartia el ancho del panel a partes iguales, y como los nombres
+        del juego no miden lo mismo, las tarjetas quedaban corridas respecto a sus
+        recompensas (captura de un usuario con Trumna, Euphona y Caliban).
+        """
+        ancho = self._ancho_tarjeta()
+        rects = []
+        for c in self._centros():
+            x = max(panel.x() + HUECO // 2, min(c - ancho // 2, panel.right() - ancho - HUECO // 2))
+            rects.append(QRect(x, panel.y() + HUECO, ancho, ALTO_TARJETA))
+        return rects
 
     # -- pintado ------------------------------------------------------------------
 
@@ -215,8 +236,11 @@ class PanelRecompensas(QWidget):
                 lineas.append((texto_platino(r), PLATINO, normal))
             elif r.nota and r.nota.lower().startswith(("sin precio", "no price", "sans prix", "kein preis", "sem pre")):
                 lineas.append((r.nota, SUAVE, pequena))
+            # Siempre: si falta el dato se dice, no desaparece la linea.
             if r.ducados:
                 lineas.append((t("{n} ducados", n=r.ducados), DUCADOS, normal))
+            else:
+                lineas.append((t("Sin ducados"), SUAVE, pequena))
             if r.objetivo:
                 lineas.append((t("Objetivo: {nombre}", nombre=r.objetivo), COLOR_OBJETIVO, normal))
             if extra.get("tienes") is not None:

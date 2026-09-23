@@ -199,14 +199,15 @@ def test_parametros_del_setup_silencioso(tmp_path):
     setup = tmp_path / "Farmadex-9.9.9-setup.exe"
     params = instalacion.parametros_instalador(setup, tmp_path / "instalador.log")
     assert params[0] == str(setup)
-    for p in ("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS", "/AUTOACTUALIZAR=1"):
+    for p in ("/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS", "/AUTOACTUALIZAR=1"):
         assert p in params
+    assert "/VERYSILENT" not in params
     assert params[-1] == f"/LOG={tmp_path / 'instalador.log'}"
     orden = instalacion._linea_de_ordenes(setup, tmp_path / "Farmadex.exe")
     assert re.match(r'^("[^"]*cmd\.exe"|\S*cmd\.exe) /d /c "', orden) and orden.endswith('"')
     assert "|| start" in orden and str(tmp_path / "Farmadex.exe") in orden
     # Los parametros del setup van sin comillas, tal y como se probaron de verdad.
-    assert " /VERYSILENT " in orden and '"/VERYSILENT"' not in orden
+    assert " /SILENT " in orden and '"/SILENT"' not in orden and "/VERYSILENT" not in orden
 
 
 def test_la_orden_entrecomilla_lo_que_cmd_interpretaria(tmp_path, monkeypatch):
@@ -214,7 +215,7 @@ def test_la_orden_entrecomilla_lo_que_cmd_interpretaria(tmp_path, monkeypatch):
     carpeta = tmp_path / "Ana&Luis(2)"
     monkeypatch.setattr(instalacion, "DIR_LOGS", carpeta / "logs")
     orden = instalacion._linea_de_ordenes(carpeta / "setup.exe", carpeta / "Farmadex.exe")
-    assert f'"{carpeta / "setup.exe"}" /VERYSILENT' in orden
+    assert f'"{carpeta / "setup.exe"}" /SILENT' in orden
     assert f'"/LOG={carpeta / "logs" / "instalador.log"}"' in orden
     assert orden.endswith(f'|| start "" "{carpeta / "Farmadex.exe"}""')
 
@@ -252,7 +253,7 @@ def test_la_orden_de_cmd_funciona_con_espacios_acentos_y_simbolos(tmp_path, monk
     correr(1)
     assert marca.exists(), "el setup fallo y no se relanzo Farmadex"
     recibido = argumentos.read_text(encoding="utf-8", errors="replace")
-    assert "/VERYSILENT" in recibido and "/AUTOACTUALIZAR=1" in recibido
+    assert "/SILENT" in recibido and "/AUTOACTUALIZAR=1" in recibido and "/VERYSILENT" not in recibido
     assert re.search(r'"/LOG=.*& C.*\\logs\\instalador\.log"', recibido)
 
     correr(0)
@@ -292,7 +293,7 @@ def test_instalar_silencioso_apunta_la_version_y_no_falla_sin_setup(tmp_path, mo
     setup = tmp_path / "Farmadex-9.9.9-setup.exe"
     setup.write_bytes(CONTENIDO)
     assert instalacion.instalar_silencioso(setup, "v9.9.9", ejecutable_actual=tmp_path / "Farmadex.exe")
-    assert len(lanzados) == 1 and "/VERYSILENT" in lanzados[0]
+    assert len(lanzados) == 1 and "/SILENT" in lanzados[0] and "/VERYSILENT" not in lanzados[0]
     assert json.loads((tmp_path / "pendiente.json").read_text())["version"] == "v9.9.9"
 
 
@@ -361,13 +362,15 @@ def _ventana_falsa(monkeypatch, auto=True, instalado=True, fallida=None, otra=Fa
         estado=types.SimpleNamespace(setText=lambda s: None),
         ajustes=types.SimpleNamespace(anunciar_version=lambda v, **k: ajustes.append(k), estado_version=lambda s: None),
         nueva_version=None, actualizacion_lista=None, _fallo_actualizacion=None, _instalador_lanzado=False,
+        _aviso_actualizando=None,
         config={"actualizar_automaticamente": auto},
         descargador=types.SimpleNamespace(descargar=lambda v: descargas.append(v) or True, cancelar=lambda: None),
         cerrar_programa=types.SimpleNamespace(emit=lambda: None),
     )
     for nombre in ("_avisar_descarga_manual", "_conviene_autoactualizar", "_descargar_actualizacion",
                    "_actualizacion_lista", "_fallo_descarga", "_reiniciar_y_actualizar",
-                   "_lanzar_instalacion_pendiente", "_hay_version_nueva", "_progreso_descarga"):
+                   "_lanzar_instalacion_pendiente", "_hay_version_nueva", "_progreso_descarga",
+                   "_mostrar_aviso_actualizando"):
         setattr(falso, nombre, (lambda n: lambda *a, **k: getattr(VentanaOverlay, n)(falso, *a, **k))(nombre))
     return falso, avisos, ajustes, descargas, lanzados
 
@@ -441,6 +444,36 @@ def test_si_se_desactiva_la_casilla_tras_descargar_no_se_instala_al_cerrar(monke
     assert not falso._lanzar_instalacion_pendiente() and lanzados == []
     # Pulsar "Reiniciar y actualizar" es una orden expresa: eso si.
     assert falso._lanzar_instalacion_pendiente(a_mano=True) and len(lanzados) == 1
+
+
+def test_el_aviso_de_actualizando_se_ensena_por_el_boton_y_por_el_cierre(monkeypatch):
+    """El aviso ("Actualizando Farmadex...") se crea y se ensena en los dos caminos
+    que llevan a lanzar el instalador: el boton del banner (a_mano) y el cierre del
+    programa. No abre ventana real: corre bajo QT_QPA_PLATFORM=offscreen."""
+    from PySide6.QtWidgets import QApplication, QLabel
+
+    QApplication.instance() or QApplication([])
+
+    # Camino del boton ("Reiniciar y actualizar").
+    falso, *_ = _ventana_falsa(monkeypatch)
+    v = version()
+    falso._actualizacion_lista(v, Path("C:/x/setup.exe"))
+    assert falso._aviso_actualizando is None
+    assert falso._lanzar_instalacion_pendiente(a_mano=True)
+    aviso = falso._aviso_actualizando
+    assert aviso is not None and aviso.isVisible()
+    etiqueta = aviso.findChild(QLabel)
+    assert etiqueta is not None and "v9.9.9" in etiqueta.text()
+    aviso.close()
+
+    # Camino del cierre (cerrar_de_verdad llama a _lanzar_instalacion_pendiente sin a_mano).
+    falso2, *_ = _ventana_falsa(monkeypatch)
+    falso2._actualizacion_lista(v, Path("C:/x/setup.exe"))
+    assert falso2._aviso_actualizando is None
+    assert falso2._lanzar_instalacion_pendiente()
+    aviso2 = falso2._aviso_actualizando
+    assert aviso2 is not None and aviso2.isVisible()
+    aviso2.close()
 
 
 # -- el instalador -----------------------------------------------------------------

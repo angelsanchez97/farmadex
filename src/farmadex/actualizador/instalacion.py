@@ -41,7 +41,10 @@ MUTEX = "FarmadexEnEjecucion"
 # Parametro propio con el que el instalador distingue una actualizacion automatica
 # de una instalacion a mano (relanza Farmadex al acabar, sin asistente).
 PARAMETRO_AUTO = "/AUTOACTUALIZAR=1"
-PARAMETROS = ["/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS", PARAMETRO_AUTO]
+# /SILENT (no /VERYSILENT): oculta el asistente pero deja ver la ventana de progreso
+# del propio instalador, para que el usuario sepa que algo esta pasando mientras
+# Farmadex esta cerrado.
+PARAMETROS = ["/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS", PARAMETRO_AUTO]
 RUTA_PENDIENTE = DIR_DESCARGAS / "pendiente.json"
 RUTA_FALLIDA = DIR_DESCARGAS / "fallida.json"
 ERROR_ALREADY_EXISTS = 183
