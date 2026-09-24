@@ -123,9 +123,11 @@ def test_la_boveda_la_deciden_las_tablas_de_drops():
     from farmadex.datos.indice import corregir_boveda
 
     con = sqlite3.connect(":memory:")
-    con.execute("CREATE TABLE items (id INTEGER PRIMARY KEY, nombre_en TEXT, categoria TEXT, vaulted INTEGER)")
+    con.execute("CREATE TABLE items (id INTEGER PRIMARY KEY, nombre_en TEXT, categoria TEXT, vaulted INTEGER, "
+                "es_prime INTEGER DEFAULT 0, padre_id INTEGER)")
     con.execute("CREATE TABLE fuentes (id INTEGER PRIMARY KEY, item_id INTEGER)")
-    con.executemany("INSERT INTO items VALUES (?, ?, ?, ?)", [
+    con.execute("CREATE TABLE reliquia_recompensas (reliquia_id INTEGER, item_id INTEGER)")
+    con.executemany("INSERT INTO items (id, nombre_en, categoria, vaulted) VALUES (?, ?, ?, ?)", [
         (1, "Neo C11 Relic", "Relics", 1),   # nueva, WFCD dice boveda: sale en misiones
         (2, "Lith K12 Relic", "Relics", 0),  # retirada, WFCD aun dice que no
         (3, "Requiem I Relic", "Relics", 0),  # Kuva: no esta en las tablas, se deja
@@ -137,3 +139,19 @@ def test_la_boveda_la_deciden_las_tablas_de_drops():
     assert dict(con.execute("SELECT nombre_en, vaulted FROM items")) == {
         "Neo C11 Relic": 0, "Lith K12 Relic": 1, "Requiem I Relic": 0, "Forma Blueprint": 1,
     }
+
+
+def test_la_boveda_de_piezas_y_primes_sale_de_sus_reliquias(indice_poblado):
+    """Ficha, Primes y panel leen la boveda de sitios distintos: tienen que coincidir."""
+    import sys
+    from pathlib import Path
+
+    from farmadex.datos.indice import corregir_boveda
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "herramientas"))
+    from auditar_boveda import incoherencias
+
+    con, _, _ = indice_poblado
+    con.execute("UPDATE items SET vaulted = NULL WHERE padre_id IS NOT NULL")  # como venia de WFCD
+    corregir_boveda(con)
+    assert incoherencias(con) == []

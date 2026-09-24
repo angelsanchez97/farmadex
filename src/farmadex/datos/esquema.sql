@@ -22,7 +22,11 @@ CREATE TABLE IF NOT EXISTS items (
   item_count INTEGER,
   ducados INTEGER,
   market_slug TEXT,
-  market_id TEXT
+  market_id TEXT,
+  -- Cuando salio (releaseDate de WFCD, AAAA-MM-DD) y en que actualizacion ("Update 44.0"):
+  -- de ahi sale "lo nuevo" del buscador. Solo lo traen los objetos de verdad, no los adornos.
+  fecha_salida TEXT,
+  actualizacion TEXT
 );
 CREATE INDEX IF NOT EXISTS ix_items_categoria ON items(categoria);
 CREATE INDEX IF NOT EXISTS ix_items_padre ON items(padre_id);

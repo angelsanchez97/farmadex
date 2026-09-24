@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import html
 import sqlite3
-import webbrowser
 
 from PySide6.QtCore import QRect, QSize, Qt, QTimer, QUrl, Signal
-from PySide6.QtGui import QColor, QFont, QPainter, QPen
+from PySide6.QtGui import QColor, QDesktopServices, QFont, QPainter, QPen
 from PySide6.QtWidgets import (
     QCheckBox,
     QHBoxLayout,
@@ -26,10 +25,10 @@ from PySide6.QtWidgets import (
 from ..config import cargar, guardar
 from .. import perfil
 from ..estado import inventario as estado_inventario
-from ..datos import eficiencia, indice, items, modos_mision, relaciones
+from ..datos import consultas, eficiencia, indice, items, misiones, modos_mision, novedades, relaciones
 from ..datos.nodos import etapa_bonita, nombre_bonito
 from ..idiomas import es_castellano, glosa, nombre as nombre_idioma, t
-from . import desglose_tiempo, glosario, pestana_primes, relleno_filas
+from . import desglose_tiempo, enlaces_wiki, glosario, guias_youtube, pestana_primes, relleno_filas
 from .maestria import colores_maestria, estado_con_padre, texto_maestria
 from .widgets import COLOR_BOVEDA, COLOR_DISPONIBLE, PALETA, color_rareza, imagenes
 
@@ -157,12 +156,21 @@ class PestanaBuscador(QWidget):
         self._hay_perfil = False
         self.config = cargar()
         self._resultados: list[dict] = []
-        # (item_id, texto que se buscaba), para poder rehacer la busqueda al volver.
-        self._historial: list[tuple[int, str]] = []
+        # (item_id, texto que se buscaba), para poder rehacer la busqueda al volver. Una
+        # ficha de mision se apunta con su clave ('nodo:98', 'modo:Survival') en vez del id.
+        self._historial: list[tuple[int | str, str]] = []
         # Mientras se vuelve atras no se apunta nada nuevo en el historial.
         self._volviendo = False
         self._actual: int | None = None
         self._datos_actuales: dict | None = None
+        # Ficha de mision abierta ('nodo:98' o 'modo:Survival'); None si es de objeto o no hay.
+        self._mision_actual: str | None = None
+        # Quien reproduce las guias de YouTube dentro de Farmadex (la ventana lo pone);
+        # sin el, el navegador del sistema.
+        self.reproductor = None
+        # "Lo mas nuevo" cuando se abrio una ficha de objeto por "el ultimo warframe": la
+        # nota con los demas objetos de esa actualizacion, que va debajo del nombre.
+        self._nota_novedad: dict | None = None
         # Lo ultimo que se busco sin exito, para volver a pintar el aviso al cambiar de idioma.
         self._sin_resultados: str | None = None
         p = PALETA
@@ -191,6 +199,16 @@ class PestanaBuscador(QWidget):
         self.boton_set.clicked.connect(
             lambda: self._actual and self.anadir_objetivo.emit(self._actual, True)
         )
+        # Para lo que Farmadex no cuenta (habilidades, construccion, historia): la wiki
+        # oficial con lo escrito, o la pagina del objeto de la ficha abierta. Solo al
+        # pulsarlo; apagado si no hay nada que buscar.
+        self.boton_wiki = QPushButton()
+        self.boton_wiki.setEnabled(False)
+        self.boton_wiki.clicked.connect(self._abrir_wiki)
+        # Guias en video de la ficha abierta (mision u objeto), dentro de Farmadex.
+        self.boton_youtube = QPushButton()
+        self.boton_youtube.setEnabled(False)
+        self.boton_youtube.clicked.connect(self._abrir_youtube)
 
         self.lista = QListWidget()
         self.lista.setMinimumWidth(300)
@@ -229,6 +247,8 @@ class PestanaBuscador(QWidget):
         fila.addWidget(self.atras)
         fila.addStretch(1)
         fila.addWidget(self.ocultar_vaulted)
+        fila.addWidget(self.boton_wiki)
+        fila.addWidget(self.boton_youtube)
         fila.addWidget(self.boton_set)
         fila.addWidget(self.boton_objetivo)
         caja.addLayout(fila)
@@ -242,6 +262,7 @@ class PestanaBuscador(QWidget):
         self._temporizador.timeout.connect(self._buscar)
 
         self.caja.textChanged.connect(lambda _: self._temporizador.start())
+        self.caja.textChanged.connect(lambda _: self._actualizar_boton_wiki())
         self.lista.currentRowChanged.connect(self._elegir_resultado)
         imagenes().lista.connect(self._imagen_lista)
         self._mensaje_aviso = "Preparando los datos..."
@@ -258,6 +279,8 @@ class PestanaBuscador(QWidget):
         if listo:
             self.con = indice.conectar()
             self.caja.setFocus()
+            if not self.caja.text().strip():
+                self._poner_portada()
 
     def conectar_usuario(self, usuario: sqlite3.Connection | None) -> None:
         self.usuario = usuario
@@ -314,8 +337,12 @@ class PestanaBuscador(QWidget):
         self.lista.viewport().update()
         if self._datos_actuales:
             self._poner_ficha(self._html(self._datos_actuales))
+        elif self._mision_actual and self.con:
+            self._poner_ficha(self._html_mision(self._mision_actual))
         elif self._sin_resultados is not None:
             self._poner_ficha(self._html_sin_resultados(self._sin_resultados))
+        elif self.con is not None and not self.caja.text().strip():
+            self._poner_portada()
 
     def _poner_ficha(self, contenido: str) -> None:
         """Pinta la ficha y su relleno de filas en el acto, sin esperar al bucle de eventos:
@@ -325,11 +352,17 @@ class PestanaBuscador(QWidget):
 
     def retraducir(self) -> None:
         """Tras cambiar de idioma: textos fijos, lista de resultados y ficha abierta."""
-        self.caja.setPlaceholderText(t("Busca un objeto, recurso, mod o pieza  (p. ej. sistemas ash prime)"))
+        self.caja.setPlaceholderText(t("Busca un objeto, una mision o pregunta  (p. ej. sistemas ash prime, hepit, el ultimo warframe)"))
         self.ocultar_vaulted.setText(t("Ocultar reliquias en boveda"))
         self.atras.setText(t("‹ Atras"))
         self.boton_objetivo.setText(t("+ Objetivo"))
         self.boton_set.setText(t("+ Set completo"))
+        self.boton_wiki.setText(t("Buscar en la wiki"))
+        self.boton_youtube.setText(t("Guias en YouTube"))
+        self.boton_youtube.setToolTip(t("Busca guias en YouTube de la mision o el objeto abierto, "
+                                        "ordenadas por visitas, y las abre en el reproductor de Farmadex."))
+        self.boton_wiki.setToolTip(t("Abre la wiki oficial de Warframe en el navegador: la pagina "
+                                     "del objeto abierto o, si no hay ninguno, la busqueda de lo escrito."))
         if self._resultados:
             self._pintar_resultados()
         self.repintar()
@@ -355,10 +388,73 @@ class PestanaBuscador(QWidget):
             return
         if texto.startswith("item:"):
             self.abrir(int(texto.removeprefix("item:")))
+        elif texto.startswith(("nodo:", "modo:", "novedades:")):
+            self.abrir_mision(texto)
+        elif texto == "video:":
+            self._abrir_youtube()
         elif texto.startswith("buscar:"):
             self.caja.setText(texto.removeprefix("buscar:"))
         elif texto.startswith("http"):
-            webbrowser.open(texto)
+            QDesktopServices.openUrl(QUrl(texto))
+
+    def url_wiki(self) -> str:
+        """Lo que abre "Buscar en la wiki": la pagina del objeto abierto o la busqueda.
+
+        Con un objeto sin pagina conocida se busca por su nombre ingles, que es el de la
+        wiki; sin ficha, lo escrito tal cual (la wiki salta a la pagina si coincide).
+        """
+        if self._datos_actuales:
+            item = self._datos_actuales["item"]
+            return enlaces_wiki.url_item(item) or enlaces_wiki.url_busqueda(item.get("nombre_en") or "")
+        if self._mision_actual:
+            tipo, valor = self._mision_actual.split(":", 1)
+            if tipo == "novedades":
+                datos = novedades.ultima(self.con, valor)
+                return enlaces_wiki.url_busqueda(datos["actualizacion"]) if datos else ""
+            if tipo == "modo":
+                return enlaces_wiki.url_modo(valor)
+            n = misiones.nodo(self.con, int(valor)) if self.con else None
+            return enlaces_wiki.url_nodo(n["nodo_en"]) if n else ""
+        texto = self.caja.text().strip()
+        return enlaces_wiki.url_busqueda(texto) if texto else ""
+
+    def _abrir_wiki(self) -> None:
+        url = self.url_wiki()
+        if url:
+            QDesktopServices.openUrl(QUrl(url))
+
+    def _actualizar_boton_wiki(self) -> None:
+        hay_ficha = bool(self._datos_actuales or self._mision_actual)
+        self.boton_wiki.setEnabled(hay_ficha or bool(self.caja.text().strip()))
+        self.boton_youtube.setEnabled(hay_ficha)
+
+    def tema_video(self) -> str:
+        """De que se buscan guias: 'Hepit Captura', 'Supervivencia' o el objeto abierto."""
+        if self._datos_actuales:
+            item, padre = self._datos_actuales["item"], self._datos_actuales["padre"]
+            return _con_padre(nombre_idioma(item), nombre_idioma(padre) if padre else None)
+        if self._mision_actual and self.con:
+            tipo, valor = self._mision_actual.split(":", 1)
+            if tipo == "novedades":
+                datos = novedades.ultima(self.con, valor)
+                return novedades.titulo(datos) if datos else ""
+            if tipo == "modo":
+                return modos_mision.nombre(valor)
+            n = misiones.nodo(self.con, int(valor))
+            return f"{misiones.titulo_nodo(n)} {modos_mision.nombre(n['modo'])}" if n else ""
+        return ""
+
+    def url_youtube(self) -> str:
+        return guias_youtube.url_guia(self.tema_video(), cargar().get(guias_youtube.CLAVE_API))
+
+    def _abrir_youtube(self) -> None:
+        url = self.url_youtube()
+        if not url:
+            return
+        if self.reproductor is not None:
+            self.reproductor(url)
+        else:
+            QDesktopServices.openUrl(QUrl(url))
 
     def _volver(self) -> None:
         """Vuelve a la ficha anterior, venga de donde venga: de la lista, de una
@@ -375,13 +471,16 @@ class PestanaBuscador(QWidget):
             self._buscar()
             self._volviendo = False
         self._seleccionar_en_lista(item_id)
-        self.abrir(item_id, recordar=False)
+        if isinstance(item_id, str):
+            self.abrir_mision(item_id, recordar=False)
+        else:
+            self.abrir(item_id, recordar=False)
         self.atras.setEnabled(len(self._historial) > 1)
 
     def _seleccionar_en_lista(self, item_id: int) -> None:
         """Deja marcado en la lista el objeto al que se vuelve, sin abrirlo otra vez."""
         for fila, resultado in enumerate(self._resultados):
-            if resultado["item_id"] == item_id:
+            if (resultado.get("clave") or resultado["item_id"]) == item_id:
                 self.lista.blockSignals(True)
                 self.lista.setCurrentRow(fila)
                 self.lista.blockSignals(False)
@@ -393,8 +492,11 @@ class PestanaBuscador(QWidget):
         datos = items.ficha(self.con, item_id)
         if not datos:
             return
+        if self._actual != item_id:
+            self._nota_novedad = None  # la nota era de otro objeto
         self._actual = item_id
         self._datos_actuales = datos
+        self._mision_actual = None
         self._sin_resultados = None
         if recordar and (not self._historial or self._historial[-1][0] != item_id):
             # Se guarda con la busqueda que lo encontro, para poder rehacerla al volver.
@@ -407,6 +509,7 @@ class PestanaBuscador(QWidget):
         self.boton_objetivo.setEnabled(True)
         # El set solo tiene sentido en algo que se construye con piezas.
         self.boton_set.setEnabled(bool(datos["componentes"] or datos["padre"]))
+        self._actualizar_boton_wiki()
 
     def _consultar_precio(self, item: dict) -> None:
         slug = item.get("market_slug")
@@ -436,8 +539,27 @@ class PestanaBuscador(QWidget):
         if len(texto) < 2:
             self._resultados = []
             self._vaciar_ficha()
+            self._poner_portada()
             return
-        self._resultados = indice.buscar(self.con, texto)
+        # "como sacar citrine prime" busca "citrine prime"; "el ultimo warframe" no es un
+        # nombre sino una pregunta por lo nuevo, salvo que sea exactamente un objeto.
+        consulta = consultas.limpiar(texto)
+        objetos = indice.buscar(self.con, consulta)
+        mejor_objeto = min((r["nivel"] for r in objetos), default=9)
+        filtro = consultas.intencion_novedad(consulta)
+        if filtro and mejor_objeto > 0 and self._buscar_novedades(filtro):
+            return
+        # Nodos y tipos de mision: delante solo si casan mejor que el mejor objeto que se
+        # puede conseguir ("hepit" solo es nodo); si empatan, los objetos siguen primero.
+        # Lo que no tiene fuentes no cuenta: el reto de Onda nocturna "Supervivencia" no
+        # puede tapar al tipo de mision.
+        mejor_farmeable = min((r["nivel"] for r in objetos if r["peso"][2] == 0), default=9)
+        encontradas = misiones.buscar(self.con, consulta)
+        self._resultados = (
+            [m for m in encontradas if m["nivel"] < mejor_farmeable]
+            + objetos
+            + [m for m in encontradas if m["nivel"] >= mejor_farmeable]
+        )
         self._pintar_resultados()
         self.estado.emit(t("{n} resultados", n=len(self._resultados)))
         if self._resultados:
@@ -449,15 +571,108 @@ class PestanaBuscador(QWidget):
             self._sin_resultados = texto
             self._poner_ficha(self._html_sin_resultados(texto))
 
+    def _buscar_novedades(self, filtro: str) -> bool:
+        """Lo nuevo de la ultima actualizacion, filtrado por lo pedido.
+
+        'el ultimo warframe' con un solo warframe nuevo que no es prime (Narin) abre su
+        ficha directamente, con los demas de la actualizacion en una nota; si no, la
+        ficha de novedades. Sin datos de fecha, un aviso en vez de nada.
+        """
+        datos = novedades.ultima(self.con, filtro)
+        self._resultados = datos["items"] if datos else []
+        self._pintar_resultados()
+        if not datos:
+            self._vaciar_ficha()
+            self._poner_ficha(
+                f"<p style='color:{PALETA['suave']};margin-top:8px'>"
+                + html.escape(t("No hay datos de fecha de salida en el indice. Se anaden al "
+                                "actualizar los datos del juego."))
+                + "</p>"
+            )
+            return True
+        self.estado.emit(t("{n} resultados", n=len(self._resultados)))
+        no_primes = [f for f in datos["items"] if not f["es_prime"]]
+        if filtro in ("warframe", "arma") and len(no_primes) == 1:
+            otros = [f for f in datos["items"] if f is not no_primes[0]]
+            self.abrir(no_primes[0]["item_id"])
+            self._nota_novedad = {**datos, "items": otros}
+            self._seleccionar_en_lista(no_primes[0]["item_id"])
+            self._poner_ficha(self._html(self._datos_actuales))
+            return True
+        self.abrir_mision(f"novedades:{filtro}")
+        return True
+
+    def _poner_portada(self) -> None:
+        """Con el buscador vacio, una linea discreta con lo nuevo de la ultima actualizacion."""
+        datos = novedades.ultima(self.con) if self.con is not None else None
+        if not datos:
+            return
+        p = PALETA
+        nombres = ", ".join(
+            f"<a style='color:{p['acento']}' href='item:{f['item_id']}'>{html.escape(nombre_idioma(f))}</a>"
+            for f in datos["items"][:6]
+        )
+        if len(datos["items"]) > 6:
+            nombres += f", <a style='color:{p['acento']}' href='novedades:todo'>&hellip;</a>"
+        titulo = t("Novedades ({actualizacion})", actualizacion=novedades.titulo(datos))
+        self.ficha.setHtml(
+            f"<p style='color:{p['suave']};margin-top:8px'>"
+            f"<a style='color:{p['suave']};text-decoration:none' href='novedades:todo'>{html.escape(titulo)}</a>: "
+            f"{nombres}</p>"
+        )
+
+    def _html_novedades(self, filtro: str) -> str:
+        datos = novedades.ultima(self.con, filtro)
+        if not datos:
+            return ""
+        p = PALETA
+        titulo = t("Lo nuevo de la {actualizacion} ({fecha})", actualizacion=novedades.titulo(datos),
+                   fecha=novedades.fecha_legible(datos["fecha"]))
+        filas = []
+        for f in datos["items"]:
+            filas.append(
+                f"<tr><td><a style='color:{p['texto']};text-decoration:none' href='item:{f['item_id']}'>"
+                f"<b>{html.escape(nombre_idioma(f))}</b></a></td>"
+                f"<td style='color:{p['suave']}'>{html.escape(categoria_es(f['categoria'], f.get('tipo')))}</td>"
+                f"<td align='right'><a style='color:{p['acento']}' href='item:{f['item_id']}'>"
+                f"{html.escape(t('Como conseguirlo'))} &rarr;</a></td></tr>"
+            )
+        return (
+            f"<div style='font-size:22px;font-weight:bold'>{html.escape(titulo)}</div>"
+            f"<div style='color:{p['suave']};font-size:13px;margin-top:2px'>"
+            f"{html.escape(datos['actualizacion'])}</div>"
+            + _seccion(t("Objetos nuevos ({n})", n=len(datos["items"])))
+            + _envolver(filas)
+        )
+
+    def _html_nota_novedad(self) -> str:
+        """'Lo mas nuevo: Actualizacion 44.0 (23/09/2026). Tambien salio: Citrine Prime.'"""
+        nota = self._nota_novedad
+        if not nota:
+            return ""
+        p = PALETA
+        texto = html.escape(t("Lo mas nuevo: {actualizacion} ({fecha}).", actualizacion=novedades.titulo(nota),
+                              fecha=novedades.fecha_legible(nota["fecha"])))
+        if nota["items"]:
+            otros = ", ".join(
+                f"<a style='color:{p['acento']}' href='item:{f['item_id']}'>{html.escape(nombre_idioma(f))}</a>"
+                for f in nota["items"]
+            )
+            texto += f" {html.escape(t('Tambien salio:'))} {otros}."
+        return f"<div style='color:{p['suave']};margin-top:6px'>{texto}</div>"
+
     def _vaciar_ficha(self) -> None:
         self._actual = None
         self._datos_actuales = None
+        self._mision_actual = None
+        self._nota_novedad = None
         self._sin_resultados = None
         self._slug_actual = ""
         self.ficha.clear()
         self.precios.hide()
         self.boton_objetivo.setEnabled(False)
         self.boton_set.setEnabled(False)
+        self._actualizar_boton_wiki()
 
     def sugerencias(self, texto: str) -> list[dict]:
         """Objetos parecidos a una busqueda fallida: se prueba cada palabra por separado.
@@ -515,6 +730,9 @@ class PestanaBuscador(QWidget):
         self.lista.blockSignals(True)
         self.lista.clear()
         for r in self._resultados:
+            if r.get("clave"):
+                self.lista.addItem(self._elemento_mision(r))
+                continue
             nombre = nombre_idioma(r)
             padre = nombre_idioma(r, "padre")
             elemento = QListWidgetItem(_con_padre(nombre, padre))
@@ -535,7 +753,200 @@ class PestanaBuscador(QWidget):
         # Moverse por la lista tambien cuenta como navegar: antes se borraba el
         # historial aqui y el boton "Atras" quedaba apagado casi siempre.
         if 0 <= fila < len(self._resultados) and not self._volviendo:
-            self.abrir(self._resultados[fila]["item_id"])
+            resultado = self._resultados[fila]
+            if resultado.get("clave"):
+                self.abrir_mision(resultado["clave"])
+            else:
+                self.abrir(resultado["item_id"])
+
+    def _elemento_mision(self, r: dict) -> QListWidgetItem:
+        """Un nodo ('Hepit' / 'Nodo · Vacio · Captura') o un tipo de mision en la lista."""
+        if r["tipo_resultado"] == "modo":
+            elemento = QListWidgetItem(modos_mision.nombre(r["modo"]))
+            n = len(misiones.nodos_de_modo(self.con, r["modo"])) if self.con else 0
+            subtitulo = t("Tipo de mision") + (" · " + t("{n} nodos", n=n) if n else "")
+        else:
+            elemento = QListWidgetItem(misiones.titulo_nodo(r))
+            subtitulo = " · ".join(
+                x for x in (t("Nodo"), nombre_idioma(r, "planeta"), modos_mision.nombre(r["modo"])) if x
+            )
+        elemento.setData(ROL_SUBTITULO, subtitulo)
+        elemento.setData(ROL_IMAGEN, None)
+        return elemento
+
+    # -- fichas de mision -------------------------------------------------
+
+    def abrir_mision(self, clave: str, recordar: bool = True) -> None:
+        """Ficha de un nodo ('nodo:98') o de un tipo de mision ('modo:Survival')."""
+        if not self.con:
+            return
+        contenido = self._html_mision(clave)
+        if not contenido:
+            return
+        self._actual = None
+        self._datos_actuales = None
+        self._mision_actual = clave
+        self._sin_resultados = None
+        if recordar and (not self._historial or self._historial[-1][0] != clave):
+            self._historial.append((clave, self.caja.text().strip()))
+            del self._historial[:-MAX_HISTORIAL]
+        self.atras.setEnabled(len(self._historial) > 1)
+        self._poner_ficha(contenido)
+        self.ficha.verticalScrollBar().setValue(0)
+        self._slug_actual = ""
+        self.precios.hide()
+        self.boton_objetivo.setEnabled(False)
+        self.boton_set.setEnabled(False)
+        self._actualizar_boton_wiki()
+
+    def _html_mision(self, clave: str) -> str:
+        tipo, _, valor = clave.partition(":")
+        if tipo == "novedades":
+            return self._html_novedades(valor)
+        if tipo == "modo":
+            return self._html_modo(valor)
+        if tipo == "nodo" and valor.isdigit():
+            n = misiones.nodo(self.con, int(valor))
+            return self._html_nodo(n) if n else ""
+        return ""
+
+    def _html_nodo(self, n: dict) -> str:
+        p = PALETA
+        modo = n["modo"]
+        titulo = misiones.titulo_nodo(n)
+        otro = n["nodo_en"] if es_castellano() else (n["nodo_es"] or "")
+        subtitulo = " &middot; ".join(
+            html.escape(x) for x in (otro if otro != titulo else "", nombre_idioma(n, "planeta")) if x
+        )
+        etiquetas = [
+            f"<span style='background:{p['panel']};font-size:12px;padding:2px 8px'>&nbsp;"
+            + glosario.enlace_mision(modo, modos_mision.nombre(modo), p["acento"])
+            + "&nbsp;</span>"
+        ]
+        faccion = glosa(n["faccion_es"], n["faccion_en"]) if n.get("faccion_es") else (n.get("faccion_en") or "")
+        if faccion:
+            etiquetas.append(_etiqueta(faccion, p["panel"], p["suave"]))
+        if n.get("nivel_min") is not None:
+            etiquetas.append(_etiqueta(t("nivel {min}-{max}", min=n["nivel_min"], max=n["nivel_max"]),
+                                       p["panel"], p["suave"]))
+        return "".join((
+            f"<div style='font-size:22px;font-weight:bold'>{html.escape(titulo)}</div>"
+            f"<div style='color:{p['suave']};font-size:13px;margin-top:2px'>{subtitulo}</div>"
+            f"<div style='margin-top:6px'>{' '.join(etiquetas)}</div>",
+            self._bloque_modo(modo),
+            self._bloque_recompensas_nodo(n),
+            self._pie_mision([n], modo),
+        ))
+
+    def _html_modo(self, modo_en: str) -> str:
+        p = PALETA
+        modo = modos_mision.normalizar(modo_en)
+        if not modo:
+            return ""
+        nombre = modos_mision.nombre(modo)
+        otro = modos_mision.MODOS[modo][1] if es_castellano() else ""
+        detalle = html.escape(t("Tipo de mision"))
+        if otro and otro != nombre:
+            detalle += " &middot; " + html.escape(otro)
+        partes = [
+            f"<div style='font-size:22px;font-weight:bold'>{html.escape(nombre)}</div>"
+            f"<div style='color:{p['suave']};font-size:13px;margin-top:2px'>{detalle}</div>",
+            self._bloque_modo(modo),
+        ]
+        nodos = misiones.nodos_de_modo(self.con, modo)
+        if nodos:
+            filas = []
+            for n in nodos:
+                nivel = (
+                    " &middot; " + html.escape(t("nivel {min}-{max}", min=n["nivel_min"], max=n["nivel_max"]))
+                    if n.get("nivel_min") is not None else ""
+                )
+                filas.append(
+                    f"<li><a style='color:{p['acento']}' href='nodo:{n['id']}'>"
+                    f"{html.escape(misiones.titulo_nodo(n))}</a>"
+                    f" <span style='color:{p['suave']}'>&middot; {html.escape(nombre_idioma(n, 'planeta'))}"
+                    f"{nivel}</span></li>"
+                )
+            partes.append(_seccion(t("Nodos de este tipo ({n})", n=len(nodos))) + f"<ul>{''.join(filas)}</ul>")
+        partes.append(self._pie_mision([], modo))
+        return "".join(partes)
+
+    def _bloque_modo(self, modo: str) -> str:
+        """Que se hace, como van las recompensas y cuando cae cada rotacion en ese modo."""
+        p = PALETA
+        if modo not in modos_mision.MODOS:
+            return ""
+        _, _, que, recompensas = modos_mision.MODOS[modo]
+        partes = [
+            _seccion(t("Como se juega"), "mision"),
+            f"<p style='margin:2px 0 6px 0'><b>{html.escape(t('Que hacer:'))}</b> {html.escape(t(que))}</p>",
+            f"<p style='margin:2px 0 6px 0'><b>{html.escape(t('Recompensas:'))}</b> "
+            f"{html.escape(t(recompensas))}</p>",
+        ]
+        if modo == "Disruption":
+            partes.append(self._tabla_disrupcion())
+        lineas = []
+        for letra in modos_mision.rotaciones_del_modo(modo):
+            visible = _rotacion(self.con, letra, p["acento"], modo)
+            larga = modos_mision.linea_rotacion(modo, letra)
+            lineas.append(f"<li>{visible}: <span style='color:{p['suave']}'>{html.escape(larga)}</span></li>")
+        if lineas:
+            partes.append(f"<ul style='margin-top:2px'>{''.join(lineas)}</ul>")
+        return "".join(partes)
+
+    def _tabla_disrupcion(self) -> str:
+        """Ronda x conductos salvados -> letra, tal cual la tabla de la wiki."""
+        p = PALETA
+        filas = [
+            f"<tr style='color:{p['suave']};font-size:12px'><td>{html.escape(t('Ronda'))}</td>"
+            f"<td colspan='4' align='center'>{html.escape(t('Conductos salvados'))}</td></tr>",
+            f"<tr style='color:{p['suave']};font-size:12px'><td></td>"
+            + "".join(f"<td align='center'>{n}</td>" for n in (1, 2, 3, 4)) + "</tr>",
+        ]
+        filas += [
+            f"<tr><td><b>{ronda}</b></td>" + "".join(f"<td align='center'>{letra}</td>" for letra in letras) + "</tr>"
+            for ronda, letras in modos_mision.TABLA_DISRUPCION
+        ]
+        return _envolver(filas)
+
+    def _bloque_recompensas_nodo(self, n: dict) -> str:
+        p = PALETA
+        premios = misiones.recompensas_de_nodo(self.con, n["id"])
+        if not premios:
+            return _seccion(t("Recompensas")) + (
+                f"<p style='color:{p['suave']}'>"
+                f"{html.escape(t('Este nodo no trae tabla de recompensas en los datos.'))}</p>"
+            )
+        partes = [_seccion(t("Recompensas"))]
+        for rot in sorted(premios):
+            if rot:
+                titulo = _rotacion(self.con, rot, p["acento"], n["modo"])
+            else:
+                titulo = html.escape(t("Al terminar la mision"))
+            partes.append(f"<div style='margin:6px 0 2px 4px;font-weight:bold'>{titulo}</div>")
+            filas = []
+            for r in premios[rot]:
+                color = color_rareza(r["rareza"])
+                etiqueta = _con_padre(nombre_idioma(r), nombre_idioma(r, "padre"))
+                filas.append(
+                    f"<tr><td width='6' style='background:{color}'></td>"
+                    f"<td><a style='color:{p['texto']};text-decoration:none' href='item:{r['item_id']}'>"
+                    f"{html.escape(etiqueta)}</a></td>"
+                    f"<td>{glosario.enlace('rareza', _glosa(self.con, 'rareza', r['rareza']), color)}</td>"
+                    f"<td align='right'><b>{(r['probabilidad'] or 0):.1f}%</b></td></tr>"
+                )
+            partes.append(_envolver(filas))
+        return "".join(partes)
+
+    def _pie_mision(self, nodos: list[dict], modo: str) -> str:
+        """Wiki del nodo y del modo, y el enlace a las guias en video."""
+        p = PALETA
+        linea = enlaces_wiki.linea(nodos or [{"modo": modo}], p["suave"], p["acento"])
+        video = (
+            f"<p style='margin-top:6px'><a style='color:{p['acento']}' href='video:'>"
+            f"{html.escape(t('Guias en YouTube'))} &rarr;</a></p>"
+        )
+        return linea + video
 
     # -- pintado ----------------------------------------------------------
 
@@ -591,7 +1002,7 @@ class PestanaBuscador(QWidget):
             + "</div>"
             f"<div style='margin-top:6px'>{' '.join(etiquetas)}</div></td></tr></table>"
         )
-        partes = [cabecera]
+        partes = [cabecera, self._html_nota_novedad()]
         if padre:
             partes.append(
                 f"<div style='color:{p['suave']};margin-top:4px'>{t('Pieza de')} "
@@ -664,10 +1075,12 @@ class PestanaBuscador(QWidget):
                                 "del mercado, de un evento o de un sindicato."))
                 + "</p>"
             )
-        if item["wiki_url"]:
+        # Las reliquias no traen wiki_url, pero su pagina se llama como ellas (Lith S19).
+        url_wiki = enlaces_wiki.url_item(item)
+        if url_wiki:
             partes.append(
                 f"<p style='margin-top:10px'><a style='color:{p['acento']}' "
-                f"href='{html.escape(item['wiki_url'])}'>{html.escape(t('Abrir en la wiki'))} &rarr;</a></p>"
+                f"href='{html.escape(url_wiki)}'>{html.escape(t('Abrir en la wiki'))} &rarr;</a></p>"
             )
         return "".join(partes)
 
@@ -709,7 +1122,7 @@ class PestanaBuscador(QWidget):
                 detalle = " &middot; ".join(
                     x
                     for x in (
-                        html.escape(m["donde"]),
+                        enlaces_wiki.donde(m, p["texto"]),
                         glosario.enlace_mision(m.get("modo"), m["mision"], p["texto"], m["rotacion"])
                         if m["mision"] else "",
                         _rotacion(self.con, m["rotacion"], p["texto"], m.get("modo")),
@@ -729,7 +1142,7 @@ class PestanaBuscador(QWidget):
         m = ruta["mision"]
         if not m:
             return ""
-        trozos = [f"<b>{html.escape(m.get('donde') or '')}</b>"]
+        trozos = [f"<b>{enlaces_wiki.donde(m, p['texto'])}</b>"]
         if m.get("mision"):
             trozos.append(glosario.enlace_mision(m.get("modo"), m["mision"], p["texto"], m.get("rotacion")))
         if m.get("rotacion"):
@@ -777,7 +1190,7 @@ class PestanaBuscador(QWidget):
             )
             misiones = relaciones.misiones_de(self.con, r["reliquia_id"])[:3]
             donde = "".join(
-                f"<div style='color:{p['suave']}'>{html.escape(m['donde'])}"
+                f"<div style='color:{p['suave']}'>{enlaces_wiki.donde(m, p['suave'])}"
                 + (f" &middot; {glosario.enlace_mision(m.get('modo'), m['mision'], p['suave'], m['rotacion'])}"
                    if m["mision"] else "")
                 + (f" &middot; {_rotacion(self.con, m['rotacion'], p['suave'], m.get('modo'))}" if m["rotacion"] else "")
@@ -790,7 +1203,10 @@ class PestanaBuscador(QWidget):
                 "<table cellpadding='0' cellspacing='0' width='100%'><tr>"
                 f"<td><a style='color:{p['texto']};text-decoration:none' "
                 f"href='item:{r['reliquia_id']}'><b style='font-size:15px'>{nombre}</b></a>"
-                f" &nbsp;<span style='font-size:12px'>{glosario.enlace('boveda', estado, color)}</span></td>"
+                f" &nbsp;<span style='font-size:12px'>{glosario.enlace('boveda', estado, color)}"
+                # Su pagina en la wiki, discreta y del color del texto secundario.
+                f" &middot; {enlaces_wiki.enlace(enlaces_wiki.url_reliquia(r.get('nombre_en')), html.escape(t('wiki')) + ' &rarr;', p['suave'])}"
+                "</span></td>"
                 f"<td align='right'>{probs}</td></tr></table>{donde}"
             )
             tarjetas.append(_tarjeta(cuerpo, color))
@@ -845,7 +1261,11 @@ class PestanaBuscador(QWidget):
             elif f["nodo_en"]:
                 planeta = nombre_idioma(f, "planeta")
                 mision = _glosa(self.con, "mision", f["mision_en"])
-                donde = html.escape(f"{nombre_idioma(f, 'nodo')}, {planeta}".strip(", "))
+                # El nodo enlaza a su pagina de la wiki, con el mismo color que ya tenia.
+                nodo = nombre_idioma(f, "nodo")
+                donde = enlaces_wiki.enlace(enlaces_wiki.url_nodo(f["nodo_en"]), html.escape(nodo), p["texto"])
+                if planeta:
+                    donde += html.escape(f", {planeta}")
                 if mision:
                     donde += " - " + glosario.enlace_mision(modo, mision, p["texto"], f["rotacion"])
             else:
@@ -895,7 +1315,7 @@ class PestanaBuscador(QWidget):
                                 n=len(pvp), prob=f"{maxima:.1f}"))
                 + "</td></tr>"
             )
-        return _envolver(filas)
+        return _envolver(filas) + enlaces_wiki.linea(visibles, p["suave"], p["acento"])
 
     def _bloque_planeta(self, item_id: int) -> str:
         """Recurso de planeta: cae en cualquier mision de esos planetas, sin porcentaje."""

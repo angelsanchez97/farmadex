@@ -32,6 +32,17 @@ ocultos = ocr_ocultos + onnx_ocultos + [
     "onnxruntime",
     "onnxruntime.capi._pybind_state",
     "mss.windows",
+    # Reproductor de guias (Farmadex.exe --video): pywebview elige su motor en tiempo de
+    # ejecucion y carga WinForms/WebView2 por pythonnet, asi que PyInstaller no lo ve solo.
+    # Sus DLL (Microsoft.Web.WebView2.*.dll, WebBrowserInterop) las mete el hook que trae
+    # el propio pywebview; Python.Runtime.dll, el de pythonnet de pyinstaller-hooks-contrib.
+    "farmadex.video",
+    "webview",
+    "webview.platforms.winforms",
+    "webview.platforms.edgechromium",
+    "clr",
+    "clr_loader",
+    "pythonnet",
 ]
 
 # Qt trae mucho que aqui no se usa; fuera reduce unos 120 MB.

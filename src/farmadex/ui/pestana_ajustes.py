@@ -48,6 +48,8 @@ class PestanaAjustes(QWidget):
     # Diagnostico de reliquias: la ventana es quien sabe como va todo; aqui solo se pide.
     pedir_diagnostico = Signal()
     guardar_informe = Signal()
+    # Borra el perfil de WebView2 del reproductor de guias (sesion de YouTube, cache).
+    borrar_reproductor = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -195,9 +197,13 @@ class PestanaAjustes(QWidget):
         boton_datos.clicked.connect(self.reconstruir.emit)
         boton_carpeta = self._boton("Abrir la carpeta de datos")
         boton_carpeta.clicked.connect(self._abrir_carpeta)
+        boton_reproductor = self._boton("Borrar datos del reproductor")
+        self._fijo(boton_reproductor.setToolTip, "Cierra el video y borra la sesion y la cache del reproductor de guias")
+        boton_reproductor.clicked.connect(self.borrar_reproductor.emit)
         botones = QHBoxLayout()
         botones.addWidget(boton_datos)
         botones.addWidget(boton_carpeta)
+        botones.addWidget(boton_reproductor)
         botones.addStretch(1)
         self._texto_parche: str | None = None
         self.aviso_parche = QLabel("")

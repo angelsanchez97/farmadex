@@ -20,7 +20,7 @@ import html
 import sqlite3
 
 from PySide6.QtCore import QEvent, QPoint, QRect, QSize, Qt, QTimer, QUrl, Signal
-from PySide6.QtGui import QCursor
+from PySide6.QtGui import QCursor, QDesktopServices
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
@@ -47,7 +47,7 @@ from ..estado import inventario as estado_inventario
 from ..estado import objetivos as estado_objetivos
 from ..estado import usuario_db
 from ..idiomas import nombre as nombre_idioma, t
-from . import desglose_tiempo, glosario, relleno_filas
+from . import desglose_tiempo, enlaces_wiki, glosario, relleno_filas
 from .maestria import estado_con_padre
 from .widgets import COLOR_BOVEDA, COLOR_DISPONIBLE, PALETA
 
@@ -148,10 +148,13 @@ def _probabilidades_reliquias(reliquias: list[dict], refinamiento: str) -> str:
     return f" {html.escape(t('o'))} ".join(trozos) + f" <span style='color:{p['suave']}'>&middot;</span> {ref}"
 
 
-def _sitio(mision: dict) -> str:
-    """'Io, Jupiter (+3)': los nodos con la misma tabla cuentan como uno."""
+def _sitio(mision: dict, color: str) -> str:
+    """'Io, Jupiter (+3)': los nodos con la misma tabla cuentan como uno.
+
+    El nodo enlaza a su pagina de la wiki con `color`, el del texto que lo rodea.
+    """
     extra = len(mision.get("sitios") or []) - 1
-    texto = html.escape(mision.get("donde") or "")
+    texto = enlaces_wiki.donde(mision, color)
     if extra > 0:
         texto += f" <span style='color:{PALETA['suave']}'>(+{extra})</span>"
     return texto
@@ -190,7 +193,7 @@ def bloque_ficha(con: sqlite3.Connection | None, item_id: int) -> str | None:
             detalle = " &middot; ".join(
                 x for x in (
                     _enlace_reliquia(ruta["reliquia"], p["texto"]),
-                    _sitio(m),
+                    _sitio(m, p["suave"]),
                     _mision(m, p["suave"]),
                     _rotacion(m, p["suave"]),
                     _tiempo(ruta["minutos"], p["texto"], detalle=desglose_tiempo.texto_prime(
@@ -236,7 +239,7 @@ def _cuerpo_ruta(ruta: dict) -> str:
         return "".join(cuerpo)
     detalle = " &middot; ".join(
         x for x in (
-            f"<b>{_sitio(mision)}</b>",
+            f"<b>{_sitio(mision, p['texto'])}</b>",
             _mision(mision, p["suave"]),
             _rotacion(mision, p["suave"]),
             f"{mision['probabilidad']:.1f}%",
@@ -823,7 +826,7 @@ class PestanaPrimes(QWidget):
         for i, m in enumerate(visibles):
             self.resultado.sitios[i] = m["sitios"]
             extra = len(m["sitios"]) - 1
-            sitio = f"<b>{html.escape(m['donde'])}</b>"
+            sitio = f"<b>{enlaces_wiki.donde(m, p['texto'])}</b>"
             ancla = relleno_filas.marca(relleno_filas.fraccion(m["minutos"], referencia))
             if ancla:
                 sitio = f"<a name='{ancla}'>{sitio}</a>"
@@ -857,7 +860,7 @@ class PestanaPrimes(QWidget):
         return _seccion(t("Donde farmear")) + (
             f"<table width='100%' cellspacing='0' cellpadding='5' style='background:{p['panel2']}'>"
             + cabecera + "".join(filas) + "</table>"
-        )
+        ) + enlaces_wiki.linea(visibles, p["suave"], p["acento"])
 
     def _html_reliquias(self, datos: dict, nombres: dict[int, str]) -> str:
         p = PALETA
@@ -914,3 +917,6 @@ class PestanaPrimes(QWidget):
             QToolTip.showText(QCursor.pos(), "\n".join(lista), self.resultado)
         elif texto.startswith("item:"):
             self.abrir_item.emit(int(texto.removeprefix("item:")))
+        elif texto.startswith("http"):
+            # Los nodos y los tipos de mision enlazan a la wiki: solo al pulsar.
+            QDesktopServices.openUrl(QUrl(texto))

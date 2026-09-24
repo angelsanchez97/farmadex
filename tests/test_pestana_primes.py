@@ -84,7 +84,7 @@ def test_resultado_ordenado_por_tiempo(entorno):
     assert [m["modo"] for m in datos["misiones"]] == ["Capture", "Survival"]
     assert datos["misiones"][0]["minutos"] == 82.9
     html = pestana.html_resultado(datos)
-    assert html.index("Lith T1") < html.index("Captura, Earth") < html.index("Superv, Earth")
+    assert html.index("Lith T1") < html.index("Captura</a>, Earth") < html.index("Superv</a>, Earth")
     assert "En boveda (1)" in html and "Axi T2" in html  # listada, pero fuera del orden
     assert "~83 min" in html
 
@@ -129,7 +129,7 @@ def test_ficha_por_donde_empezar(entorno):
     pieza = bloque_ficha(con, prime["plano"])
     assert "POR DONDE EMPEZAR" in pieza
     assert "Lith T1" in pieza and "10.0%" in pieza and "Radiante" in pieza
-    assert "Captura, Earth" in pieza and "(+1)" in pieza and "~83 min" in pieza
+    assert "Captura</a>, Earth" in pieza and "(+1)" in pieza and "~83 min" in pieza
     assert "hasta tener la pieza" in pieza
 
     objeto = bloque_ficha(con, prime["padre"])

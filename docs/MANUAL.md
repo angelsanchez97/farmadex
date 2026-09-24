@@ -30,8 +30,13 @@ icono de la bandeja tiene un menú con «Mostrar», «Ajustes», «Actualizar
 datos» y «Salir»; un clic normal sobre el icono abre y cierra la ventana.
 
 En cuanto la ventana está lista, la primera vez se abre sola una guía de uso
-corta que resalta cada parte de la interfaz; se puede saltar en cualquier
-momento con el botón «Saltar guía» o con Escape. El botón **«Guía»**, en la
+corta que resalta cada parte de la interfaz: la búsqueda, las misiones y las
+preguntas, los botones de la wiki y de YouTube, Objetivos, Primes, Mundo, la
+pestaña Vídeo, las recompensas de reliquia, Perfil, el modo compacto, Ajustes
+y qué hacer si al abrir una reliquia no sale nada. Se puede saltar en
+cualquier momento con el botón «Saltar guía» o con Escape.
+
+![La guía de uso señalando la ficha de una misión](../herramientas/capturas/guia_paso_misiones.png) El botón **«Guía»**, en la
 cabecera de la ventana, la vuelve a lanzar desde el principio cuando quieras.
 
 ## Las pestañas
@@ -54,7 +59,11 @@ prime»), la ficha además enseña:
 - En qué reliquias cae esa pieza, con la probabilidad según el refinamiento
   de la reliquia (Intacta, Excepcional, Impecable, Radiante) y si esa
   reliquia está **en bóveda** (ya no se puede farmear, solo comprarla a otro
-  jugador) o disponible.
+  jugador) o disponible. Farmadex lo decide mirando las tablas oficiales de
+  drops: si una reliquia todavía cae en alguna misión, no está en bóveda. Por
+  eso una reliquia recién salida no aparece como «en bóveda» aunque otras
+  fuentes lo digan, y todas las pestañas (Buscar, Primes, Objetivos, las
+  recompensas) coinciden.
 - En qué misiones cae cada una de esas reliquias, con el planeta, el nodo y
   el tipo de misión en español.
 - El precio en platino de warframe.market, si el objeto se puede vender.
@@ -68,8 +77,82 @@ viendo (o todas sus piezas de una vez) a la pestaña Objetivos.
 
 Si la búsqueda no encuentra nada, Farmadex lo dice y sugiere lo más parecido
 en vez de dejar la ficha anterior pintada, que podría confundirse con la
-respuesta a lo que acabas de escribir. Busca por el nombre del objeto, no por
-preguntas: «rhino» funciona, «cómo consigo rhino» no.
+respuesta a lo que acabas de escribir.
+
+#### Rotaciones a la vista
+
+En la lista de misiones de una ficha, cada fila dice al lado **cuándo** cae el
+objeto en esa misión, para que no tengas que ir a la wiki a mirar qué era la
+rotación C:
+
+- En Supervivencia y demás misiones por tiempo, el minuto en que sale esa
+  rotación, por ejemplo «Rotación C (min 20)».
+- En Defensa, Intercepción o Excavación, tras qué oleadas, rondas o
+  excavadoras completadas.
+- En Disrupción, en qué rondas y con cuántos conductos salvados, porque ahí la
+  rotación no va en orden A, A, B, C como en las demás.
+- En Espionaje, qué bóveda: la primera, la segunda o la tercera que saques.
+
+El nombre de cada nodo es un enlace a su página de la wiki oficial, y al
+final de la sección hay una línea **«En la wiki:»** con los tipos de misión y
+los nodos de esas filas. Se abren en el navegador solo si pulsas.
+
+![Ficha de la reliquia Lith S19 con la rotación junto a cada misión](../herramientas/capturas/ficha_lith_s19_rotaciones.png)
+
+#### Buscar una misión
+
+Además de objetos, puedes escribir el nombre de un **nodo** («Olimpo»,
+«Hepit», «Ukko») o de un **tipo de misión** («supervivencia», «defensa»,
+«disrupción»). La ficha de un nodo enseña:
+
+- El planeta, el tipo de misión y el nivel de los enemigos.
+- **Cómo se juega**: qué hay que hacer y cómo van sus recompensas, en dos
+  frases. En la Disrupción añade la tabla de rondas y conductos salvados que
+  decide qué rotación te toca, y una explicación de cuándo sale cada letra.
+- **Recompensas**: lo que suelta cada rotación, con su probabilidad. Pulsando
+  un objeto se abre su ficha.
+
+La ficha de un tipo de misión explica cómo se juega, cuándo cae cada rotación
+y la lista de nodos de ese tipo; pulsando uno se abre su ficha.
+
+![Ficha de la misión Olimpo](../herramientas/capturas/ficha_mision_olimpo.png)
+
+Si pasas el ratón por el tipo de misión en cualquier sitio de Farmadex (en
+una ficha, en Primes, en Objetivos o en las fisuras de Mundo) sale la misma
+explicación corta.
+
+#### Preguntas y novedades
+
+No hace falta escribir el nombre exacto: puedes preguntar como lo dirías.
+«Cómo sacar citrine prime», «dónde consigo el chasis de rhino» o «where to
+farm forma» buscan lo que importa y quitan el resto.
+
+Las preguntas por lo nuevo también funcionan: **«el último warframe»**, «el
+último prime», **«novedades»** o «lo nuevo». Farmadex enseña lo que salió en la
+última actualización del juego; si es un solo warframe, abre directamente su
+ficha, con una nota debajo de lo demás que salió a la vez.
+
+![Lo nuevo de la última actualización](../herramientas/capturas/novedades_ultimo_warframe.png)
+
+Con el buscador vacío, la ficha enseña una línea **«Novedades»** con los
+objetos de la última actualización; pulsando uno se abre su ficha.
+
+![Línea de Novedades con el buscador vacío](../herramientas/capturas/buscar_portada_novedades.png)
+
+#### Wiki y guías en YouTube
+
+Encima de la ficha hay dos botones:
+
+- **«Buscar en la wiki»** abre en el navegador la página de la wiki oficial
+  de Warframe del objeto abierto (o, si no hay ficha abierta, la búsqueda de
+  lo que hayas escrito). Sirve para lo que Farmadex no cuenta: habilidades,
+  cómo se construye, historia.
+- **«Guías en YouTube»** busca vídeos de la misión o del objeto abierto,
+  ordenados por los más vistos, y los abre en la pestaña **Vídeo** de
+  Farmadex (más abajo). Farmadex no descarga nada de YouTube: solo abre la
+  búsqueda para que elijas el vídeo.
+
+![Botones «Buscar en la wiki» y «Guías en YouTube»](../herramientas/capturas/botones_wiki_youtube.png)
 
 ### Objetivos
 
@@ -83,6 +166,28 @@ verás algo como «Reliquia Axi A22 (20.0% en Radiante) · farméala en Cerberus
 Plutón · Intercepción · rotación B». Si en vez de una pieza sueltas añades un
 Prime entero con **«+ Set completo»**, se crea un objetivo por cada pieza que
 le falte.
+
+### Primes
+
+Una caja por cada Prime del juego, con una casilla por pieza. Marca las piezas
+que te faltan y pulsa **«Dónde farmear»**: sale la lista de reliquias que las
+llevan y la mejor misión para conseguir cada una, ordenada por el tiempo medio
+hasta tener la pieza en la mano (conseguir la reliquia y abrirla en fisuras,
+todo junto). **«Piezas»** vuelve a la rejilla.
+
+- Arriba a la derecha eliges el **refinamiento** con el que abres las
+  reliquias (de Intacta a Radiante) y si juegas **solo** o en **escuadra de 4
+  compartiendo reliquia**; el orden se recalcula.
+- **«Filtra por nombre»** deja en la rejilla solo lo que escribas
+  («caliban», «forma»).
+- **«Incluir lo que está en bóveda»** enseña también las piezas que ya no se
+  pueden farmear; por defecto se ocultan. En el resultado, las reliquias en
+  bóveda se enseñan pero no cuentan para el orden.
+- **«Desmarcar todo»** limpia la rejilla.
+
+Marcar una pieza aquí es lo mismo que añadirla a Objetivos, y al revés.
+
+![Pestaña Primes con una pieza marcada](../herramientas/capturas/primes_rejilla_orokin.png)
 
 ### Mundo
 
@@ -126,6 +231,29 @@ Con el perfil importado, además, la ficha de cualquier objeto en Buscar y las
 etiquetas que aparecen al leer una reliquia (más abajo) dicen si ya lo tienes
 dominado, a medias o sin tocar.
 
+### Vídeo
+
+Aquí se ven las guías que abre el botón **«Guías en YouTube»** de una ficha,
+dentro de la propia ventana de Farmadex. Mientras no hayas abierto ninguna, la
+pestaña solo dice cómo hacerlo.
+
+- **«Modo vídeo»** deja Farmadex reducido a solo el vídeo, sin pestañas,
+  encima del juego: pensado para quien juega con un solo monitor y quiere ir
+  siguiendo la guía mientras juega. El botón de la cabecera pasa a decir
+  **«Salir del vídeo»** y te devuelve a la vista completa, con el vídeo
+  todavía en su pestaña. El modo vídeo recuerda su propio tamaño y posición.
+- Esconder Farmadex con el atajo no para el vídeo: se sigue oyendo, que en
+  modo vídeo es justo lo útil. **«Cerrar vídeo»** lo para del todo.
+- **«Abrir en el navegador»** lleva el mismo vídeo a tu navegador.
+
+El reproductor usa WebView2, que ya viene con Windows 10 y 11. Si en tu equipo
+no puede arrancar, la pestaña dice «No se puede reproducir aquí» con un botón
+para abrir la guía en el navegador; nunca se abre nada solo. La sesión y la
+caché del reproductor se guardan en la carpeta de datos de Farmadex, y se
+borran con «Borrar datos del reproductor» en Ajustes.
+
+![Pestaña Vídeo antes de abrir ninguna guía](../herramientas/capturas/video_panel_vacio.png)
+
 ### Ajustes
 
 - **Atajos de teclado**: los tres atajos globales de Farmadex, editables.
@@ -147,12 +275,23 @@ dominado, a medias o sin tocar.
 - Debajo, un aviso con el modo de pantalla que Farmadex ha detectado en el
   juego (ventana, ventana sin bordes, pantalla completa exclusiva, o que el
   juego no está abierto).
+- **Recompensas de reliquia**: si se enseñan como etiquetas pequeñas junto a
+  cada tarjeta o como un panel debajo de las cuatro.
+- **Ritmo de juego** (rápido, normal, tranquilo): ajusta todos los tiempos
+  estimados de las fichas a cómo juegas tú. No cambia las probabilidades ni el
+  orden de los sitios.
 - **Datos del juego**: cuántos objetos tiene el catálogo, de cuándo son los
-  datos, y dos botones: «Reconstruir el índice» (lo vuelve a montar desde
-  cero) y «Abrir la carpeta de datos».
+  datos, y tres botones: «Reconstruir el índice» (lo vuelve a montar desde
+  cero), «Abrir la carpeta de datos» y «Borrar datos del reproductor» (cierra
+  el vídeo y borra la sesión y la caché del reproductor de guías).
 - **Versión**: la versión instalada, un botón «Comprobar ahora» y, si hay una
   más nueva, un enlace o un botón para instalarla. Farmadex nunca se instala
   nada a sí mismo sin que tú lo pidas.
+- **Diagnóstico de reliquias**: para cuando al abrir una reliquia no sale nada
+  encima del juego. «Comprobar la lectura de reliquias» revisa paso a paso si
+  Farmadex ve el juego, su registro y la pantalla de recompensas, y te dice
+  qué falla; «Guardar informe para enviar» deja un `.zip` para mandarlo a quien
+  te ayude. Está explicado más abajo, en Problemas frecuentes.
 - **«Salir de Farmadex»**, abajo del todo.
 
 ### Modo compacto
@@ -172,6 +311,10 @@ Términos del juego como «reliquia», «era», «bóveda», «rotación»,
 aplicación; si no sabes qué significan, pasa el ratón por encima y sale una
 explicación corta. Si ya los conoces, no estorban: no hay que hacer nada
 para que desaparezcan.
+
+Lo mismo pasa con los tipos de misión (Supervivencia, Defensa,
+Disrupción...): al pasar el ratón te dice qué hay que hacer y cómo van sus
+recompensas, y sobre una rotación, cuándo cae esa letra en esa misión.
 
 ## Atajos de teclado
 
@@ -222,6 +365,15 @@ suficientemente buena, no dice nada en vez de arriesgarse a equivocarse.
   comparar el valor en platino de las que no tengan esas marcas, abre cada
   una en la pestaña Buscar (o en el modo compacto) y mira el precio de
   warframe.market en su ficha.
+- **«Voy a hacer Olimpo y no sé en qué ronda salir»**: escribe «olimpo» en
+  Buscar. La ficha te explica la Disrupción, con la tabla de rondas y
+  conductos, y qué reliquias da cada rotación.
+- **«¿Qué ha salido en la última actualización?»**: escribe «novedades» o «el
+  último warframe», o deja el buscador vacío y mira la línea de Novedades.
+- **«Quiero ver una guía de esta misión y solo tengo un monitor»**: con la
+  ficha de la misión abierta, pulsa «Guías en YouTube», elige el vídeo en la
+  pestaña Vídeo y pulsa «Modo vídeo». Con el atajo de siempre escondes y
+  sacas Farmadex sin que se pare el vídeo.
 - **«Quiero saber si ya he dominado este arma»**: importa tu perfil en la
   pestaña Perfil una vez; a partir de ahí, la ficha de cualquier objeto en
   Buscar y las etiquetas de recompensas dicen si está dominado, a medias o
@@ -291,6 +443,10 @@ Lo único que hace con tu equipo es:
   (al principio y cada pocas horas), el estado del mundo y los precios de
   warframe.market (mientras usas esas pestañas), y si hay una versión nueva
   de Farmadex en GitHub. Ninguna de esas consultas lleva datos tuyos.
+- **Abrir la wiki o YouTube**, solo cuando pulsas «Buscar en la wiki», un
+  enlace de la wiki o «Guías en YouTube». Lo que se manda es el nombre de lo
+  que buscas, nada más. Las guías se ven con WebView2, el componente de
+  Windows, y su sesión y caché se quedan en la carpeta de datos de Farmadex.
 
 El perfil que importas en la pestaña Perfil se queda en tu equipo, en la
 carpeta de datos de Farmadex (`%LocalAppData%\Farmadex`); no se sube a

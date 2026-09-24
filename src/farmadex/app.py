@@ -159,12 +159,19 @@ def probar_ocr() -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    argumentos = argv if argv is not None else sys.argv
+    # El reproductor de guias es este mismo programa con --video (farmadex/video.py): va
+    # antes de todo, sin carpetas, registro ni ventana de la aplicacion.
+    from .video import enrutar
+
+    codigo_video = enrutar(argumentos[1:])
+    if codigo_video is not None:
+        return codigo_video
     crear_carpetas()
     configurar()
     log = obtener("app")
     log.info("Arrancando %s", NOMBRE_APP)
 
-    argumentos = argv if argv is not None else sys.argv
     if "--probar-ocr" in argumentos:
         # Que en el registro se distinga de una sesion de verdad: esto escribe dos
         # lineas y sale, y ya se ha leido como "el programa se quedo mudo".

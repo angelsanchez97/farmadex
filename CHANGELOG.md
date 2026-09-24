@@ -1,5 +1,35 @@
 # Cambios
 
+## 0.4.0
+
+**Misiones**
+- Escribe un nodo ("Hepit", "Olimpo") o un tipo de misión ("supervivencia",
+  "disrupción") y te sale cómo se juega, cómo van sus rotaciones y qué suelta
+  cada una.
+- Las rotaciones se ven sin pasar el ratón: "Rotación C (min 20)",
+  "(oleada 12)"... En Disrupción, la tabla de rondas y conductos: salvar más no
+  siempre es mejor, depende de la recompensa que busques. Sus tiempos ahora
+  siguen su regla real.
+
+**Pregúntale como hablas**
+- "Cómo sacar Citrine Prime", "dónde farmear Hepit", "el último warframe",
+  "novedades"... Con el buscador vacío ves lo que trajo la última actualización.
+
+**Wiki y vídeos**
+- Botón "Buscar en la wiki" y enlaces a la wiki oficial en reliquias, nodos y
+  tipos de misión.
+- "Guías en YouTube" y pestaña "Vídeo": ves la guía dentro de Farmadex, y en
+  modo vídeo la ventana se queda solo con el vídeo en una esquina del juego.
+  Pensado para quien juega con un solo monitor.
+
+**Bóveda coherente**
+- Todo el programa dice lo mismo sobre qué está en bóveda: reliquias, piezas y
+  Primes salen de las tablas de drops actuales.
+
+**Guía de uso**
+- La guía enseña también Primes, misiones y preguntas, la wiki y los vídeos, y
+  el diagnóstico de reliquias.
+
 ## 0.3.4
 
 - Las recompensas de las reliquias salen mucho antes. El juego escribe su

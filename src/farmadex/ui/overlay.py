@@ -63,6 +63,7 @@ from .vista_compacta import (
     VistaCompacta,
 )
 from .maestria import estado_con_padre, texto_maestria
+from .reproductor import PanelVideo
 from .widgets import PALETA, BarraProgreso, elegir_tema, hoja_estilos
 
 log = obtener("overlay")
@@ -79,6 +80,14 @@ MARGEN_REDIMENSION = 6
 # comprobado con una captura (herramientas/capturas/overlay_minimo_completo.png).
 ANCHO_MINIMO_COMPLETO = 760
 ALTO_MINIMO_COMPLETO = 420
+
+# "Modo video": Farmadex reducido a solo el reproductor, para ponerlo en una esquina encima
+# del juego. Nace arriba a la derecha con este tamano (16:9 mas la barra del panel) y
+# despues recuerda el suyo (overlay_geometria_video).
+ANCHO_VIDEO = 560
+ALTO_VIDEO = 380
+ANCHO_MINIMO_VIDEO = 320
+ALTO_MINIMO_VIDEO = 220
 
 _OESTE = {"o", "no", "so"}
 _ESTE = {"e", "ne", "se"}
@@ -185,7 +194,9 @@ class VentanaOverlay(QWidget):
         self._borde_activo: str | None = None
         self._geom_inicio_resize: QRect | None = None
         self._pos_inicio_resize: QPoint | None = None
-        # "completo" (pestanas) o "compacto" (solo busqueda y resultado esencial).
+        # "completo" (pestanas), "compacto" (solo busqueda y resultado esencial) o "video"
+        # (solo el reproductor de guias). El modo video no se recuerda al reiniciar: sin
+        # video abierto no pinta nada, asi que se vuelve a la vista completa.
         self.modo = "compacto" if self.config.get("overlay_modo") == "compacto" else "completo"
 
         self.marco = QFrame(self)
@@ -235,6 +246,12 @@ class VentanaOverlay(QWidget):
         self.ajustes = PestanaAjustes()
         # El perfil comparte la BD del usuario con los objetivos (misma conexion, mismo hilo).
         self.perfil = PestanaPerfil(self.objetivos.usuario)
+        # Las guias de YouTube se ven dentro de Farmadex, en la pestana Video.
+        self.video = PanelVideo()
+        self.video.estado.connect(lambda texto: self.estado.setText(texto))
+        self.video.modo_video.connect(lambda: self.aplicar_modo("video"))
+        self.video.cerrado.connect(self._video_cerrado)
+        self.buscador.reproductor = self.abrir_video
         self.buscador.conectar_usuario(self.objetivos.usuario)
         self.perfil.perfil_cambiado.connect(self.buscador.refrescar_perfil)
         self.perfil.abrir_item.connect(lambda item_id: self._abrir_desde_cursor(item_id, ""))
@@ -250,6 +267,7 @@ class VentanaOverlay(QWidget):
         self.ajustes.instalar_version.connect(self._instalar_version)
         self.ajustes.pedir_diagnostico.connect(self.mostrar_diagnostico)
         self.ajustes.guardar_informe.connect(self.guardar_informe)
+        self.ajustes.borrar_reproductor.connect(self._borrar_reproductor)
         # Lo que el diagnostico cuenta de la ultima reliquia: cuando se vio la pantalla
         # (reloj de pared, para decir "hace 3 min"), que se leyo y que se pinto.
         self._t_reliquia_reloj: float | None = None
@@ -1350,6 +1368,7 @@ class VentanaOverlay(QWidget):
     # -- modo completo y compacto ---------------------------------------------
 
     def alternar_modo(self) -> None:
+        # Desde el modo video, Ctrl+M o "Salir del video" vuelven a la vista completa.
         self.aplicar_modo("compacto" if self.modo == "completo" else "completo")
 
     def aplicar_modo(self, modo: str, guardar_config: bool = True) -> None:
@@ -1360,21 +1379,36 @@ class VentanaOverlay(QWidget):
             self._guardar_geometria()
         self.modo = modo
         compacto = modo == "compacto"
+        video = modo == "video"
         self.pestanas.setVisible(not compacto)
+        # En modo video se ve solo la pestana Video, sin la barra de pestanas.
+        self.pestanas.tabBar().setVisible(not video)
+        if video:
+            self.pestanas.setCurrentWidget(self.video)
         self.compacta.setVisible(compacto)
-        self.estado.setVisible(not compacto)
-        self.pista.setVisible(not compacto)
+        self.estado.setVisible(not compacto and not video)
+        self.pista.setVisible(not compacto and not video)
+        self.boton_guia.setVisible(not video)
+        self.video.boton_modo.setVisible(not video)
         self._pintar_boton_modo()
         self.setMaximumSize(16777215, 16777215)
         # El sitio del banner se vuelve a reservar mas abajo, sobre la geometria del modo nuevo.
         self._alto_banner_compacto = 0
         if compacto:
             self.setMinimumSize(ANCHO_MINIMO_COMPACTO, ALTO_MINIMO_COMPACTO)
+        elif video:
+            self.setMinimumSize(ANCHO_MINIMO_VIDEO, ALTO_MINIMO_VIDEO)
         else:
             self.setMinimumSize(ANCHO_MINIMO_COMPLETO, ALTO_MINIMO_COMPLETO)
         geometria = self.config.get(self._clave_geometria())
         if geometria and len(geometria) == 4:
             self.setGeometry(*geometria)
+        elif video:
+            # Sin sitio guardado, arriba a la derecha de la pantalla: donde menos tapa.
+            self.resize(ANCHO_VIDEO, ALTO_VIDEO)
+            zona = self.screen().availableGeometry() if self.screen() else None
+            if zona is not None:
+                self.move(zona.right() - ANCHO_VIDEO - 20, zona.top() + 20)
         else:
             tamano = (ANCHO_COMPACTO, ALTO_COMPACTO) if compacto else (1100, 700)
             self.resize(*tamano)
@@ -1389,14 +1423,44 @@ class VentanaOverlay(QWidget):
         if guardar_config:
             self.config["overlay_modo"] = modo
             guardar(self.config)
+        if video:
+            return
         caja = self.compacta.caja if compacto else self.buscador.caja
         caja.setFocus()
         caja.selectAll()
 
     def _clave_geometria(self) -> str:
-        return "overlay_geometria_compacto" if self.modo == "compacto" else "overlay_geometria"
+        return {
+            "compacto": "overlay_geometria_compacto",
+            "video": "overlay_geometria_video",
+        }.get(self.modo, "overlay_geometria")
+
+    # -- reproductor de guias ------------------------------------------------
+
+    def abrir_video(self, url: str) -> None:
+        """"Guias en YouTube" de una ficha: el video en la pestana Video (o en el modo video)."""
+        if self.modo == "compacto":
+            self.aplicar_modo("completo")
+        if self.modo != "video":
+            self.pestanas.setCurrentWidget(self.video)
+        self.video.abrir(url)
+
+    def _video_cerrado(self) -> None:
+        """Al cerrar el video en modo video no queda nada que ver: vuelve la vista completa."""
+        if self.modo == "video":
+            self.aplicar_modo("completo")
+
+    def _borrar_reproductor(self) -> None:
+        if self.video.borrar_datos():
+            self.estado.setText(t("Datos del reproductor borrados."))
+        else:
+            self.estado.setText(t("No se pudieron borrar todos los datos del reproductor."))
 
     def _pintar_boton_modo(self) -> None:
+        if self.modo == "video":
+            self.boton_modo.setText(t("Salir del video"))
+            self.boton_modo.setToolTip(t("Vuelve a la vista completa; el video sigue en la pestana Video"))
+            return
         compacto = self.modo == "compacto"
         self.boton_modo.setText(t("Completa") if compacto else t("Compacta"))
         self.boton_modo.setToolTip(
@@ -1471,6 +1535,7 @@ class VentanaOverlay(QWidget):
             (self.mundo, "Mundo"),
             (self.perfil, "Perfil"),
             (self.ajustes, "Ajustes"),
+            (self.video, "Video"),
         ]
 
     def _pintar_pista(self) -> None:
@@ -1487,7 +1552,8 @@ class VentanaOverlay(QWidget):
         for i, (_, titulo) in enumerate(self._titulos_pestanas()):
             self.pestanas.setTabText(i, t(titulo))
         self.estado.setText("")
-        for pestana in (self.buscador, self.objetivos, self.primes, self.mundo, self.perfil, self.ajustes, self.compacta):
+        for pestana in (self.buscador, self.objetivos, self.primes, self.mundo, self.perfil, self.ajustes, self.compacta,
+                        self.video):
             pestana.retraducir()
         self._regenerar_avisos()
 
@@ -1560,6 +1626,7 @@ class VentanaOverlay(QWidget):
         self.perfil.repintar()
         self.compacta.repintar()
         self.ajustes.repintar()
+        self.video.repintar()
         # Mundo genera su HTML con la paleta dentro; retraducir lo vuelve a pintar entero.
         self.mundo.retraducir()
         self._regenerar_avisos()
@@ -1652,6 +1719,8 @@ class VentanaOverlay(QWidget):
 
     def cerrar_de_verdad(self) -> None:
         self._guardar_geometria()
+        # El reproductor de guias que lanzo esta ventana (solo ese proceso, por su PID).
+        self.video.cerrar()
         self.etiquetas.hide()
         if getattr(self, "comprobador_datos", None):
             self.comprobador_datos.parar()

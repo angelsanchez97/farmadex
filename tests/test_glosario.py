@@ -103,11 +103,19 @@ def test_sin_resultados_no_queda_la_ficha_anterior(buscador):
     assert "no por preguntas" in texto
 
 
-def test_sugiere_lo_parecido_palabra_a_palabra(buscador):
+def test_la_muletilla_de_pregunta_no_estorba(buscador):
+    # "como consigo ash" busca "ash": sale Ash Prime directamente, sin sugerencias.
     buscador.caja.setText("como consigo ash")
     buscador._temporizador.stop()
     buscador._buscar()
-    nombres = [r["nombre_en"] for r in buscador.sugerencias("como consigo ash")]
+    assert buscador._actual == _id(buscador.con, "Ash Prime")
+
+
+def test_sugiere_lo_parecido_palabra_a_palabra(buscador):
+    buscador.caja.setText("dame ash ya")
+    buscador._temporizador.stop()
+    buscador._buscar()
+    nombres = [r["nombre_en"] for r in buscador.sugerencias("dame ash ya")]
     assert "Ash Prime" in nombres
     assert "Quiza buscabas" in buscador.ficha.toPlainText()
     # Pinchar una sugerencia abre su ficha.

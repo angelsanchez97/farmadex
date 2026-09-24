@@ -37,12 +37,15 @@ log = obtener("indice")
 # 9: formato nuevo de WFCD (2026-09-24): piezas por referencia a Components.json y
 #    traducciones por idioma. El indice queda igual, pero los que tengan uno construido con
 #    un volcado a medias (la descarga fallaba con un 404) lo rehacen entero.
-VERSION_ESQUEMA = "10"  # 10: boveda corregida con las tablas de drops
+VERSION_ESQUEMA = "12"  # 10: boveda de reliquias con las tablas de drops; 11: tambien piezas y primes
+# 12: fecha de salida y actualizacion de cada objeto (items.fecha_salida, items.actualizacion),
+#     para "lo nuevo" del buscador. Un indice de antes se sigue pudiendo leer: el codigo
+#     que usa esas columnas (datos/novedades.py) tolera que falten y lo dice.
 # Versiones cuyo indice el codigo actual sabe leer (misma estructura de tablas). Si la
 # reconstruccion falla (sin red, la fuente cambio de formato...), con un indice de estas
 # se sigue trabajando en vez de enseñar "Error preparando los datos". Al cambiar la
 # ESTRUCTURA de las tablas, dejar aqui solo la version nueva.
-ESQUEMAS_COMPATIBLES = {"8", "9", "10"}
+ESQUEMAS_COMPATIBLES = {"8", "9", "10", "11", "12"}
 
 # Piezas de receta que pueden quedarse sin completar (referencias a objetos que no estan en
 # ningun catalogo) antes de dar el volcado por roto. Con el de hoy son un punado de
@@ -430,9 +433,38 @@ def corregir_boveda(con: sqlite3.Connection) -> int:
                WHEN EXISTS (SELECT 1 FROM fuentes f WHERE f.item_id = items.id) THEN 0 ELSE 1 END
         """
     ).rowcount
-    if cambiadas:
-        log.info("Boveda corregida con las tablas de drops en %d reliquias", cambiadas)
-    return cambiadas
+    # Y en cascada, para que la ficha, el panel de recompensas y Primes digan lo mismo:
+    # una pieza prime esta en boveda si ninguna reliquia fuera de boveda la da, y un
+    # prime entero si todas sus piezas lo estan. El "vaulted" de WFCD de piezas y primes
+    # faltaba o iba desfasado (la Neo C11 salia disponible pero su pieza "en boveda").
+    piezas = con.execute(
+        """
+        UPDATE items SET vaulted = CASE WHEN EXISTS (
+                   SELECT 1 FROM reliquia_recompensas rr JOIN items r ON r.id = rr.reliquia_id
+                    WHERE rr.item_id = items.id AND r.vaulted = 0) THEN 0 ELSE 1 END
+         WHERE id IN (SELECT item_id FROM reliquia_recompensas)
+           AND (es_prime = 1 OR padre_id IN (SELECT id FROM items WHERE es_prime = 1))
+           AND COALESCE(vaulted, -1) != CASE WHEN EXISTS (
+                   SELECT 1 FROM reliquia_recompensas rr JOIN items r ON r.id = rr.reliquia_id
+                    WHERE rr.item_id = items.id AND r.vaulted = 0) THEN 0 ELSE 1 END
+        """
+    ).rowcount
+    padres = con.execute(
+        """
+        UPDATE items SET vaulted = CASE WHEN EXISTS (
+                   SELECT 1 FROM items h WHERE h.padre_id = items.id AND h.vaulted = 0
+                      AND h.id IN (SELECT item_id FROM reliquia_recompensas)) THEN 0 ELSE 1 END
+         WHERE es_prime = 1
+           AND id IN (SELECT padre_id FROM items WHERE id IN (SELECT item_id FROM reliquia_recompensas))
+           AND COALESCE(vaulted, -1) != CASE WHEN EXISTS (
+                   SELECT 1 FROM items h WHERE h.padre_id = items.id AND h.vaulted = 0
+                      AND h.id IN (SELECT item_id FROM reliquia_recompensas)) THEN 0 ELSE 1 END
+        """
+    ).rowcount
+    if cambiadas or piezas or padres:
+        log.info("Boveda corregida con las tablas de drops: %d reliquias, %d piezas, %d primes",
+                 cambiadas, piezas, padres)
+    return cambiadas + piezas + padres
 
 
 def comprobar_indice(con: sqlite3.Connection) -> None:

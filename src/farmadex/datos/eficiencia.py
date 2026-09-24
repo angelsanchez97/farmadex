@@ -64,7 +64,7 @@ SIN_FIN = {
     "Defense": 3.0,  # premio cada 3 oleadas (wiki, 2026-09); antes se suponian 5
     "Excavation": 2.5,
     "Interception": 3.5,
-    "Disruption": 4.0,
+    "Disruption": 4.0,  # por ronda; sus letras van aparte (ROTACIONES_POR_MODO)
     "Defection": 6.0,
     "Infested Salvage": 3.5,
     "Sanctuary Onslaught": 2.5,
@@ -86,6 +86,19 @@ ENTRADA_SALIDA_SIN_FIN = 3.0
 # letra se llevan al salir en ese momento (A, A, B, C: saliendo tras la segunda A se
 # llevan dos A en dos rotaciones).
 ROTACIONES_SIN_FIN = {"A": (2, 2), "B": (3, 1), "C": (4, 1)}
+
+# Modos sin fin que NO van en A, A, B, C: (rotaciones, premios de esa letra) por letra,
+# con prioridad sobre ROTACIONES_SIN_FIN. En Disrupcion la letra depende de la ronda y de
+# los conductos salvados (tabla en modos_mision.py, wiki 2026-09-24), asi que cada letra
+# se farmea a su manera y "rotacion" aqui es una ronda:
+#   A: rondas 1 y 2 salvando uno o dos conductos -> 2 A en 2 rondas.
+#   B: rondas 1 y 2 salvando los cuatro -> 2 B en 2 rondas.
+#   C: salir tras la ronda 4 salvando los cuatro -> C en la 3 y en la 4, 2 C en 4 rondas.
+# Antes se estimaba como A, A, B, C (la B en la tercera ronda, una C en la cuarta) y la B
+# y la C salian el doble de caras de lo que son.
+ROTACIONES_POR_MODO = {
+    "Disruption": {"A": (2, 2), "B": (2, 2), "C": (4, 2)},
+}
 
 # Misiones donde A, B y C caen una vez cada una en la misma partida, en este orden:
 # minuto en el que se cobra cada rotacion (Espionaje: una boveda por rotacion;
@@ -250,13 +263,20 @@ def _info(clase: str, partida: float, premios: int = 1, **extra) -> dict:
     return info
 
 
-def _sin_fin(minutos_rotacion: float, rotacion: str | None) -> dict:
-    """Una oportunidad en una mision sin fin, saliendo en el mejor momento."""
+def _sin_fin(minutos_rotacion: float, rotacion: str | None, modo: str = "") -> dict:
+    """Una oportunidad en una mision sin fin, saliendo en el mejor momento.
+
+    Con un modo de ROTACIONES_POR_MODO se usa su regla, y el desglose lo cuenta en
+    rondas (`unidad`) en vez de "rotaciones A".
+    """
     letra = (rotacion or "").upper()
-    rotaciones, premios = ROTACIONES_SIN_FIN.get(letra, (2, 1))
+    propia = ROTACIONES_POR_MODO.get(modo)
+    tabla = propia or ROTACIONES_SIN_FIN
+    rotaciones, premios = tabla.get(letra, (2, 1))
+    extra = {"unidad": "ronda"} if propia else {}
     return _info(
         "sin_fin", rotaciones * minutos_rotacion + ENTRADA_SALIDA_SIN_FIN + CARGA, premios,
-        rotacion=letra, rotaciones=rotaciones, min_rotacion=minutos_rotacion,
+        rotacion=letra, rotaciones=rotaciones, min_rotacion=minutos_rotacion, **extra,
     )
 
 
@@ -307,7 +327,7 @@ def _intento(f: dict) -> tuple[dict | None, str]:
         if modo in POR_TRAMOS:
             return _tramos(POR_TRAMOS[modo], rotacion), "estimado"
         if modo in SIN_FIN:
-            return _sin_fin(SIN_FIN[modo], rotacion), "estimado"
+            return _sin_fin(SIN_FIN[modo], rotacion, modo), "estimado"
         return _info("una_vez", UNA_VEZ.get(modo, DURACION_DESCONOCIDA) + CARGA), "estimado"
     return None, "desconocido"
 

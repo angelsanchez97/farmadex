@@ -36,6 +36,61 @@ Entiende erratas, nombres en inglés y cosas como «chasis de mesa prime» o
 «plano del rhino». Si es una pieza Prime, te dice en qué reliquias cae, cuáles
 están en bóveda y cuánto piden por ella en warframe.market.
 
+## Y cuándo cae, sin tener que mirar la wiki
+
+Lo que más me hacía salir del juego no era saber la misión, era saber
+*cuándo*: ¿esto es rotación C?, ¿y eso cuánto rato de Supervivencia es?, ¿en
+Disrupción cómo iba lo de los conductos? Por eso cada fila lo lleva al lado.
+
+![Ficha de la reliquia Lith S19 con la rotación junto a cada misión](herramientas/capturas/ficha_lith_s19_rotaciones.png)
+
+En una Supervivencia te dice a partir de qué minuto sale; en una Defensa, tras
+qué oleadas; en una Disrupción, en qué ronda y cuántos conductos tienes que
+salvar. Y el nombre de cada nodo y de cada tipo de misión lleva a su página de
+la wiki oficial por si quieres leer más.
+
+## Misiones: escribes el nodo y te cuenta cómo va
+
+También puedes buscar una misión por su nombre («Olimpo», «Hepit») o por su
+tipo («supervivencia», «disrupción»). La ficha te explica qué hay que hacer,
+cómo van las recompensas y qué suelta cada rotación. En las que tienen
+truco, como la Disrupción, viene también la tabla de rondas y conductos.
+
+![Ficha de la misión Olimpo: cómo se juega, tabla de rotaciones y recompensas](herramientas/capturas/ficha_mision_olimpo.png)
+
+La idea es que alguien que acaba de empezar pueda entrar en una Disrupción
+sabiendo a qué va, y que quien ya la conoce sepa en qué ronda salir con lo
+que quiere.
+
+## Pregúntale como hablas
+
+No hace falta escribir el nombre exacto. «Cómo sacar citrine prime» te abre
+la Citrine con por dónde empezar pieza a pieza, y «el último warframe» o
+«novedades» te enseñan lo que ha salido en la última actualización.
+
+![Lo nuevo de la última actualización al escribir «el último warframe»](herramientas/capturas/novedades_ultimo_warframe.png)
+
+Con el buscador vacío, arriba de la ficha tienes una línea con las
+novedades, para que lo recién salido no se te pase.
+
+![Línea de Novedades con el buscador vacío](herramientas/capturas/buscar_portada_novedades.png)
+
+## La wiki y las guías de YouTube, a un botón
+
+![Botones «Buscar en la wiki» y «Guías en YouTube»](herramientas/capturas/botones_wiki_youtube.png)
+
+Hay cosas que Farmadex no cuenta y no va a contar: las habilidades de un
+warframe, cómo se construye algo, la historia de una misión. Para eso está
+**Buscar en la wiki**, que abre la página de la wiki oficial de lo que tengas
+en pantalla.
+
+Y **Guías en YouTube** busca vídeos de esa misión u objeto y los pone en la
+pestaña Vídeo, dentro de Farmadex. Si juegas con un solo monitor, como yo
+muchas veces, el **modo vídeo** deja la ventana solo con el vídeo encima del
+juego: vas siguiendo la guía mientras juegas y con el atajo lo escondes y lo
+vuelves a sacar. Si en tu equipo no se puede ver ahí, te ofrece abrirlo en el
+navegador.
+
 ## Primes: marcas lo que te falta
 
 ![Pestaña Primes con el Plano de Caliban Prime marcado](herramientas/capturas/primes_rejilla_orokin.png)
@@ -50,6 +105,11 @@ hacer las fisuras para abrirlas.
 Las reliquias en bóveda se enseñan pero no cuentan. Arriba eliges el
 refinamiento y si vas solo o en escuadra, y el orden se ajusta. Lo que marcas
 se queda apuntado como objetivo.
+
+Qué está en bóveda lo decide mirando dónde cae cada reliquia en las tablas
+oficiales: si todavía se puede farmear, no está en bóveda. Así lo recién
+salido, como las reliquias de la Citrine Prime, no se te esconde, y la
+búsqueda, Primes, Objetivos y las recompensas dicen siempre lo mismo.
 
 ## Al abrir una reliquia, cuál coger
 
@@ -98,12 +158,20 @@ media escena de OBS.
 - **Glosario.** Palabras como «rotación», «refinamiento» o «bóveda» salen
   subrayadas; pasas el ratón y te lo explica en una línea. Pensado para quien
   empieza.
+- **Misiones explicadas al pasar el ratón.** Pasas el ratón por
+  «Supervivencia», «Defensa» o «Disrupción» y te dice qué hay que hacer y cómo
+  van sus recompensas, estés en la pestaña que estés.
+- **Si al abrir una reliquia no sale nada.** En Ajustes hay un «Diagnóstico
+  de reliquias» que comprueba paso a paso si Farmadex ve el juego y te dice
+  qué falla. Si no das con ello, te guarda un informe para mandármelo, sin
+  nada de tu cuenta.
 - **Idiomas y colores.** Español, inglés, francés, alemán y portugués, y cuatro
-  temas de color.
+  temas de color: Vacío, Orokin, Tenno y Cherry.
 - **Se actualiza solo.** Baja la versión nueva por detrás y se instala cuando
   cierras Farmadex, nunca en mitad de una partida. Se puede desactivar.
-- **Guía.** La primera vez te enseña lo básico en un par de pantallas; te la
-  puedes saltar y volver a verla cuando quieras.
+- **Guía.** La primera vez te enseña cada parte señalándola en la propia
+  ventana, pensada para quien no ha usado nada parecido; te la puedes saltar y
+  volver a verla cuando quieras con el botón «Guía».
 
 ## Descargar e instalar
 

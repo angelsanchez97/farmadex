@@ -159,7 +159,7 @@ def _claves_del_codigo() -> set[str]:
         PestanaAjustes.MODOS_PANTALLA.values(), worldstate.CICLOS.values(),
         worldstate.ESTADOS_CICLO.values(), (reliquias.AVISO_DATOS, reliquias.AVISO_MOTOR),
         # Titulos de las pestanas (VentanaOverlay._titulos_pestanas los pasa por t()).
-        ("Buscar", "Objetivos", "Primes", "Mundo", "Perfil", "Ajustes"),
+        ("Buscar", "Objetivos", "Primes", "Mundo", "Perfil", "Ajustes", "Video"),
         pestana_primes.NOMBRES_REFINAMIENTO.values(),
         # Que hacer y como van las recompensas de cada tipo de mision.
         modos_mision.textos(),

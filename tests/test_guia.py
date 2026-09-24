@@ -50,7 +50,7 @@ def test_boton_guia_la_lanza_desde_el_principio(ventana):
     ventana.mostrar_guia()
     assert ventana._guia is not None
     assert ventana._guia._indice == 0
-    assert ventana._guia.contador.text() == "Paso 1 de 9"
+    assert ventana._guia.contador.text() == "Paso 1 de 14"
 
 
 def test_avanza_y_retrocede(ventana):
@@ -87,6 +87,32 @@ def test_cambia_de_pestana_sola_cuando_el_paso_lo_pide(ventana):
     indices = {p.pestana: i for i, p in enumerate(guia._pasos) if p.pestana == "mundo"}
     guia._ir_a_paso(next(iter(indices.values())))
     assert ventana.pestanas.currentWidget() is ventana.mundo
+
+
+def test_cada_paso_con_objetivo_lo_resalta_dentro_de_la_ventana(ventana):
+    """Tambien los que estan al fondo de Ajustes (diagnostico) o son varios botones juntos."""
+    ventana.resize(1180, 760)
+    ventana.mostrar_guia()
+    guia = ventana._guia
+    for i, paso in enumerate(guia._pasos):
+        if paso.objetivo is None:
+            continue
+        guia._ir_a_paso(i)
+        assert guia._rect_resalte is not None, paso.titulo
+        assert guia.rect().contains(guia._rect_resalte), paso.titulo
+
+
+def test_wiki_y_youtube_se_resaltan_juntos(ventana):
+    ventana.resize(1180, 760)
+    ventana.mostrar_guia()
+    guia = ventana._guia
+    i = next(i for i, p in enumerate(guia._pasos) if p.titulo == "Wiki y videos")
+    guia._ir_a_paso(i)
+    from PySide6.QtCore import QPoint, QRect
+
+    for boton in (ventana.buscador.boton_wiki, ventana.buscador.boton_youtube):
+        rect = QRect(boton.mapTo(ventana, QPoint(0, 0)), boton.size())
+        assert guia._rect_resalte.contains(rect)
 
 
 def test_saltar_con_boton_termina_y_guarda_el_flag(ventana):

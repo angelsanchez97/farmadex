@@ -71,6 +71,28 @@ def _bandera(valor) -> int | None:
         return None
 
 
+def _fecha_salida(obj: dict) -> str | None:
+    """'2026-09-23' de `releaseDate` o, si falta, de `introduced.date`; None si no hay.
+
+    WFCD trae `introduced` como diccionario ({name, date, url, parent...}) y, en volcados
+    viejos, a veces solo como texto con el nombre; se aceptan los dos.
+    """
+    fecha = _texto(obj.get("releaseDate"))
+    introducido = obj.get("introduced")
+    if not fecha and isinstance(introducido, dict):
+        fecha = _texto(introducido.get("date"))
+    fecha = (fecha or "")[:10]
+    return fecha if re.fullmatch(r"\d{4}-\d{2}-\d{2}", fecha) else None
+
+
+def _actualizacion(obj: dict) -> str | None:
+    """'Update 44.0' (o 'Hotfix 44.0.1'): en que actualizacion salio el objeto."""
+    introducido = obj.get("introduced")
+    if isinstance(introducido, dict):
+        return _texto(introducido.get("name"))
+    return _texto(introducido) if isinstance(introducido, str) else None
+
+
 def _entero(valor) -> int | None:
     """ducats/itemCount: numero, o texto con el numero, o basura (None)."""
     if valor is None or isinstance(valor, bool):
@@ -340,6 +362,8 @@ class ImportadorItems:
                     "imagen": _texto(obj.get("imageName")),
                     "wiki_url": _texto(obj.get("wikiaUrl")),
                     "ducados": _entero(obj.get("ducats") or obj.get("primeSellingPrice")),
+                    "fecha_salida": _fecha_salida(obj),
+                    "actualizacion": _actualizacion(obj),
                 }
             )
             self._registrar_alias(nombre, item_id)

@@ -217,7 +217,15 @@ def enlace_mision(modo: str | None, visible: str, color: str, rotacion: str | No
 
 
 def enlace_rotacion(modo: str | None, rotacion: str, visible: str, color: str) -> str:
-    """'Rotacion C' explicando cuando llega esa rotacion en ESE modo; si no, la generica."""
+    """'Rotacion C (min 20)' explicando cuando llega esa rotacion en ESE modo; si no, la generica.
+
+    El parentesis dice a la vista cuando cae esa letra en ese modo, sin tener que pasar
+    el raton: quien juega no sabe que en Supervivencia la C es el minuto 20. Si el modo
+    no tiene una regla clara, se queda solo 'Rotacion C'.
+    """
+    corta = modos_mision.rotacion_corta(modo, rotacion)
+    if corta:
+        visible = f"{visible} ({corta})"
     return enlace("rotacion", visible, color, detalle=modos_mision.explicacion_rotacion(modo, rotacion))
 
 

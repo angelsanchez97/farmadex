@@ -1,6 +1,6 @@
 [project]
 name = "farmadex"
-version = "0.3.4"
+version = "0.4.0"
 description = "Overlay para Warframe: de donde sale cada cosa, en espanol"
 requires-python = ">=3.12"
 dependencies = [
@@ -12,6 +12,9 @@ dependencies = [
     # ejecutable y aqui solo se usa para tratar la imagen antes del OCR.
     "opencv-python-headless>=4.9",
     "mss>=9.0",
+    # Reproductor de guias dentro de Farmadex (farmadex/video.py): WebView2, el Chromium
+    # de Edge que ya trae Windows, en vez de QtWebEngine (~300 MB mas). Arrastra pythonnet.
+    "pywebview>=5",
 ]
 
 [project.optional-dependencies]

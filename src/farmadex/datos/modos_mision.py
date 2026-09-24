@@ -21,9 +21,19 @@ claro se dice con prudencia o se deja fuera; nunca se rellena de memoria:
 Sin porcentajes ni probabilidades: esos cambian y ya salen en la propia fila. Solo
 reglas del juego (cada 5 minutos, cada 3 oleadas, la tercera boveda...).
 
-Algunas de estas reglas no coinciden con lo que supone eficiencia.py (Defensa da
-premio cada 3 oleadas, Arbitraje va A, A, B, B, C...); aqui manda la wiki porque
-es lo que lee el jugador, y la estimacion de tiempos se revisa aparte.
+Algunas de estas reglas no coinciden con lo que supone eficiencia.py (Arbitraje va
+A, A, B, B, C...); aqui manda la wiki porque es lo que lee el jugador, y la
+estimacion de tiempos se revisa aparte. Disrupcion ya tiene alli su propia regla.
+
+Disrupcion, comprobada otra vez en https://wiki.warframe.com/w/Disruption el
+2026-09-24 (hace falta salvar al menos un conducto para que haya premio):
+    ronda   1 conducto  2   3   4
+    1       A           A   A   B
+    2       A           A   B   B
+    3       A           B   B   C
+    4+      B           B   C   C
+El texto viejo decia "cuanto mas conductos salvas, mejor", y es falso: para la A
+conviene salvar pocos o salir pronto.
 """
 
 from __future__ import annotations
@@ -86,8 +96,13 @@ MODOS: dict[str, tuple[str, str, str, str]] = {
         "Disrupcion", "Disruption",
         "Usa las llaves que sueltan algunos enemigos para activar los conductos y defiendelos "
         "de los Demolysts; hay cuatro conductos por ronda.",
-        "Una recompensa por ronda, pero no va en A, A, B, C: la rotacion depende de la ronda y "
-        "de cuantos conductos salves. Cuanto mas avanzas y mas conductos salvas, mejor.",
+        "Una recompensa por ronda si salvas al menos un conducto, pero no va en A, A, B, C: la "
+        "rotacion depende de la ronda y de cuantos conductos salves. Rondas 1 y 2: A, o B si "
+        "salvas los cuatro (en la 2 bastan tres). Ronda 3: A con uno, B con dos o tres, C con "
+        "los cuatro. De la 4 en adelante: B con uno o dos, C con tres o cuatro. Salvar mas no "
+        "siempre conviene: para la A sal tras la ronda 2 (desde la 4 ya no sale); para la B, "
+        "rondas 1 y 2 salvando los cuatro; para la C, sigue desde la ronda 3 salvando tres o "
+        "cuatro en cada ronda.",
     ),
     "Defection": (
         "Desercion", "Defection",
@@ -371,11 +386,13 @@ ROTACIONES: dict[str, dict[str, str]] = {
     },
     "Disruption": {
         "A": "Aqui la rotacion A sale en las primeras rondas salvando pocos conductos: ronda 1 "
-             "con hasta tres, ronda 2 con uno o dos, ronda 3 con uno.",
+             "con hasta tres, ronda 2 con uno o dos, ronda 3 con uno. Si buscas algo de la A, "
+             "sal tras la ronda 2: desde la ronda 4 ya no sale.",
         "B": "Aqui la rotacion B sale en la ronda 1 con los cuatro conductos, en la 2 con tres "
-             "o cuatro, en la 3 con dos o tres, y de la 4 en adelante con uno o dos.",
+             "o cuatro, en la 3 con dos o tres, y de la 4 en adelante con uno o dos. Lo mas "
+             "rapido: rondas 1 y 2 salvando los cuatro.",
         "C": "Aqui la rotacion C sale en la ronda 3 si salvas los cuatro conductos, y de la "
-             "ronda 4 en adelante si salvas tres o cuatro.",
+             "ronda 4 en adelante si salvas tres o cuatro: sigue salvandolos en cada ronda.",
     },
     "Arbitration": {
         "A": "Aqui la rotacion A son la primera y la segunda rotacion.",
@@ -393,6 +410,49 @@ ROTACIONES: dict[str, dict[str, str]] = {
         "C": "Aqui la rotacion C solo se daba durante el evento Operacion: Atramentum.",
     },
 }
+
+# Disrupcion: letra de cada ronda segun los conductos salvados (1, 2, 3 y 4), la misma
+# tabla del principio del modulo. La ficha de mision la pinta tal cual.
+TABLA_DISRUPCION = (
+    ("1", ("A", "A", "A", "B")),
+    ("2", ("A", "A", "B", "B")),
+    ("3", ("A", "B", "B", "C")),
+    ("4+", ("B", "B", "C", "C")),
+)
+
+# Forma corta de cuando cae cada letra, para ponerla a la vista junto a "Rotacion C"
+# sin pasar el raton: "Rotacion C (min 20)". Por unidad de los modos A, A, B, C, la
+# plantilla con una posicion (B y C: la primera vez que salen) y con dos (A: las dos
+# primeras rotaciones del ciclo). Cortas a proposito; la frase larga sigue en el tooltip.
+CORTAS_UNIDAD = {
+    "minuto": ("min {n}", "min {n} y {m}"),
+    "oleada": ("oleada {n}", "oleadas {n} y {m}"),
+    "ronda": ("{n}a ronda", "{n}a y {m}a ronda"),
+    "zona": ("zona {n}", "zonas {n} y {m}"),
+    "excavadora": ("{n}a excavadora", "{n}a y {m}a excavadora"),
+    "crisol": ("crisol {n}", "crisoles {n} y {m}"),
+    "captura": ("captura {n}", "capturas {n} y {m}"),
+    "grupo": ("{n} grupos", "{n} y {m} grupos"),
+    "grieta": ("{n} grietas", "{n} y {m} grietas"),
+    "exolizador": ("{n} Exolizadores", "{n} y {m} Exolizadores"),
+    "orphix": ("{n} Orphix", "{n} y {m} Orphix"),
+}
+# Modos que no van en A, A, B, C: la forma corta escrita a mano, de las mismas reglas
+# que ROTACIONES. Los modos sin regla clara (Escaramuza, Defensa espejo, el Circuito)
+# no estan: mejor no poner nada que inventar.
+CORTAS: dict[str, dict[str, str]] = {
+    "Spy": {"A": "1a boveda", "B": "2a boveda", "C": "3a boveda"},
+    "Caches": {"A": "1 escondite", "B": "2 escondites", "C": "3 escondites"},
+    "Rescue": {"A": "con alarma", "B": "sin alarma o carceleros muertos",
+               "C": "sin alarma y carceleros muertos"},
+    "Rush": {"A": "1 transporte", "B": "2 transportes", "C": "3 transportes"},
+    "Disruption": {"A": "rondas 1-2 con 1-2 conductos", "B": "rondas 1-2 con 4 conductos",
+                   "C": "ronda 3+ con 4 conductos"},
+    "Arbitration": {"A": "rotaciones 1 y 2", "B": "rotaciones 3 y 4", "C": "de la 5a en adelante"},
+    "The Perita Rebellion": {"A": "cada 3 ordenes", "B": "cada orden", "C": "al terminar"},
+    "Follie's Hunt": {"A": "premio al azar", "B": "premio asegurado", "C": "solo en evento"},
+}
+_PRIMERAS_AABC = {"A": (1, 2), "B": (3,), "C": (4,)}
 
 # Recompensas especiales (transitorias) que son un modo de los de arriba.
 _ORIGENES = ((re.compile(r"^Arbitrations?\b", re.I), "Arbitration"),
@@ -437,6 +497,34 @@ def linea_rotacion(modo_en: str | None, rotacion: str | None) -> str:
     return ""
 
 
+def rotacion_corta(modo_en: str | None, rotacion: str | None) -> str:
+    """Cuando cae esa letra en ese modo, en corto y traducido ('min 20', '3a boveda').
+
+    Vacio si el modo no se conoce o no tiene una regla clara para esa letra.
+    """
+    modo, letra = normalizar(modo_en), (rotacion or "").strip().upper()
+    if not modo or letra not in _PRIMERAS_AABC:
+        return ""
+    if modo in CORTAS:
+        return t(CORTAS[modo][letra])
+    if modo in AABC:
+        unidad, cada = AABC[modo]
+        una, dos = CORTAS_UNIDAD[unidad]
+        posiciones = [n * cada for n in _PRIMERAS_AABC[letra]]
+        if len(posiciones) == 1:
+            return t(una, n=posiciones[0])
+        return t(dos, n=posiciones[0], m=posiciones[1])
+    return ""
+
+
+def rotaciones_del_modo(modo_en: str | None) -> list[str]:
+    """Las letras que tienen regla en ese modo (las que la ficha de mision explica)."""
+    modo = normalizar(modo_en)
+    if modo in ROTACIONES or modo in AABC:
+        return ["A", "B", "C"]
+    return []
+
+
 def explicacion(modo_en: str | None, rotacion: str | None = None) -> str:
     """Texto del tooltip del tipo de mision: titulo, que hacer, recompensas y rotacion.
 
@@ -478,4 +566,6 @@ def textos() -> list[str]:
     salida = [texto for _, _, que, rec in MODOS.values() for texto in (que, rec)]
     salida += list(UNIDADES.values())
     salida += [texto for letras in ROTACIONES.values() for texto in letras.values()]
+    salida += [texto for par in CORTAS_UNIDAD.values() for texto in par]
+    salida += [texto for letras in CORTAS.values() for texto in letras.values()]
     return salida

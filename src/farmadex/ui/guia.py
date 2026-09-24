@@ -12,7 +12,7 @@ from typing import Callable
 
 from PySide6.QtCore import QEvent, QPoint, QRect, Qt
 from PySide6.QtGui import QColor, QPainter, QPainterPath
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QScrollArea, QVBoxLayout, QWidget
 
 from .. import NOMBRE_APP
 from ..idiomas import t
@@ -31,8 +31,9 @@ class Paso:
     cuerpo: str
     # Atributo de VentanaOverlay que hay que activar en pestanas antes de resaltar (o None).
     pestana: str | None
-    # Funcion(ventana) -> QWidget a resaltar, o None para un paso sin resalte (centrado).
-    objetivo: Callable[[object], QWidget | None] | None
+    # Funcion(ventana) -> QWidget a resaltar (o una tupla de widgets, que se resaltan
+    # juntos en un solo recuadro), o None para un paso sin resalte (centrado).
+    objetivo: Callable[[object], QWidget | tuple[QWidget, ...] | None] | None
 
 
 def _pasos(ventana) -> list[Paso]:
@@ -68,6 +69,30 @@ def _pasos(ventana) -> list[Paso]:
             objetivo=lambda v: getattr(v.buscador, "caja", None),
         ),
         Paso(
+            titulo=t("Misiones y preguntas"),
+            cuerpo=t(
+                "Tambien puedes escribir una mision (Hepit, Olimpo) o un tipo de mision "
+                "(supervivencia, disrupcion): te explica como se juega y que da cada rotacion. "
+                "Y puedes preguntar como hablas: \"como sacar citrine prime\", \"el ultimo "
+                "warframe\" o \"novedades\". Con la caja vacia, aqui ves lo ultimo que ha salido."
+            ),
+            pestana="buscador",
+            objetivo=lambda v: getattr(v.buscador, "ficha", None),
+        ),
+        Paso(
+            titulo=t("Wiki y videos"),
+            cuerpo=t(
+                "\"Buscar en la wiki\" abre la wiki oficial de lo que tengas abierto, para lo que "
+                "Farmadex no cuenta (habilidades, como se construye...). \"Guias en YouTube\" "
+                "busca videos de esa mision u objeto y te los pone en la pestana Video."
+            ),
+            pestana="buscador",
+            objetivo=lambda v: tuple(
+                w for w in (getattr(v.buscador, "boton_wiki", None), getattr(v.buscador, "boton_youtube", None))
+                if w is not None
+            ) or None,
+        ),
+        Paso(
             titulo=t("Objetivos"),
             cuerpo=t(
                 "Con \"+ Objetivo\" (o \"+ Set completo\" para un Prime entero) anades lo que "
@@ -87,6 +112,16 @@ def _pasos(ventana) -> list[Paso]:
             objetivo=lambda v: getattr(v, "objetivos", None),
         ),
         Paso(
+            titulo=t("Primes"),
+            cuerpo=t(
+                "Marca las piezas prime que te faltan y pulsa \"Donde farmear\": te dice en que "
+                "reliquias salen y donde conseguirlas antes. Lo que marcas aqui se apunta "
+                "tambien en tus objetivos."
+            ),
+            pestana="primes",
+            objetivo=lambda v: getattr(v, "primes", None),
+        ),
+        Paso(
             titulo=t("Mundo"),
             cuerpo=t(
                 "Fisuras del Vacio abiertas, los ciclos de Cetus, el Valle del Orbe y Cambion, "
@@ -95,6 +130,23 @@ def _pasos(ventana) -> list[Paso]:
             ),
             pestana="mundo",
             objetivo=lambda v: getattr(v, "mundo", None),
+        ),
+        Paso(
+            titulo=t("Video"),
+            cuerpo=t(
+                "Aqui se ven las guias de YouTube sin salir de Farmadex, por si juegas con un "
+                "solo monitor. Con \"Modo video\" la ventana se queda solo con el video, encima "
+                "del juego, y con \"Salir del video\" vuelves a la vista normal."
+            ),
+            pestana="video",
+            # La barra de botones del panel, no el panel entero: si no, la burbuja tapa el
+            # texto que dice como abrir una guia.
+            objetivo=lambda v: tuple(
+                w for w in (
+                    getattr(getattr(v, "video", None), "boton_modo", None),
+                    getattr(getattr(v, "video", None), "boton_cerrar", None),
+                ) if w is not None
+            ) or None,
         ),
         Paso(
             titulo=t("Recompensas de reliquia"),
@@ -137,7 +189,32 @@ def _pasos(ventana) -> list[Paso]:
             pestana="ajustes",
             objetivo=lambda v: getattr(v, "ajustes", None),
         ),
+        Paso(
+            titulo=t("Si no sale nada al abrir una reliquia"),
+            cuerpo=t(
+                "Pulsa \"Comprobar la lectura de reliquias\": te dice paso a paso que falla. Si "
+                "no lo arreglas, \"Guardar informe para enviar\" deja un archivo para mandarlo a "
+                "quien te ayude; no lleva nada de tu cuenta."
+            ),
+            pestana="ajustes",
+            objetivo=lambda v: tuple(
+                w for w in (
+                    getattr(getattr(v, "ajustes", None), "boton_diagnostico", None),
+                    getattr(getattr(v, "ajustes", None), "boton_informe", None),
+                ) if w is not None
+            ) or None,
+        ),
     ]
+
+
+def _traer_a_la_vista(widget: QWidget) -> None:
+    """Si el widget vive dentro de un QScrollArea, desplaza el area hasta ensenarlo."""
+    padre = widget.parentWidget()
+    while padre is not None:
+        if isinstance(padre, QScrollArea):
+            padre.ensureWidgetVisible(widget, 20, 20)
+            return
+        padre = padre.parentWidget()
 
 
 class CapaGuia(QWidget):
@@ -253,10 +330,19 @@ class CapaGuia(QWidget):
         QApplication.instance().processEvents()
         paso = self._pasos[self._indice]
         objetivo = paso.objetivo(self.ventana) if paso.objetivo else None
+        widgets = objetivo if isinstance(objetivo, tuple) else (objetivo,)
+        visibles = [w for w in widgets if w is not None and w.isVisible()]
         self._rect_resalte = None
-        if objetivo is not None and objetivo.isVisible():
-            esquina = objetivo.mapTo(self.ventana, QPoint(0, 0))
-            bruto = QRect(esquina, objetivo.size()).adjusted(
+        if visibles:
+            # Lo que esta al fondo de un area con scroll (el diagnostico en Ajustes) se
+            # trae a la vista antes de medirlo; si no, el agujero caeria fuera.
+            for w in visibles:
+                _traer_a_la_vista(w)
+            QApplication.instance().processEvents()
+            union = QRect()
+            for w in visibles:
+                union = union.united(QRect(w.mapTo(self.ventana, QPoint(0, 0)), w.size()))
+            bruto = union.adjusted(
                 -MARGEN_RESALTE, -MARGEN_RESALTE, MARGEN_RESALTE, MARGEN_RESALTE
             )
             # Un widget dentro de un area con scroll (Ajustes en la ventana minima) puede

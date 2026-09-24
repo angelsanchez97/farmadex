@@ -14,7 +14,7 @@ if (-not (Test-Path $python)) {
     Write-Host "No hay entorno virtual. Creandolo..." -ForegroundColor Yellow
     python -m venv .venv
     & $python -m pip install --upgrade pip
-    & $python -m pip install -e ".[dev]" PySide6 httpx rapidfuzz rapidocr-onnxruntime mss pyinstaller
+    & $python -m pip install -e ".[dev]" PySide6 httpx rapidfuzz rapidocr-onnxruntime mss pyinstaller pywebview
 }
 
 $version = (Select-String -Path (Join-Path $raiz "src\farmadex\__init__.py") -Pattern 'VERSION = "(.+)"').Matches[0].Groups[1].Value

@@ -39,6 +39,15 @@ def _linea_intento(d: dict) -> tuple[str, bool]:
     if clase == "tramos" and rotacion:
         return t("~{min} min por partida (hasta la rotacion {rot}).", min=partida, rot=rotacion), True
     if clase == "sin_fin":
+        if d.get("unidad") == "ronda" and d["premios"] > 1 and rotacion:
+            # Disrupcion: la letra no va por turno sino por ronda y conductos salvados,
+            # y "2 rotaciones A" no diria nada; se cuenta en rondas.
+            return t(
+                "~{min} min por partida ({n} rondas de ~{rmin} min mas llegar, extraer y la carga), que dan "
+                "{premios} premios de la rotacion {rot}: ~{intento} min por intento.",
+                min=partida, n=d["rotaciones"], rmin=_num(d["min_rotacion"]),
+                premios=d["premios"], rot=rotacion, intento=_num(d["intento"]),
+            ), False
         if d["premios"] > 1:
             return t(
                 "~{min} min por partida ({n} rotaciones {rot} de ~{rmin} min mas llegar, extraer y la carga), que dan "
