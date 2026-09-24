@@ -1,0 +1,14 @@
+[
+  {
+    "uniqueName": "/Lotus/Types/Items/MiscItems/OrokinCell",
+    "name": "Orokin Cell",
+    "description": "Ancient energy cell from the Orokin era.",
+    "category": "Resources",
+    "type": "Resource",
+    "imageName": "ComponentCell.png",
+    "tradable": false,
+    "drops": [
+      {"location": "Saturn/Tethys (Assassination)", "type": "Orokin Cell", "chance": 5.0, "rarity": "Rare"}
+    ]
+  }
+]

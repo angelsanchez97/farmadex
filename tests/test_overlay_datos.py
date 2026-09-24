@@ -55,6 +55,15 @@ def test_si_la_descarga_falla_pero_hay_indice_todo_sigue_funcionando(ventana):
     assert ventana.arrancados == ["_arrancar_mundo", "_arrancar_captura", "_arrancar_comparador", "_arrancar_actualizador"]
 
 
+def test_el_fallo_se_cuenta_en_una_frase_corta(ventana):
+    """El 2026-09-24 WFCD quito i18n.json y la barra ensenaba la excepcion de httpx entera,
+    con la URL de GitHub y un enlace a la documentacion de Mozilla."""
+    ventana._datos_listos(False, "la fuente ha cambiado")
+    assert ventana.estado.text() == (
+        "No se pudieron actualizar los datos (la fuente ha cambiado); se sigue con los de antes"
+    )
+
+
 def test_con_datos_nuevos_se_hace_lo_mismo(ventana):
     ventana._datos_listos(True, "listo")
     assert ventana.estado.text() == "listo"

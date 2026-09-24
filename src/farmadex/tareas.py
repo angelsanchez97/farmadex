@@ -2,13 +2,34 @@
 
 from __future__ import annotations
 
+import httpx
 from PySide6.QtCore import QThread, Signal
 
 from .datos import indice
+from .datos.descargas import ErrorDescarga, FuenteCambiada
 from .idiomas import t
 from .registro_log import obtener
 
 log = obtener("tareas")
+
+
+def motivo_para_el_usuario(error: Exception) -> str:
+    """Una causa corta y comprensible para la barra de estado.
+
+    Antes se ensenaba la excepcion tal cual: una URL de GitHub, el texto de httpx y un
+    enlace a la documentacion de Mozilla sobre el 404. El detalle queda en el registro.
+    """
+    if isinstance(error, FuenteCambiada):
+        return t("la fuente ha cambiado")
+    if isinstance(error, ErrorDescarga):
+        if error.estado is None:
+            return t("sin conexion con la fuente")
+        if error.estado >= 500 or error.estado in (408, 429):
+            return t("la fuente no responde")
+        return t("la fuente ha cambiado")
+    if isinstance(error, (httpx.TransportError, ConnectionError, TimeoutError)):
+        return t("sin conexion con la fuente")
+    return t("fallo inesperado; detalles en el registro")
 
 
 class TareaDatos(QThread):
@@ -44,4 +65,4 @@ class TareaDatos(QThread):
             self.terminada.emit(True, mensaje)
         except Exception as e:  # noqa: BLE001 - el fallo se ensena en la ventana
             log.exception("Fallo preparando los datos")
-            self.terminada.emit(False, str(e))
+            self.terminada.emit(False, motivo_para_el_usuario(e))

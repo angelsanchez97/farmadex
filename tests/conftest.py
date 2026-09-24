@@ -21,6 +21,35 @@ def pytest_configure(config):
 
 
 @pytest.fixture(autouse=True)
+def _sin_ventanas_externas(monkeypatch):
+    """Ninguna prueba abre carpetas, el Explorador ni el navegador en el PC de verdad.
+
+    El usuario juega mientras se pasan las pruebas, y una ventana del Explorador que
+    salta encima le corta la partida. Las pruebas que comprueban que algo se "abre"
+    sustituyen estas funciones por las suyas, que ganan sobre esta.
+    """
+    import subprocess
+
+    popen_real = subprocess.Popen
+
+    def popen_sin_explorador(args, *resto, **kw):
+        programa = str(args[0] if isinstance(args, (list, tuple)) else args).lower()
+        if "explorer" in programa:
+            return None
+        return popen_real(args, *resto, **kw)
+
+    if hasattr(os, "startfile"):
+        monkeypatch.setattr(os, "startfile", lambda *a, **k: None)
+    monkeypatch.setattr(subprocess, "Popen", popen_sin_explorador)
+    try:
+        from PySide6.QtGui import QDesktopServices
+
+        monkeypatch.setattr(QDesktopServices, "openUrl", staticmethod(lambda *a, **k: True))
+    except ImportError:
+        pass
+
+
+@pytest.fixture(autouse=True)
 def _configuracion_limpia():
     """La configuracion se comparte entre modulos: que no viaje de una prueba a otra."""
     from farmadex import config

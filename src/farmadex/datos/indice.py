@@ -13,7 +13,10 @@ from rapidfuzz import fuzz, process as rf_process
 
 from ..config import DIR_DATOS, DIR_RECURSOS, RUTA_INDICE, crear_carpetas
 from ..registro_log import obtener
-from .descargas import CATEGORIAS_ITEMS, IDIOMAS_EXTRA, Descargador
+from .descargas import (
+    CATALOGO_PIEZAS, CATEGORIAS_ESENCIALES, CATEGORIAS_ITEMS, IDIOMAS_EXTRA, Descargador,
+    FuenteCambiada,
+)
 from . import nodos, tabla_oficial
 from .drops import UMBRAL_SIN_CASAR, ImportadorDrops
 from .items import ImportadorItems, normalizar
@@ -31,7 +34,20 @@ log = obtener("indice")
 #    en esos idiomas (glosario_idiomas), para casar y buscar con el juego en esos idiomas.
 # 8: reliquias, misiones y piezas nuevas desde la tabla oficial de DE cuando WFCD va por
 #    detras (tabla_oficial.py): objetos sinteticos "/Farmadex/DE/..." hasta que WFCD los tenga.
-VERSION_ESQUEMA = "8"
+# 9: formato nuevo de WFCD (2026-09-24): piezas por referencia a Components.json y
+#    traducciones por idioma. El indice queda igual, pero los que tengan uno construido con
+#    un volcado a medias (la descarga fallaba con un 404) lo rehacen entero.
+VERSION_ESQUEMA = "9"
+# Versiones cuyo indice el codigo actual sabe leer (misma estructura de tablas). Si la
+# reconstruccion falla (sin red, la fuente cambio de formato...), con un indice de estas
+# se sigue trabajando en vez de enseñar "Error preparando los datos". Al cambiar la
+# ESTRUCTURA de las tablas, dejar aqui solo la version nueva.
+ESQUEMAS_COMPATIBLES = {"8", "9"}
+
+# Piezas de receta que pueden quedarse sin completar (referencias a objetos que no estan en
+# ningun catalogo) antes de dar el volcado por roto. Con el de hoy son un punado de
+# ingredientes raros; si falta Components.json son cientos y no se construye nada.
+UMBRAL_PIEZAS_PERDIDAS = 50
 
 # Idiomas con glosario de componentes propio (glosario_<idioma>.json): lo que WFCD no
 # traduce (Chassis, Systems...) se completa a mano, igual que ya se hacia con el espanol.
@@ -169,22 +185,31 @@ def _rutas_sinteticas(con: sqlite3.Connection, ruta: str) -> list[str]:
 
 
 def hay_indice(ruta: Path = RUTA_INDICE) -> bool:
+    """Si hay un indice que se puede USAR (de esta version o de una compatible)."""
+    return _esquema_del_indice(ruta) in ESQUEMAS_COMPATIBLES
+
+
+def indice_al_dia(ruta: Path = RUTA_INDICE) -> bool:
+    """Si el indice es de la version actual; si no, toca reconstruirlo."""
+    return _esquema_del_indice(ruta) == VERSION_ESQUEMA
+
+
+def _esquema_del_indice(ruta: Path) -> str | None:
+    """`esquema_version` de un indice completo y utilizable, o None."""
     if not ruta.exists():
-        return False
+        return None
     try:
         con = conectar(ruta)
     except sqlite3.Error:
-        return False
+        return None
     try:
         meta = dict(con.execute("SELECT clave, valor FROM meta"))
         tiene_items = con.execute("SELECT 1 FROM items LIMIT 1").fetchone()
-        return bool(
-            meta.get("construido_en")
-            and tiene_items
-            and meta.get("esquema_version") == VERSION_ESQUEMA
-        )
+        if meta.get("construido_en") and tiene_items:
+            return meta.get("esquema_version")
+        return None
     except sqlite3.Error:
-        return False
+        return None
     finally:
         con.close()
 
@@ -363,6 +388,45 @@ def poblar_busqueda(con: sqlite3.Connection) -> int:
     return len(lote)
 
 
+def comprobar_piezas(importador: ImportadorItems) -> None:
+    """Para la construccion si las recetas nombran piezas que no se han podido completar.
+
+    Pasa con el formato nuevo de WFCD si falta Components.json (o cambia otra vez de
+    sitio): cada objeto traeria solo referencias y el indice se quedaria sin piezas prime.
+    """
+    perdidas = sorted(importador.referencias_sin_resolver)
+    if not perdidas:
+        return
+    log.warning("Piezas de receta sin completar: %d de %d referencias (p. ej. %s)",
+                len(perdidas), importador.referencias_vistas, ", ".join(perdidas[:5]))
+    if len(perdidas) > max(UMBRAL_PIEZAS_PERDIDAS, importador.referencias_vistas // 20):
+        raise FuenteCambiada(
+            f"{len(perdidas)} piezas de receta no estan en ningun catalogo (falta o ha cambiado "
+            f"{CATALOGO_PIEZAS}.json)"
+        )
+
+
+def comprobar_indice(con: sqlite3.Connection) -> None:
+    """Ultima comprobacion antes de instalar el indice nuevo: que tenga lo esencial.
+
+    Si WFCD cambia el formato de algo de una forma que el importador no reconoce, lo normal
+    es que no falle sino que importe cero objetos de esa categoria. Instalar ese indice
+    dejaria al usuario sin piezas o sin reliquias; mejor seguir con el anterior.
+    """
+    vacias = [
+        c for c in CATEGORIAS_ESENCIALES
+        if not con.execute("SELECT 1 FROM items WHERE categoria = ? LIMIT 1", (c,)).fetchone()
+    ]
+    if not con.execute(
+        "SELECT 1 FROM items WHERE padre_id IS NOT NULL AND es_prime = 1 LIMIT 1"
+    ).fetchone():
+        vacias.append("piezas prime")
+    if not con.execute("SELECT 1 FROM reliquia_recompensas LIMIT 1").fetchone():
+        vacias.append("recompensas de reliquia")
+    if vacias:
+        raise FuenteCambiada("El indice nuevo saldria sin: " + ", ".join(vacias))
+
+
 def _leer_json(ruta: Path | None):
     if not ruta or not ruta.exists():
         return None
@@ -415,10 +479,14 @@ def construir(progreso=None, forzar: bool = False) -> dict:
     finally:
         descargador.cerrar()
 
-    if not cambios and hay_indice() and not forzar:
+    if not cambios and indice_al_dia() and not forzar:
         log.info("Datos al dia y el indice ya existe; no se reconstruye")
         avisar("Datos al dia", 1, 1)
         return {"reconstruido": False}
+
+    faltan = [c for c in CATEGORIAS_ESENCIALES if not (DIR_DATOS / f"{c}.json").exists()]
+    if faltan:
+        raise FuenteCambiada(f"Faltan catalogos imprescindibles: {', '.join(faltan)}")
 
     tmp = RUTA_INDICE.with_suffix(".nuevo")
     try:
@@ -427,6 +495,7 @@ def construir(progreso=None, forzar: bool = False) -> dict:
         tmp = RUTA_INDICE.with_suffix(f".nuevo{os.getpid()}")
         tmp.unlink(missing_ok=True)
     con = conectar(tmp)
+    terminado = False
     try:
         crear_esquema(con)
         importar_glosario(con)
@@ -443,6 +512,13 @@ def construir(progreso=None, forzar: bool = False) -> dict:
                 idiomas_extra[idioma] = json.loads(ruta.read_text(encoding="utf-8"))
 
         importador = ImportadorItems(con, i18n, idiomas_extra)
+        piezas = _leer_json(DIR_DATOS / f"{CATALOGO_PIEZAS}.json")
+        if isinstance(piezas, list):
+            # Formato nuevo: las recetas solo nombran sus piezas y hay que completarlas.
+            avisar("Cargando el catalogo de piezas", 0, 0)
+            importador.cargar_referencias(
+                piezas, [DIR_DATOS / f"{c}.json" for c in CATEGORIAS_ITEMS]
+            )
         total = len(CATEGORIAS_ITEMS)
         objetos = 0
         for i, categoria in enumerate(CATEGORIAS_ITEMS, start=1):
@@ -452,6 +528,7 @@ def construir(progreso=None, forzar: bool = False) -> dict:
                 log.warning("Falta el catalogo %s", categoria)
                 continue
             objetos += importador.importar_categoria(ruta)
+        comprobar_piezas(importador)
         recursos = importador.promocionar_ingredientes()
         log.info("Ingredientes de receta tratados como recurso: %d", recursos)
         log.info(
@@ -518,12 +595,20 @@ def construir(progreso=None, forzar: bool = False) -> dict:
                 ("construido_en", time.strftime("%Y-%m-%dT%H:%M:%S")),
             ],
         )
+        comprobar_indice(con)
         con.commit()
         # Sin estadisticas el planificador elegia mal los indices de 'fuentes'.
         con.execute("ANALYZE")
         con.execute("VACUUM")
+        terminado = True
     finally:
         con.close()
+        if not terminado:
+            # Un indice a medias no se instala nunca; tampoco se deja en disco.
+            try:
+                tmp.unlink(missing_ok=True)
+            except OSError:
+                log.debug("No se pudo borrar el indice a medias %s", tmp, exc_info=True)
 
     # El indice viejo solo se sustituye si el nuevo acabo bien.
     instalar_indice(tmp, RUTA_INDICE)

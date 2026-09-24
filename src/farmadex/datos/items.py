@@ -130,6 +130,16 @@ CATEGORIAS_CONOCIDAS = frozenset({
 # distintas el "componente" se trata como recurso, tenga o no ficha propia.
 UMBRAL_RECETAS_RECURSO = 3
 
+# Lo que se guarda de los objetos de los demas catalogos para poder usarlos como
+# ingrediente de una receta del formato nuevo (ver cargar_referencias). Solo lo que lee
+# _importar_componente: guardar los objetos enteros eran cientos de MB para nada.
+CAMPOS_INGREDIENTE = (
+    "uniqueName", "name", "description", "imageName", "tradable", "ducats",
+    "primeSellingPrice", "drops",
+)
+# Categorias cuyos objetos nunca son ingrediente de nada y no hace falta apuntar.
+CATEGORIAS_SIN_INGREDIENTES = frozenset({"Relics", "Node"})
+
 
 class ImportadorItems:
     """Vuelca warframe-items en las tablas items / nodos / reliquia_recompensas."""
@@ -164,6 +174,69 @@ class ImportadorItems:
         # item_id -> {idioma: nombre}, para que un componente pueda nombrar a su padre
         # en su mismo idioma aunque el padre ya se haya insertado antes.
         self.nombres_extra_por_item: dict[int, dict[str, str]] = {}
+        # Formato nuevo de WFCD (2026-09-24): catalogo de piezas (Components.json) y el
+        # resto de objetos, por uniqueName, para completar las referencias de las recetas.
+        self.catalogo_piezas: dict[str, dict] = {}
+        self.otros_objetos: dict[str, dict] = {}
+        # Cuantas piezas han llegado como referencia y cuales no se han podido completar.
+        self.referencias_vistas = 0
+        self.referencias_sin_resolver: set[str] = set()
+
+    # -- formato nuevo: piezas por referencia ----------------------------
+
+    def cargar_referencias(self, piezas, rutas_catalogo=()) -> None:
+        """Prepara lo necesario para leer las recetas del formato nuevo de WFCD.
+
+        Desde el 2026-09-24 cada objeto ya no repite sus piezas enteras: solo trae
+        {"uniqueName", "itemCount"} y el resto esta en Components.json (`piezas`). Los
+        ingredientes que no son piezas (Celula orokin, la Bronco de la Akbronco) tampoco
+        estan ahi sino en su categoria, asi que se apuntan tambien los objetos de los
+        demas catalogos (`rutas_catalogo`). Con el formato antiguo no hace falta llamarla:
+        las piezas llegan completas y no se consulta nada de esto.
+        """
+        for obj in _lista(piezas):
+            unico = _texto(obj.get("uniqueName"))
+            if unico:
+                self.catalogo_piezas[unico] = obj
+        for ruta in rutas_catalogo:
+            if ruta.stem in CATEGORIAS_SIN_INGREDIENTES or not ruta.exists():
+                continue
+            try:
+                with ruta.open(encoding="utf-8") as f:
+                    objetos = json.load(f)
+            except (OSError, ValueError) as e:
+                log.warning("No se pudo leer %s para completar recetas: %s", ruta.name, e)
+                continue
+            for obj in _lista(objetos):
+                unico = _texto(obj.get("uniqueName"))
+                if unico and unico not in self.otros_objetos:
+                    self.otros_objetos[unico] = {c: obj[c] for c in CAMPOS_INGREDIENTE if c in obj}
+
+    def _pieza_completa(self, comp: dict) -> dict | None:
+        """La pieza con todos sus datos, venga entera (formato antiguo) o por referencia.
+
+        Se decide por contenido y pieza a pieza: si trae nombre es que viene entera. Asi
+        valen los dos formatos y hasta una mezcla (un catalogo recien bajado y otro que se
+        quedo de la vez anterior porque fallo su descarga).
+        """
+        if comp.get("name"):
+            return comp
+        unico = _texto(comp.get("uniqueName"))
+        if not unico:
+            return None
+        self.referencias_vistas += 1
+        base = self.catalogo_piezas.get(unico) or self.otros_objetos.get(unico)
+        if base is None:
+            self.referencias_sin_resolver.add(unico)
+            return None
+        # Lo de la receta (itemCount) manda sobre lo del catalogo.
+        return {**base, **comp}
+
+    @staticmethod
+    def _nombra_al_padre(texto: str, *padres: str | None) -> bool:
+        """"Chasis de Ash Prime" nombra a su padre; "Chasis" o "Celula orokin" no."""
+        hueco = f" {normalizar(texto)} "
+        return any(p and f" {normalizar(p)} " in hueco for p in padres)
 
     # -- utilidades -----------------------------------------------------
 
@@ -277,7 +350,9 @@ class ImportadorItems:
                 self._guardar_drop(item_id, drop)
 
             for comp in _lista(obj.get("components")):
-                self._importar_componente(comp, item_id, nombre, nombre_es, categoria)
+                pieza = self._pieza_completa(comp)
+                if pieza is not None:
+                    self._importar_componente(pieza, item_id, nombre, nombre_es, categoria)
 
         nuevas = categorias_vistas - CATEGORIAS_CONOCIDAS
         if nuevas:
@@ -294,6 +369,13 @@ class ImportadorItems:
         if not unico or not nombre:
             return
         nombre_es, desc_es = self._es(unico)
+        # Desde el formato nuevo WFCD traduce tambien las piezas, pero con el nombre entero
+        # ("Chasis de Ash Prime"). Aqui la pieza lleva solo su parte ("Chasis") porque la
+        # busqueda, el OCR y la interfaz le anteponen el padre; con el nombre entero saldria
+        # "Ash Prime Chasis de Ash Prime". Se queda el del glosario, como antes.
+        del_catalogo = unico in self.catalogo_piezas
+        if nombre_es and (del_catalogo or self._nombra_al_padre(nombre_es, padre_en, padre_es)):
+            nombre_es = None
         nombre_es = nombre_es or self.componentes_es.get(nombre)
         recetas = self.recetas_por_ingrediente.setdefault(unico, set())
         primera_vez = not recetas
@@ -320,7 +402,12 @@ class ImportadorItems:
             self.componentes_por_nombre[nombre].append(item_id)
         # Nombre en fr/de/pt/it/pl: primero el de WFCD si lo trae (raro en piezas),
         # si no el del glosario de componentes de ese idioma ("Chassis" -> "Châssis").
-        nombres_idioma = self._extra(unico)
+        padre_idioma = self.nombres_extra_por_item.get(padre_id, {})
+        nombres_idioma = {
+            idioma: texto
+            for idioma, texto in self._extra(unico).items()
+            if not del_catalogo and not self._nombra_al_padre(texto, padre_en, padre_idioma.get(idioma))
+        }
         for idioma, palabras in self.componentes_extra.items():
             if idioma not in nombres_idioma and palabras.get(nombre):
                 nombres_idioma[idioma] = palabras[nombre]

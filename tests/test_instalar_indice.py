@@ -96,3 +96,23 @@ def test_recompensa_de_ee_log_casa_con_el_objeto_sacado_de_la_tabla_de_de():
     assert fila_por_ruta(con, rutas + "GeodePrimeHelmetBlueprint") == (4,)
     assert fila_por_ruta(con, rutas + "GeodePrimeBlueprint") == (3,)
     assert fila_por_ruta(con, rutas + "AshPrimeChassisBlueprint") is None
+
+
+def test_un_indice_de_version_compatible_se_sigue_usando_si_no_se_puede_reconstruir(tmp_path):
+    """Sin red tras actualizar: mejor el indice de la version anterior que "Error preparando los datos"."""
+    from farmadex.datos import indice
+
+    ruta = tmp_path / "indice.sqlite"
+    con = sqlite3.connect(ruta)
+    con.execute("CREATE TABLE meta (clave TEXT, valor TEXT)")
+    con.execute("CREATE TABLE items (id INTEGER)")
+    con.execute("INSERT INTO items VALUES (1)")
+    con.executemany("INSERT INTO meta VALUES (?, ?)", [("construido_en", "ayer"), ("esquema_version", "8")])
+    con.commit()
+    con.close()
+    assert indice.hay_indice(ruta) and not indice.indice_al_dia(ruta)
+    con = sqlite3.connect(ruta)
+    con.execute("UPDATE meta SET valor = '5' WHERE clave = 'esquema_version'")
+    con.commit()
+    con.close()
+    assert not indice.hay_indice(ruta)  # demasiado viejo: otra estructura de tablas

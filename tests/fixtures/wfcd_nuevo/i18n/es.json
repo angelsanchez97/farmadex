@@ -1,0 +1,7 @@
+{
+  "/Lotus/Powersuits/Ninja/NinjaPrime": {"name": "Ash Prime", "description": "Ash Prime."},
+  "/Lotus/Types/Recipes/WarframeRecipes/AshPrimeSystemsComponent": {"name": "Sistemas de Ash Prime", "description": "Componente de sistemas del warframe Ash Prime."},
+  "/Lotus/Types/Recipes/WarframeRecipes/AshPrimeChassisComponent": {"name": "Chasis de Ash Prime", "description": "Componente del chasis del warframe Ash Prime."},
+  "/Lotus/Types/Items/MiscItems/OrokinCell": {"name": "Célula orokin", "description": "Antigua célula de energía de la era orokin."},
+  "/Lotus/Types/Recipes/WarframeRecipes/AshPrimeBlueprint": {}
+}

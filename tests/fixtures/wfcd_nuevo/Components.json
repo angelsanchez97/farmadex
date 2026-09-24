@@ -1,0 +1,44 @@
+[
+  {
+    "uniqueName": "/Lotus/Types/Recipes/WarframeRecipes/AshPrimeSystemsComponent",
+    "name": "Systems",
+    "description": "Systems component of the Ash Prime Warframe.",
+    "codexSecret": false,
+    "primeSellingPrice": 65,
+    "ducats": 65,
+    "imageName": "GenericWarframePrimeSystem.png",
+    "tradable": true,
+    "masterable": false,
+    "category": "Components",
+    "parentUniqueNames": ["/Lotus/Powersuits/Ninja/NinjaPrime"],
+    "drops": [
+      {
+        "location": "Axi A7 Relic (Radiant)",
+        "type": "Ash Prime Systems Blueprint",
+        "chance": 20.0,
+        "rarity": "Rare",
+        "uniqueName": "/Lotus/Types/Game/Projections/T4VoidProjectionAshVaubanVaultAGold"
+      },
+      {
+        "location": "Axi A7 Relic (Intact)",
+        "type": "Ash Prime Systems Blueprint",
+        "chance": 2.0,
+        "rarity": "Rare",
+        "uniqueName": "/Lotus/Types/Game/Projections/T4VoidProjectionAshVaubanVaultABronze"
+      }
+    ]
+  },
+  {
+    "uniqueName": "/Lotus/Types/Recipes/WarframeRecipes/AshPrimeChassisComponent",
+    "name": "Chassis",
+    "description": "Chassis component of the Ash Prime Warframe.",
+    "primeSellingPrice": 15,
+    "ducats": 15,
+    "imageName": "GenericWarframePrimeChassis.png",
+    "tradable": true,
+    "masterable": false,
+    "category": "Components",
+    "parentUniqueNames": ["/Lotus/Powersuits/Ninja/NinjaPrime"],
+    "drops": []
+  }
+]

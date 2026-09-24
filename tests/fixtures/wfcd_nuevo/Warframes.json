@@ -1,0 +1,20 @@
+[
+  {
+    "uniqueName": "/Lotus/Powersuits/Ninja/NinjaPrime",
+    "name": "Ash Prime",
+    "category": "Warframes",
+    "type": "Warframe",
+    "isPrime": true,
+    "tradable": false,
+    "vaulted": true,
+    "vaultDate": "2018-07-24T00:00:00.000Z",
+    "imageName": "ash-prime.png",
+    "wikiaUrl": "https://wiki.warframe.com/w/Ash/Prime",
+    "description": "Ash Prime.",
+    "components": [
+      {"uniqueName": "/Lotus/Types/Recipes/WarframeRecipes/AshPrimeSystemsComponent", "itemCount": 1},
+      {"uniqueName": "/Lotus/Types/Recipes/WarframeRecipes/AshPrimeChassisComponent", "itemCount": 1},
+      {"uniqueName": "/Lotus/Types/Items/MiscItems/OrokinCell", "itemCount": 1}
+    ]
+  }
+]

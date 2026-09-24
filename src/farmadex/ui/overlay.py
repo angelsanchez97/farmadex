@@ -344,7 +344,7 @@ class VentanaOverlay(QWidget):
         self._soltar_indice()
         # Durante una reconstruccion el buscador se queda desactivado: si volviera
         # a abrir el indice, el intercambio del fichero al final fallaria.
-        listo = indice.hay_indice() and not forzar
+        listo = indice.indice_al_dia() and not forzar
         self.buscador.habilitar(
             listo,
             ""
@@ -383,11 +383,16 @@ class VentanaOverlay(QWidget):
             # La descarga ha fallado (sin red, WFCD caido...) pero el indice anterior sigue
             # ahi: se trabaja con el. Antes solo se reactivaba el buscador y el resto de
             # pestanas (Objetivos, Perfil, Mundo) y el OCR se quedaban muertos hasta reiniciar.
-            self.estado.setText(t("Datos sin actualizar: {mensaje}", mensaje=mensaje))
+            self.estado.setText(t(
+                "No se pudieron actualizar los datos ({motivo}); se sigue con los de antes",
+                motivo=mensaje,
+            ))
             log.warning("Datos sin actualizar, se sigue con el indice anterior: %s", mensaje)
         else:
             self.estado.setText(t("Error preparando los datos"))
-            QMessageBox.critical(self, f"{NOMBRE_APP}", mensaje)
+            QMessageBox.critical(
+                self, f"{NOMBRE_APP}", t("No se pudieron preparar los datos ({motivo})", motivo=mensaje)
+            )
             return
         self.buscador.habilitar(True)
         self.objetivos.conectar_indice(indice.conectar())

@@ -1,5 +1,16 @@
 # Cambios
 
+## 0.3.1
+
+- Arreglado el aviso "Datos sin actualizar: No se pudo descargar ... i18n.json
+  ... 404 Not Found". La comunidad que publica los datos del juego (WFCD) ha
+  reorganizado sus ficheros; Farmadex entiende ahora el formato nuevo y el
+  antiguo.
+- Si en el futuro vuelven a cambiar algo, Farmadex sigue con los datos que ya
+  tenías y lo dice con un aviso corto, en vez de un error técnico.
+- Citrine Prime, Corufell Prime y Steflos Prime ya vienen con sus nombres en
+  castellano y sus ducados.
+
 ## 0.3.0
 
 **Misiones explicadas**
