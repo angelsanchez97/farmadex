@@ -21,7 +21,7 @@ def pytest_configure(config):
 
 
 @pytest.fixture(autouse=True)
-def _sin_ventanas_externas(monkeypatch):
+def _sin_ventanas_externas(monkeypatch, tmp_path_factory):
     """Ninguna prueba abre carpetas, el Explorador ni el navegador en el PC de verdad.
 
     El usuario juega mientras se pasan las pruebas, y una ventana del Explorador que
@@ -41,6 +41,12 @@ def _sin_ventanas_externas(monkeypatch):
     if hasattr(os, "startfile"):
         monkeypatch.setattr(os, "startfile", lambda *a, **k: None)
     monkeypatch.setattr(subprocess, "Popen", popen_sin_explorador)
+    # Ni ficheros en el Escritorio de verdad: una prueba que pulsaba "Guardar informe"
+    # en la ventana real dejaba un zip de diagnostico en el Escritorio en cada pasada.
+    from farmadex import diagnostico
+
+    escritorio_falso = tmp_path_factory.mktemp("Escritorio")
+    monkeypatch.setattr(diagnostico, "carpeta_escritorio", lambda: escritorio_falso)
     try:
         from PySide6.QtGui import QDesktopServices
 
