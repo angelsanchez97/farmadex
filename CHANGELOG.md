@@ -1,5 +1,15 @@
 # Cambios
 
+## 0.3.3
+
+- Citrine Prime vuelve a salir en la pestaña Primes. Los datos de la comunidad
+  marcaban "en bóveda" reliquias recién salidas (Neo C11, Lith S19...), y con
+  ellas escondía a la Citrine. Ahora Farmadex decide qué está en bóveda mirando
+  las tablas de drops: lo que se puede farmear no está en bóveda.
+- Para farmear reliquias, las misiones sin fin (Defensa, Disrupción...) cuentan
+  también el rato de llegar al objetivo y de ir a la extracción. Las Capturas
+  como Hepit o Ukko salen ahora las primeras para las Lith y las Neo.
+
 ## 0.3.2
 
 - Las Capturas cuentan ahora como lo que son: una misión de un minuto. Una

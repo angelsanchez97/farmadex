@@ -761,9 +761,9 @@
   "{standing} de reputacion": "{standing} de reputação",
   "~{min} min por combate contra el jefe, contando la carga.": "~{min} min por luta contra o chefe, contando o carregamento.",
   "~{min} min por partida (hasta la rotacion {rot}).": "~{min} min por partida (até a rotação {rot}).",
-  "~{min} min por partida (hasta la rotacion {rot}: {n} rotaciones de ~{rmin} min y la carga).": "~{min} min por partida (até a rotação {rot}: {n} rotações de ~{rmin} min e o carregamento).",
-  "~{min} min por partida ({n} rotaciones de ~{rmin} min y la carga).": "~{min} min por partida ({n} rotações de ~{rmin} min e o carregamento).",
-  "~{min} min por partida ({n} rotaciones {rot} de ~{rmin} min y la carga), que dan {premios} intentos: ~{intento} min por intento.": "~{min} min por partida ({n} rotações {rot} de ~{rmin} min e o carregamento), que dão {premios} tentativas: ~{intento} min por tentativa.",
+  "~{min} min por partida (hasta la rotacion {rot}: {n} rotaciones de ~{rmin} min mas llegar, extraer y la carga).": "~{min} min por partida (até a rotação {rot}: {n} rotações de ~{rmin} min mais chegar, extrair e o carregamento).",
+  "~{min} min por partida ({n} rotaciones de ~{rmin} min mas llegar, extraer y la carga).": "~{min} min por partida ({n} rotações de ~{rmin} min mais chegar, extrair e o carregamento).",
+  "~{min} min por partida ({n} rotaciones {rot} de ~{rmin} min mas llegar, extraer y la carga), que dan {premios} intentos: ~{intento} min por intento.": "~{min} min por partida ({n} rotações {rot} de ~{rmin} min mais chegar, extrair e o carregamento), que dão {premios} tentativas: ~{intento} min por tentativa.",
   "~{min} min por partida, contando la carga.": "~{min} min por partida, contando o carregamento.",
   "‹ Atras": "‹ Voltar",
   "↑↓ otro resultado · Enter ficha completa · Ctrl+M vista completa": "↑↓ outro resultado · Enter ficha completa · Ctrl+M vista completa"

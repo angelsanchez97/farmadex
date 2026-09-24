@@ -31,17 +31,17 @@ def test_captura_corta_gana_a_supervivencia_rotacion_c_con_mas_porcentaje():
         eficiencia.estimar(f)
     # Captura: 1 min + 1.5 de carga = 2.5 por intento -> 25 min de media.
     assert captura["minutos_intento"] == 2.5 and captura["minutos_medios"] == 25.0
-    # Rotacion C: cuatro rotaciones de 5 min + carga = 21.5 por intento -> 107.5 min.
-    assert supervivencia["minutos_intento"] == 21.5 and supervivencia["minutos_medios"] == 107.5
+    # Rotacion C: cuatro rotaciones de 5 min + llegar/extraer (3) + carga = 24.5 -> 122.5 min.
+    assert supervivencia["minutos_intento"] == 24.5 and supervivencia["minutos_medios"] == 122.5
     assert sorted([supervivencia, captura], key=eficiencia.clave_orden)[0] is captura
 
 
 def test_la_rotacion_a_cuesta_menos_que_la_c_en_la_misma_mision():
     minutos = {r: eficiencia.minutos_por_intento(_fuente(modo="Survival", rotacion=r))[0] for r in "ABC"}
-    # Saliendo tras la segunda A se llevan dos A en 10 min + carga: 5.75 cada una.
-    assert minutos["A"] == 5.75
+    # Saliendo tras la segunda A se llevan dos A en 10 min + llegar/extraer + carga: 7.25 cada una.
+    assert minutos["A"] == 7.25
     assert minutos["A"] < minutos["B"] < minutos["C"]
-    assert minutos["C"] == 21.5
+    assert minutos["C"] == 24.5
 
 
 def test_espionaje_cobra_las_tres_rotaciones_en_la_misma_partida():

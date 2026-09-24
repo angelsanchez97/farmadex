@@ -761,9 +761,9 @@
   "{standing} de reputacion": "{standing} standing",
   "~{min} min por combate contra el jefe, contando la carga.": "~{min} min per boss fight, including loading.",
   "~{min} min por partida (hasta la rotacion {rot}).": "~{min} min per run (up to rotation {rot}).",
-  "~{min} min por partida (hasta la rotacion {rot}: {n} rotaciones de ~{rmin} min y la carga).": "~{min} min per run (up to rotation {rot}: {n} rotations of ~{rmin} min plus loading).",
-  "~{min} min por partida ({n} rotaciones de ~{rmin} min y la carga).": "~{min} min per run ({n} rotations of ~{rmin} min plus loading).",
-  "~{min} min por partida ({n} rotaciones {rot} de ~{rmin} min y la carga), que dan {premios} intentos: ~{intento} min por intento.": "~{min} min per run ({n} {rot} rotations of ~{rmin} min plus loading), giving {premios} attempts: ~{intento} min per attempt.",
+  "~{min} min por partida (hasta la rotacion {rot}: {n} rotaciones de ~{rmin} min mas llegar, extraer y la carga).": "~{min} min per run (up to rotation {rot}: {n} rotations of ~{rmin} min plus getting in, extracting and loading).",
+  "~{min} min por partida ({n} rotaciones de ~{rmin} min mas llegar, extraer y la carga).": "~{min} min per run ({n} rotations of ~{rmin} min plus getting in, extracting and loading).",
+  "~{min} min por partida ({n} rotaciones {rot} de ~{rmin} min mas llegar, extraer y la carga), que dan {premios} intentos: ~{intento} min por intento.": "~{min} min per run ({n} {rot} rotations of ~{rmin} min plus getting in, extracting and loading), giving {premios} attempts: ~{intento} min per attempt.",
   "~{min} min por partida, contando la carga.": "~{min} min per run, including loading.",
   "‹ Atras": "‹ Back",
   "↑↓ otro resultado · Enter ficha completa · Ctrl+M vista completa": "↑↓ next result · Enter full card · Ctrl+M full view"

@@ -37,12 +37,12 @@ log = obtener("indice")
 # 9: formato nuevo de WFCD (2026-09-24): piezas por referencia a Components.json y
 #    traducciones por idioma. El indice queda igual, pero los que tengan uno construido con
 #    un volcado a medias (la descarga fallaba con un 404) lo rehacen entero.
-VERSION_ESQUEMA = "9"
+VERSION_ESQUEMA = "10"  # 10: boveda corregida con las tablas de drops
 # Versiones cuyo indice el codigo actual sabe leer (misma estructura de tablas). Si la
 # reconstruccion falla (sin red, la fuente cambio de formato...), con un indice de estas
 # se sigue trabajando en vez de enseñar "Error preparando los datos". Al cambiar la
 # ESTRUCTURA de las tablas, dejar aqui solo la version nueva.
-ESQUEMAS_COMPATIBLES = {"8", "9"}
+ESQUEMAS_COMPATIBLES = {"8", "9", "10"}
 
 # Piezas de receta que pueden quedarse sin completar (referencias a objetos que no estan en
 # ningun catalogo) antes de dar el volcado por roto. Con el de hoy son un punado de
@@ -406,6 +406,35 @@ def comprobar_piezas(importador: ImportadorItems) -> None:
         )
 
 
+def corregir_boveda(con: sqlite3.Connection) -> int:
+    """Una reliquia esta en boveda si y solo si no sale en ninguna tabla de drops actual.
+
+    El "vaulted" de WFCD se queda atras con lo recien salido: el 2026-09-24 marcaba en
+    boveda la Neo C11 y la Lith S19, que salian en 153 misiones, y como las piezas de
+    Citrine Prime solo estaban en reliquias "en boveda", la pestana Primes la escondia.
+    Las tablas de drops son las que mandan: lo que se puede farmear no esta en boveda.
+    Devuelve cuantas reliquias ha cambiado.
+    """
+    hay_drops = con.execute(
+        "SELECT 1 FROM fuentes f JOIN items i ON i.id = f.item_id WHERE i.categoria = 'Relics' LIMIT 1"
+    ).fetchone()
+    if not hay_drops:  # sin tablas de reliquias no hay con que corregir: se deja lo de WFCD
+        return 0
+    # Las Requiem salen de Sifones y Diluvios Kuva, que no estan en las tablas de drops.
+    cambiadas = con.execute(
+        """
+        UPDATE items SET vaulted = CASE
+               WHEN EXISTS (SELECT 1 FROM fuentes f WHERE f.item_id = items.id) THEN 0 ELSE 1 END
+         WHERE categoria = 'Relics' AND nombre_en NOT LIKE 'Requiem%'
+           AND COALESCE(vaulted, -1) != CASE
+               WHEN EXISTS (SELECT 1 FROM fuentes f WHERE f.item_id = items.id) THEN 0 ELSE 1 END
+        """
+    ).rowcount
+    if cambiadas:
+        log.info("Boveda corregida con las tablas de drops en %d reliquias", cambiadas)
+    return cambiadas
+
+
 def comprobar_indice(con: sqlite3.Connection) -> None:
     """Ultima comprobacion antes de instalar el indice nuevo: que tenga lo esencial.
 
@@ -566,6 +595,7 @@ def construir(progreso=None, forzar: bool = False) -> dict:
             log.exception("No se pudieron completar los nodos con WFCD")
         avisar("Enlazando misiones con el mapa", 0, 0)
         reenlace = nodos.reenlazar_fuentes(con)
+        corregir_boveda(con)
         con.commit()
 
         avisar("Emparejando con warframe.market", 0, 0)

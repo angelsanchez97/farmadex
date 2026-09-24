@@ -116,3 +116,24 @@ def test_un_indice_de_version_compatible_se_sigue_usando_si_no_se_puede_reconstr
     con.commit()
     con.close()
     assert not indice.hay_indice(ruta)  # demasiado viejo: otra estructura de tablas
+
+
+def test_la_boveda_la_deciden_las_tablas_de_drops():
+    """WFCD marcaba en boveda la Neo C11 (salia en 153 misiones) y Primes escondia Citrine Prime."""
+    from farmadex.datos.indice import corregir_boveda
+
+    con = sqlite3.connect(":memory:")
+    con.execute("CREATE TABLE items (id INTEGER PRIMARY KEY, nombre_en TEXT, categoria TEXT, vaulted INTEGER)")
+    con.execute("CREATE TABLE fuentes (id INTEGER PRIMARY KEY, item_id INTEGER)")
+    con.executemany("INSERT INTO items VALUES (?, ?, ?, ?)", [
+        (1, "Neo C11 Relic", "Relics", 1),   # nueva, WFCD dice boveda: sale en misiones
+        (2, "Lith K12 Relic", "Relics", 0),  # retirada, WFCD aun dice que no
+        (3, "Requiem I Relic", "Relics", 0),  # Kuva: no esta en las tablas, se deja
+        (4, "Forma Blueprint", "Misc", 1),
+    ])
+    assert corregir_boveda(con) == 0  # sin tablas de drops no se toca nada
+    con.execute("INSERT INTO fuentes (item_id) VALUES (1)")
+    assert corregir_boveda(con) == 2
+    assert dict(con.execute("SELECT nombre_en, vaulted FROM items")) == {
+        "Neo C11 Relic": 0, "Lith K12 Relic": 1, "Requiem I Relic": 0, "Forma Blueprint": 1,
+    }

@@ -761,9 +761,9 @@
   "{standing} de reputacion": "{standing} Ansehen",
   "~{min} min por combate contra el jefe, contando la carga.": "~{min} Min. pro Bosskampf, inklusive Ladezeit.",
   "~{min} min por partida (hasta la rotacion {rot}).": "~{min} Min. pro Runde (bis Rotation {rot}).",
-  "~{min} min por partida (hasta la rotacion {rot}: {n} rotaciones de ~{rmin} min y la carga).": "~{min} Min. pro Runde (bis Rotation {rot}: {n} Rotationen zu ~{rmin} Min. plus Ladezeit).",
-  "~{min} min por partida ({n} rotaciones de ~{rmin} min y la carga).": "~{min} Min. pro Runde ({n} Rotationen zu ~{rmin} Min. plus Ladezeit).",
-  "~{min} min por partida ({n} rotaciones {rot} de ~{rmin} min y la carga), que dan {premios} intentos: ~{intento} min por intento.": "~{min} Min. pro Runde ({n} Rotationen {rot} zu ~{rmin} Min. plus Ladezeit), das sind {premios} Versuche: ~{intento} Min. pro Versuch.",
+  "~{min} min por partida (hasta la rotacion {rot}: {n} rotaciones de ~{rmin} min mas llegar, extraer y la carga).": "~{min} Min. pro Runde (bis Rotation {rot}: {n} Rotationen zu ~{rmin} Min. plus Anlauf, Extraktion und Ladezeit).",
+  "~{min} min por partida ({n} rotaciones de ~{rmin} min mas llegar, extraer y la carga).": "~{min} Min. pro Runde ({n} Rotationen zu ~{rmin} Min. plus Anlauf, Extraktion und Ladezeit).",
+  "~{min} min por partida ({n} rotaciones {rot} de ~{rmin} min mas llegar, extraer y la carga), que dan {premios} intentos: ~{intento} min por intento.": "~{min} Min. pro Runde ({n} Rotationen {rot} zu ~{rmin} Min. plus Anlauf, Extraktion und Ladezeit), das sind {premios} Versuche: ~{intento} Min. pro Versuch.",
   "~{min} min por partida, contando la carga.": "~{min} Min. pro Runde, inklusive Ladezeit.",
   "‹ Atras": "‹ Zurück",
   "↑↓ otro resultado · Enter ficha completa · Ctrl+M vista completa": "↑↓ anderes Ergebnis · Enter ganze Karte · Ctrl+M Vollansicht"

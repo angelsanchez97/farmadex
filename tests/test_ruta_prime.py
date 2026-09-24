@@ -105,13 +105,13 @@ def test_una_pieza_al_10_por_ciento_con_numeros_a_mano(con, prime):
 
 
 def test_gana_el_menor_porcentaje_de_mision_si_tarda_menos(con, prime):
-    """Supervivencia C al 30 % pierde contra Captura al 10 %: 21.5 min por intento."""
+    """Supervivencia C al 30 % pierde contra Captura al 10 %: 24.5 min por intento."""
     misiones = ruta_prime.ruta_pieza(con, prime["plano"], "Radiant", 4)["misiones"]
     assert [m["modo"] for m in misiones] == ["Capture", "Survival"]
     captura, superv = misiones
     assert captura["probabilidad"] == 10.0 and superv["probabilidad"] == 30.0
-    # (21.5 + 3.5 x 0.3) / (0.3 x 0.3439) = 218.6 min, frente a 82.9.
-    assert superv["minutos"] == 218.6 and captura["minutos"] < superv["minutos"]
+    # (24.5 + 3.5 x 0.3) / (0.3 x 0.3439) = 247.6 min, frente a 82.9.
+    assert superv["minutos"] == 247.6 and captura["minutos"] < superv["minutos"]
     # Dos nodos con la misma tabla y la misma duracion son una sola fila.
     assert captura["sitios"] == ["Captura, Earth", "Gemela, Mars"]
 

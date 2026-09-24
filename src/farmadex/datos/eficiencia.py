@@ -75,6 +75,13 @@ SIN_FIN = {
     "Void Armageddon": 4.0,
     "The Circuit": 5.0,
 }
+# Lo que cuesta una mision sin fin aparte de sus rotaciones: llegar al punto de Defensa,
+# a los conductos o a la zona, esperar a que arranque, y al salir ir andando hasta la
+# extraccion. Sin esto una Defensa A al 11 % (~34 min) salia por delante de Hepit, una
+# Captura al 6,7 % (~37 min), y el usuario lo corrigio: para Lith y Neo las Capturas son
+# siempre mas rapidas (Hepit, Ukko), que es lo que dice cualquier guia de farmeo.
+ENTRADA_SALIDA_SIN_FIN = 3.0
+
 # Cuantas rotaciones hay que jugar para ver la primera de cada letra, y cuantas de esa
 # letra se llevan al salir en ese momento (A, A, B, C: saliendo tras la segunda A se
 # llevan dos A en dos rotaciones).
@@ -248,7 +255,7 @@ def _sin_fin(minutos_rotacion: float, rotacion: str | None) -> dict:
     letra = (rotacion or "").upper()
     rotaciones, premios = ROTACIONES_SIN_FIN.get(letra, (2, 1))
     return _info(
-        "sin_fin", rotaciones * minutos_rotacion + CARGA, premios,
+        "sin_fin", rotaciones * minutos_rotacion + ENTRADA_SALIDA_SIN_FIN + CARGA, premios,
         rotacion=letra, rotaciones=rotaciones, min_rotacion=minutos_rotacion,
     )
 

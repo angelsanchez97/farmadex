@@ -73,7 +73,7 @@ def test_desglose_de_formido_cuadra_con_lo_que_se_ensena(config_temporal):
         ({"tipo": "mision", "modo": "Survival", "rotacion": "C", "probabilidad": 10.0},
          "hasta la rotacion C: 4 rotaciones de ~5 min"),
         ({"tipo": "mision", "modo": "Survival", "rotacion": "A", "probabilidad": 10.0},
-         "que dan 2 intentos: ~5.8 min por intento"),
+         "que dan 2 intentos: ~7.2 min por intento"),
         ({"tipo": "bounty", "origen_texto": "Cetus Bounty", "rotacion": "A", "probabilidad": 20.0},
          "vuelve cada 3 contratos: 3 tandas de ~11.5 min"),
         ({"tipo": "enemigo", "jefe": True, "probabilidad": 97.42}, "combate contra el jefe"),
@@ -117,14 +117,14 @@ def test_desglose_prime_con_el_modelo_de_ruta_prime(config_temporal):
              "reliquias": [{"probabilidad_mision": 25.0, "probabilidad": 20.0}]}
     intento, _ = eficiencia.minutos_por_intento(sitio)
     sitio["minutos"] = round(ruta_prime.minutos_pieza(intento, [(25.0, 20.0)], 4), 1)
-    assert eficiencia.texto_minutos(sitio["minutos"]) == "~45 min"
+    assert eficiencia.texto_minutos(sitio["minutos"]) == "~55 min"
     lineas = desglose_tiempo.texto_prime(sitio, 4, "Radiante, escuadra de 4").splitlines()
     assert lineas == [
-        "~11.5 min por partida (2 rotaciones A de ~5 min y la carga), que dan 2 intentos: ~5.8 min por intento.",
-        "25.0% de que caiga alguna reliquia util -> ~23 min por reliquia.",
+        "~14.5 min por partida (2 rotaciones A de ~5 min mas llegar, extraer y la carga), que dan 2 intentos: ~7.2 min por intento.",
+        "25.0% de que caiga alguna reliquia util -> ~29 min por reliquia.",
         "+ ~3.5 min por fisura para abrirla.",
         "Radiante, escuadra de 4: 59% de sacar la pieza en cada fisura -> ~1.7 fisuras de media.",
-        "(~23 + ~3.5 min) x ~1.7 = ~45 min.",
+        "(~29 + ~3.5 min) x ~1.7 = ~55 min.",
         "Es una media: puede caer antes o tardar mas.",
     ]
 
@@ -159,7 +159,7 @@ def test_rapido_baja_todos_los_tiempos_en_la_misma_proporcion(config_temporal):
     _ritmo(config_temporal, "rapido")
     rapido = tiempos()
     for n, r in zip(normal, rapido):
-        assert r == pytest.approx(n * 0.7, abs=0.06)
+        assert r == pytest.approx(n * 0.7, abs=0.1)  # los minutos van redondeados a 0.1
     assert sorted(range(len(filas)), key=normal.__getitem__) == sorted(range(len(filas)), key=rapido.__getitem__)
     assert eficiencia.minutos_fisura() == pytest.approx(fisura_normal * 0.7)
     # La ruta prime tambien: mision y fisura escalan juntas.
