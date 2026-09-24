@@ -1,5 +1,13 @@
 # Cambios
 
+## 0.3.4
+
+- Las recompensas de las reliquias salen mucho antes. El juego escribe su
+  registro a ráfagas, y el aviso en el que se fiaba Farmadex ("recompensas
+  listas") podía llegar hasta 5 segundos tarde. Ahora empieza a mirar la
+  pantalla con el primer aviso, que llega al instante, y lee los nombres en
+  cuanto el juego los pinta.
+
 ## 0.3.3
 
 - Citrine Prime vuelve a salir en la pestaña Primes. Los datos de la comunidad

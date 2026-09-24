@@ -702,12 +702,20 @@ class DisparadorAutomatico(QObject):
     disparar = Signal()
 
     # Medido en el video de un usuario: en el primer fotograma de la pantalla (cuenta
-    # atras en 15) los nombres ya se leen, y EE.log escribe "Got rewards" ~0,4 s
-    # despues de abrirse. La espera fija de 1,5 s era margen sin medir y era el
-    # trozo mas grande del retraso. Si la primera lectura llega antes de tiempo, el
-    # lector reintenta solo (LectorRecompensas.REINTENTO_MS), y como las dos primeras
-    # miradas solo leen la fila de nombres (~40 ms), mirar pronto sale casi gratis.
+    # atras en 15) los nombres ya se leen, y EE.log escribe "Got rewards" ~0,4-0,6 s
+    # despues de "Relic rewards initialized". La espera fija de 1,5 s era margen sin
+    # medir y era el trozo mas grande del retraso. Si la primera lectura llega antes
+    # de tiempo, el lector reintenta solo (LectorRecompensas.REINTENTO_MS), y como
+    # las dos primeras miradas solo leen la fila de nombres (~40 ms), mirar pronto
+    # sale casi gratis.
     ESPERA_MS = 80
+    # Se dispara con el PRIMER marcador de la pantalla y no solo con "Got rewards":
+    # el juego vuelca EE.log a rafagas, y en un registro real "Relic rewards
+    # initialized" llego al instante mientras "Got rewards" tardo 4,8 s en aparecer
+    # (los nombres se pintaron 5,5 s despues de la pantalla). Con el primero, el
+    # lector ya esta mirando la fila cada 150 ms cuando el juego pinta las tarjetas;
+    # el segundo, si llega tarde, solo vale como confirmacion.
+    EVENTOS_DISPARO = ("reliquia_abierta", "reliquia_recompensas")
 
     def __init__(self, activo: bool = True, parent=None):
         super().__init__(parent)
@@ -717,7 +725,7 @@ class DisparadorAutomatico(QObject):
         self._temporizador.timeout.connect(self.disparar.emit)
 
     def evento(self, nombre: str) -> None:
-        if nombre == "reliquia_recompensas" and self.activo:
+        if nombre in self.EVENTOS_DISPARO and self.activo:
             self._temporizador.start(self.ESPERA_MS)
         elif nombre in ("reliquia_cerrada", "reliquia_elegida"):
             self._temporizador.stop()

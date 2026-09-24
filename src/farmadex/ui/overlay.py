@@ -515,7 +515,11 @@ class VentanaOverlay(QWidget):
         self.vigilante.pista.connect(self._pista_juego)
         # Recompensas que EE.log dio: veredicto sin esperar al OCR (se pinta al llegar el OCR).
         self._conocidas_log: list[str] = []
-        self._t_reliquia: float | None = None  # monotonic del aviso "Got rewards"
+        self._t_reliquia: float | None = None  # monotonic del primer aviso de la pantalla
+        # Cuando el juego pinto las tarjetas (monotonic estimado a partir de lo que
+        # "Got rewards" llevaba escrita al leerse), y cuando se pintaron los nombres.
+        self._t_pantalla: float | None = None
+        self._t_pintadas: float | None = None
         self._t_cerrada: float | None = None
         self._t_lectura_pedida: float | None = None
         self._temporizador_conocidas = QTimer(self)
@@ -1011,18 +1015,42 @@ class VentanaOverlay(QWidget):
         self.disparador.evento(nombre)
         if nombre == "reliquia_abierta":
             self._conocidas_log = []
-            self._t_cerrada = None
+            self._nueva_pantalla()
         elif nombre == "reliquia_recompensas":
-            self._t_reliquia = time.monotonic()
-            self._t_reliquia_reloj = time.time()
+            if self._t_reliquia is None or self._t_cerrada is not None:
+                self._nueva_pantalla()  # "Relic rewards initialized" no llego: este es el primer aviso
             self._t_cerrada = None
             self._avisar_si_no_se_va_a_ver()
+            self._anotar_pantalla_pintada()
         elif nombre == "reliquia_cerrada":
             self._t_cerrada = time.monotonic()
+            self._t_pintadas = None
             self._temporizador_conocidas.stop()
             self.etiquetas.hide()
         if self.botin.evento(nombre):
             self.objetivos.refrescar()
+
+    def _nueva_pantalla(self) -> None:
+        self._t_reliquia = time.monotonic()
+        self._t_reliquia_reloj = time.time()
+        self._t_cerrada = None
+        self._t_pantalla = None
+        self._t_pintadas = None
+
+    def _anotar_pantalla_pintada(self) -> None:
+        """Con "Got rewards" se sabe cuando pinto el juego las tarjetas (la linea se
+        escribe en ese momento, aunque llegue segundos despues): queda en el registro
+        lo que tardaron los nombres desde ESE instante, que es lo que ve el usuario."""
+        retraso = getattr(self.vigilante, "retrasos", {}).get("reliquia_recompensas")
+        if retraso is None:
+            return
+        self._t_pantalla = time.monotonic() - retraso
+        if self._t_pintadas is not None:
+            log.info(
+                "'Got rewards' llego %.0f ms despues de escribirse; los nombres ya estaban "
+                "pintados desde %.0f ms despues de que el juego pintara la pantalla",
+                retraso * 1000, (self._t_pintadas - self._t_pantalla) * 1000,
+            )
 
     def _pista_juego(self, tipo: str, valor: str) -> None:
         if tipo == "recompensa" and valor not in self._conocidas_log:
@@ -1102,7 +1130,11 @@ class VentanaOverlay(QWidget):
             self.estado.setText(t("Los datos todavia se estan preparando"))
             return
         self._t_lectura_pedida = time.monotonic()
-        self.etiquetas.hide()
+        if self._t_pintadas is None:
+            # Fuera lo de la pantalla anterior. Si esta ya tiene los nombres pintados
+            # (lectura por "Relic rewards initialized" y "Got rewards" que llega tarde),
+            # esconderlos hasta la relectura solo haria parpadear el panel.
+            self.etiquetas.hide()
         QTimer.singleShot(0, self.lector_recompensas.leer_ahora)
 
     def leer_cursor(self) -> None:
@@ -1240,9 +1272,16 @@ class VentanaOverlay(QWidget):
         else:
             self.etiquetas.mostrar(_a_logicas(recompensas), maestria)
         self._ultima_pintada = (time.time(), len(recompensas))
-        desde = f"{(time.monotonic() - self._t_reliquia) * 1000:.0f} ms" if self._t_reliquia else "?"
-        log.info("Reliquia: completar %.1f ms, pintar %.1f ms; nombres en pantalla %s desde el aviso de EE.log",
-                 t_completar * 1000, (time.perf_counter() - t0) * 1000, desde)
+        ahora = time.monotonic()
+        if self._t_pintadas is None:
+            self._t_pintadas = ahora
+        desde = f"{(ahora - self._t_reliquia) * 1000:.0f} ms" if self._t_reliquia else "?"
+        desde_pantalla = (
+            f" (~{(ahora - self._t_pantalla) * 1000:.0f} ms desde que el juego pinto la pantalla)"
+            if self._t_pantalla is not None else ""
+        )
+        log.info("Reliquia: completar %.1f ms, pintar %.1f ms; nombres en pantalla %s desde el aviso de EE.log%s",
+                 t_completar * 1000, (time.perf_counter() - t0) * 1000, desde, desde_pantalla)
 
     def _veredicto_recompensas(self, recompensas: list, veredicto) -> None:
         """Llega despues, con los precios: solo añade la marca de "mejor" a lo que ya se ve."""

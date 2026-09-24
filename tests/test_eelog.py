@@ -78,3 +78,32 @@ def test_el_vigilante_emite_eventos_y_pistas_en_orden():
 def test_los_marcadores_documentados_siguen_reconocidos():
     for marcador, evento in eelog.EVENTOS.items():
         assert clasificar(f"1.0 Script [Info]: {marcador}") == evento
+
+
+def test_el_reloj_estima_lo_que_una_linea_espero_en_el_buffer():
+    """El juego vuelca EE.log a rafagas: una linea escrita en 100,0 s que se lee
+    a la vez que otra escrita en 104,8 s llevaba 4,8 s en el buffer."""
+    reloj = eelog.RelojEELog()
+    assert reloj.retraso("Sys [Diag]: sin marca de tiempo", ahora=1000.0) is None
+    assert reloj.retraso("100.000 Script [Info]: puntual", ahora=1000.0) == 0.0
+    # Llega 4,8 s despues de escribirse (junto con una linea recien escrita).
+    assert abs(reloj.retraso("100.000 Script [Info]: Got rewards", ahora=1004.8) - 4.8) < 1e-6
+    assert reloj.retraso("104.800 Script [Info]: puntual", ahora=1004.8) == 0.0
+    # Una linea que llega mas puntual que todas las anteriores baja el desfase.
+    assert reloj.retraso("110.000 Script [Info]: mas puntual", ahora=1009.9) == 0.0
+    assert abs(reloj.retraso("110.000 Script [Info]: otra", ahora=1010.0) - 0.1) < 1e-6
+    reloj.reiniciar()
+    assert reloj.retraso("1.000 Script [Info]: el juego arranco de nuevo", ahora=2000.0) == 0.0
+
+
+def test_el_vigilante_anota_el_retraso_de_cada_evento(tmp_path):
+    vigilante = VigilanteEELog(tmp_path / "EE.log")
+    vigilante.reloj.retraso("404.000 Script [Info]: puntual", ahora=1000.0)
+    eventos: list[str] = []
+    vigilante.evento.connect(eventos.append)
+    vigilante._procesar([ABIERTA, GOT])
+    assert eventos == ["reliquia_abierta", "reliquia_recompensas"]
+    retrasos = vigilante.retrasos
+    assert set(retrasos) == {"reliquia_abierta", "reliquia_recompensas"}
+    # Las dos llegaron juntas, asi que la escrita antes (404,207) lleva 0,2 s mas esperando.
+    assert abs((retrasos["reliquia_abierta"] - retrasos["reliquia_recompensas"]) - 0.202) < 1e-3

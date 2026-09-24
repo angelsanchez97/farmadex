@@ -128,6 +128,42 @@ def leer_cabecera(ruta: Path) -> Cabecera:
     return cabecera
 
 
+# Cada linea empieza por los segundos desde que arranco el juego: "3032.882 Script ...".
+RE_MARCA_TIEMPO = re.compile(r"^(\d+\.\d+) ")
+
+
+class RelojEELog:
+    """Estima cuanto llevaba escrita una linea cuando se ha leido.
+
+    El juego escribe EE.log con un buffer y lo vuelca a rafagas. Medido sobre un
+    EE.log real (septiembre de 2026): "Relic rewards initialized" llego al instante
+    y "Got rewards", escrita 0,6 s despues, tardo 4,8 s en aparecer; de 28 lineas
+    "Mission Succeeded", 21 llegaron en menos de 100 ms y el resto entre 1,4 y 6,9 s.
+    Restando la marca de la linea al reloj de pared sale un desfase que es minimo
+    en las lineas que llegan sin esperar; el minimo visto es el desfase real, y lo
+    que cada linea se aleja de el es lo que ha esperado en el buffer (mas la
+    latencia del sondeo). Hasta que llega una linea puntual, el retraso es una cota
+    inferior: la primera linea vista siempre da 0.
+    """
+
+    def __init__(self) -> None:
+        self.desfase: float | None = None
+
+    def reiniciar(self) -> None:
+        """Al reiniciarse el juego las marcas vuelven a empezar de cero."""
+        self.desfase = None
+
+    def retraso(self, linea: str, ahora: float) -> float | None:
+        """Segundos que la linea llevaba escrita en `ahora` (time.time()); None sin marca."""
+        marca = RE_MARCA_TIEMPO.match(linea)
+        if not marca:
+            return None
+        desfase = ahora - float(marca.group(1))
+        if self.desfase is None or desfase < self.desfase:
+            self.desfase = desfase
+        return desfase - self.desfase
+
+
 def clasificar(linea: str) -> str | None:
     """Devuelve el nombre del evento, o None si la linea no interesa."""
     for marcador, evento in EVENTOS.items():
@@ -286,12 +322,17 @@ class VigilanteEELog(QThread):
 
     # Cada cuanto se mira si EE.log ha crecido. Es el primer trozo del retraso entre
     # que el juego pinta las recompensas y que se leen: con 0,5 s se esperaba de
-    # media 250 ms a ciegas. Un stat() cada 100 ms no se nota.
-    INTERVALO = 0.1
+    # media 250 ms a ciegas; con 0,1 s, 50 ms. Un stat() cada 50 ms no se nota.
+    INTERVALO = 0.05
 
     def __init__(self, ruta: str | Path, parent=None, ruta_por_defecto: str | Path | None = None):
         super().__init__(parent)
         self.ruta = Path(ruta)
+        self.reloj = RelojEELog()
+        # Cuanto llevaba escrita la ultima linea de cada evento al leerse (segundos).
+        # Lo escribe este hilo antes de emitir el evento y lo lee el de la ventana
+        # al recibirlo, solo para el registro.
+        self.retrasos: dict[str, float] = {}
         # Donde escribe el juego si nadie ha tocado la configuracion. Si la ruta
         # configurada no existe pero esta si (config.json copiado de otro equipo, o
         # editado a mano), se pasa a esta en vez de esperar para siempre en silencio.
@@ -336,6 +377,7 @@ class VigilanteEELog(QThread):
                 elif tamano < posicion:
                     log.info("EE.log se ha reiniciado (el juego se ha vuelto a abrir)")
                     posicion = 0
+                    self.reloj.reiniciar()
                     # La cabecera se escribe de golpe al arrancar; un segundo basta.
                     time.sleep(1)
                     self._anunciar_cabecera()
@@ -367,10 +409,16 @@ class VigilanteEELog(QThread):
 
     def _procesar(self, lineas: list[str]) -> None:
         """Emite, en el orden del fichero, los eventos y las pistas de las lineas nuevas."""
+        ahora = time.time()
         for linea in lineas:
+            retraso = self.reloj.retraso(linea, ahora)
             evento = clasificar(linea)
             if evento:
-                log.info("EE.log: %s", evento)
+                if retraso is None:
+                    log.info("EE.log: %s", evento)
+                else:
+                    self.retrasos[evento] = retraso
+                    log.info("EE.log: %s (el juego la escribio hace %.0f ms)", evento, retraso * 1000)
                 self._estado.eventos += 1
                 self._estado.ultimo_evento, self._estado.ultimo_evento_en = evento, time.time()
                 self.evento.emit(evento)

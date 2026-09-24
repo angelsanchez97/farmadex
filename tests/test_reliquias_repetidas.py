@@ -147,7 +147,9 @@ def test_tres_reliquias_seguidas_se_leen_todas(escenario, primera):
     assert [r.nombre for r in resultado_2] == ["Mirage Prime Systems"]
     assert [r.nombre for r in resultado_3] == ["Mirage Prime Systems"]
     assert eventos.count("reliquia_recompensas") == 3
-    assert lector._ocupado is False
+    # Cada pantalla dispara dos lecturas (una por marcador); la segunda puede seguir
+    # en el hilo de captura al cerrarse la ultima. Lo que importa es que termine.
+    assert _esperar(lambda: lector._ocupado is False, 1.0)
 
 
 def test_la_recompensa_que_da_eelog_decide_lo_que_el_ocr_deja_en_empate(escenario):
@@ -250,3 +252,27 @@ def test_una_segunda_lectura_peor_no_pisa_a_la_buena():
     mejor = [Recompensa(5, "Otra", "Plano De Chasis De Citrine Prime", (740, 490, 250, 50))]
     juntas = conservar_mejores(primera, mejor)
     assert [r.item_id for r in juntas] == [1, 2, 5]
+
+
+def test_el_disparador_lee_con_el_primer_marcador_de_la_pantalla():
+    """"Relic rewards initialized" llega al instante; "Got rewards", escrita 0,6 s
+    despues, tardo 4,8 s en un EE.log real. Con el primero ya se esta mirando."""
+    _app()
+    disparador = DisparadorAutomatico(True)
+    disparador.ESPERA_MS = 1
+    disparos: list[float] = []
+    disparador.disparar.connect(lambda: disparos.append(time.monotonic()))
+    disparador.evento("reliquia_abierta")
+    assert _esperar(lambda: len(disparos) == 1, 1.0)
+    disparador.evento("reliquia_recompensas")  # el segundo marcador sigue disparando (confirmacion)
+    assert _esperar(lambda: len(disparos) == 2, 1.0)
+    disparador.evento("reliquia_abierta")
+    disparador.evento("reliquia_cerrada")  # cerrada antes de la espera: no se lee
+    time.sleep(0.05)
+    _app().processEvents()
+    assert len(disparos) == 2
+    disparador.activo = False
+    disparador.evento("reliquia_abierta")
+    time.sleep(0.05)
+    _app().processEvents()
+    assert len(disparos) == 2
