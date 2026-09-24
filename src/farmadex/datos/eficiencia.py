@@ -30,7 +30,7 @@ CARGA = 1.5
 # completarlas, sin contar la carga. Si tienen rotacion (Rescate, Escaramuza), la
 # rotacion la decide la partida y no cuesta mas tiempo.
 UNA_VEZ = {
-    "Capture": 3.0,
+    "Capture": 1.0,  # el usuario (2026-09-24): "una captura se tarda mas o menos 1 minuto"
     "Exterminate": 6.0,
     "Extermination": 6.0,
     "Sabotage": 7.0,
@@ -93,7 +93,7 @@ POR_TRAMOS = {
 # pantalla de elegir recompensa. Exterminio seria ~3 min mas; el tipo de fisura lo
 # decide el juego cada hora, asi que se toma la rapida, que es la que se busca.
 FISURA_REACTIVO = 1.0
-FISURA = UNA_VEZ["Capture"] + FISURA_REACTIVO + CARGA  # 5.5 min por reliquia abierta
+FISURA = UNA_VEZ["Capture"] + FISURA_REACTIVO + CARGA  # 3.5 min por reliquia abierta
 
 # Modos que no se pueden estimar: Conclave es PvP y depende de la partida.
 NO_ESTIMABLES = {"Conclave"}

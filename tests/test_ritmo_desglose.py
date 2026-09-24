@@ -69,7 +69,7 @@ def test_desglose_de_formido_cuadra_con_lo_que_se_ensena(config_temporal):
 @pytest.mark.parametrize(
     ("fila", "trozo"),
     [
-        ({"tipo": "mision", "modo": "Capture", "probabilidad": 5.0}, "~4.5 min por partida, contando la carga."),
+        ({"tipo": "mision", "modo": "Capture", "probabilidad": 5.0}, "~2.5 min por partida, contando la carga."),
         ({"tipo": "mision", "modo": "Survival", "rotacion": "C", "probabilidad": 10.0},
          "hasta la rotacion C: 4 rotaciones de ~5 min"),
         ({"tipo": "mision", "modo": "Survival", "rotacion": "A", "probabilidad": 10.0},
@@ -117,14 +117,14 @@ def test_desglose_prime_con_el_modelo_de_ruta_prime(config_temporal):
              "reliquias": [{"probabilidad_mision": 25.0, "probabilidad": 20.0}]}
     intento, _ = eficiencia.minutos_por_intento(sitio)
     sitio["minutos"] = round(ruta_prime.minutos_pieza(intento, [(25.0, 20.0)], 4), 1)
-    assert eficiencia.texto_minutos(sitio["minutos"]) == "~48 min"
+    assert eficiencia.texto_minutos(sitio["minutos"]) == "~45 min"
     lineas = desglose_tiempo.texto_prime(sitio, 4, "Radiante, escuadra de 4").splitlines()
     assert lineas == [
         "~11.5 min por partida (2 rotaciones A de ~5 min y la carga), que dan 2 intentos: ~5.8 min por intento.",
         "25.0% de que caiga alguna reliquia util -> ~23 min por reliquia.",
-        "+ ~5.5 min por fisura para abrirla.",
+        "+ ~3.5 min por fisura para abrirla.",
         "Radiante, escuadra de 4: 59% de sacar la pieza en cada fisura -> ~1.7 fisuras de media.",
-        "(~23 + ~5.5 min) x ~1.7 = ~48 min.",
+        "(~23 + ~3.5 min) x ~1.7 = ~45 min.",
         "Es una media: puede caer antes o tardar mas.",
     ]
 
@@ -205,11 +205,11 @@ def test_la_ficha_se_recalcula_al_cambiar_el_ritmo(app, con, prime, tmp_path, mo
     try:
         ventana.buscador.con = con
         ventana.buscador.abrir(prime["plano"])
-        assert "~2.4 h" in ventana.buscador.ficha.toPlainText()  # 146.8 min
+        assert "~83 min" in ventana.buscador.ficha.toPlainText()  # 82.9 min
         ventana.ajustes.ritmo.setCurrentIndex(ventana.ajustes.ritmo.findData("rapido"))
         assert config.cargar()["ritmo_juego"] == "rapido"
         texto = ventana.buscador.ficha.toPlainText()
-        assert "~1.7 h" in texto and "~2.4 h" not in texto  # 146.8 x 0.7 = 102.8 min
+        assert "~58 min" in texto and "~83 min" not in texto  # 82.9 x 0.7 = 58 min
     finally:
         ventana.hide()
 
@@ -236,16 +236,16 @@ def test_primes_donde_farmear_con_relleno_y_desglose(app, con, prime, tmp_path, 
     html = pestana.html_resultado(datos)
     assert html.count("name='relleno-") == len(datos["misiones"])
     tooltips = _tooltips(html)
-    # Captura: 4,5 min por partida, 10 % de reliquia -> 45 min; + 5,5 de fisura; 34 % por
-    # fisura en escuadra de 4 -> 2,9 fisuras: (45 + 5,5) x 2,9 = ~2,4 h.
-    primero = next(x for x in tooltips if "~4.5 min por partida" in x)
-    assert "10.0% de que caiga alguna reliquia util -&gt; ~45 min por reliquia." in primero
+    # Captura: 2,5 min por partida, 10 % de reliquia -> 25 min; + 3,5 de fisura; 34 % por
+    # fisura en escuadra de 4 -> 2,9 fisuras: (25 + 3,5) x 2,9 = ~83 min.
+    primero = next(x for x in tooltips if "~2.5 min por partida" in x)
+    assert "10.0% de que caiga alguna reliquia util -&gt; ~25 min por reliquia." in primero
     assert "34% de sacar la pieza en cada fisura -&gt; ~2.9 fisuras de media." in primero
-    assert "(~45 + ~5.5 min) x ~2.9 = ~2.4 h." in primero
+    assert "(~25 + ~3.5 min) x ~2.9 = ~83 min." in primero
 
     # Con ritmo rapido la pestana recalcula aunque tenga misiones en cache.
     _ritmo(config_temporal, "rapido")
-    assert pestana.calcular()["misiones"][0]["minutos"] == pytest.approx(146.8 * 0.7, abs=0.1)
+    assert pestana.calcular()["misiones"][0]["minutos"] == pytest.approx(82.9 * 0.7, abs=0.1)
 
 
 def test_textos_de_ritmo_traducidos():

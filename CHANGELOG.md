@@ -1,5 +1,13 @@
 # Cambios
 
+## 0.3.2
+
+- Las Capturas cuentan ahora como lo que son: una misión de un minuto. Una
+  Captura con poca probabilidad sale por delante de misiones más largas con más
+  probabilidad, porque de media se consigue antes.
+- Las fisuras para abrir reliquias también se estiman más cortas, así que los
+  tiempos de la pestaña Primes bajan.
+
 ## 0.3.1
 
 - Arreglado el aviso "Datos sin actualizar: No se pudo descargar ... i18n.json

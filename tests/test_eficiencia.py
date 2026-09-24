@@ -29,8 +29,8 @@ def test_captura_corta_gana_a_supervivencia_rotacion_c_con_mas_porcentaje():
     for f in (captura, supervivencia):
         f["probabilidad_efectiva"] = f["probabilidad"]
         eficiencia.estimar(f)
-    # Captura: 3 min + 1.5 de carga = 4.5 por intento -> 45 min de media.
-    assert captura["minutos_intento"] == 4.5 and captura["minutos_medios"] == 45.0
+    # Captura: 1 min + 1.5 de carga = 2.5 por intento -> 25 min de media.
+    assert captura["minutos_intento"] == 2.5 and captura["minutos_medios"] == 25.0
     # Rotacion C: cuatro rotaciones de 5 min + carga = 21.5 por intento -> 107.5 min.
     assert supervivencia["minutos_intento"] == 21.5 and supervivencia["minutos_medios"] == 107.5
     assert sorted([supervivencia, captura], key=eficiencia.clave_orden)[0] is captura
@@ -188,7 +188,7 @@ def test_recurso_de_planeta_dice_donde_farmearlo(con):
     assert [p["planeta_en"] for p in datos["planetas"]] == ["Jupiter"]
     # Las misiones mas cortas del planeta primero: Captura antes que Sabotaje.
     assert [(n["donde"], n["mision"], n["minutos"]) for n in datos["nodos"]] == [
-        ("Ananke, Jupiter", "Captura", 3.0), ("Galilea, Jupiter", "Sabotaje", 7.0),
+        ("Ananke, Jupiter", "Captura", 1.0), ("Galilea, Jupiter", "Sabotaje", 7.0),
     ]
     assert [j["origen_texto"] for j in datos["jefes"]] == ["Alad V"]
 

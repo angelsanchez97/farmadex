@@ -90,18 +90,18 @@ def test_reliquias_de_media_solo_y_en_escuadra():
 
 
 def test_una_pieza_al_10_por_ciento_con_numeros_a_mano(con, prime):
-    assert eficiencia.FISURA == 5.5
+    assert eficiencia.FISURA == 3.5
     solo = ruta_prime.ruta_pieza(con, prime["plano"], "Radiant", 1)
     escuadra = ruta_prime.ruta_pieza(con, prime["plano"], "Radiant", 4)
-    # Captura: 3 + 1.5 min por intento, reliquia al 10 % -> 45 min por reliquia.
-    # Solo: 10 reliquias x (45 + 5.5) = 505 min. Escuadra: 2.908 x 50.5 = 146.8 min.
-    assert solo["minutos"] == 505.0
-    assert escuadra["minutos"] == 146.8
+    # Captura: 1 + 1.5 min por intento, reliquia al 10 % -> 25 min por reliquia.
+    # Solo: 10 reliquias x (25 + 3.5) = 285 min. Escuadra: 2.908 x 28.5 = 82.9 min.
+    assert solo["minutos"] == 285.0
+    assert escuadra["minutos"] == 82.9
     assert escuadra["mision"]["mision"] == "Captura"
-    assert escuadra["mision"]["minutos_reliquia"] == 45.0
+    assert escuadra["mision"]["minutos_reliquia"] == 25.0
     assert escuadra["reliquia"]["nombre_en"] == "Lith T1 Relic"
-    # Intacta (2 %) en solitario: 50 reliquias x 50.5 = 2525 min.
-    assert ruta_prime.ruta_pieza(con, prime["plano"], "Intact", 1)["minutos"] == 2525.0
+    # Intacta (2 %) en solitario: 50 reliquias x 28.5 = 1425 min.
+    assert ruta_prime.ruta_pieza(con, prime["plano"], "Intact", 1)["minutos"] == 1425.0
 
 
 def test_gana_el_menor_porcentaje_de_mision_si_tarda_menos(con, prime):
@@ -110,8 +110,8 @@ def test_gana_el_menor_porcentaje_de_mision_si_tarda_menos(con, prime):
     assert [m["modo"] for m in misiones] == ["Capture", "Survival"]
     captura, superv = misiones
     assert captura["probabilidad"] == 10.0 and superv["probabilidad"] == 30.0
-    # (21.5 + 5.5 x 0.3) / (0.3 x 0.3439) = 224.4 min, frente a 146.8.
-    assert superv["minutos"] == 224.4 and captura["minutos"] < superv["minutos"]
+    # (21.5 + 3.5 x 0.3) / (0.3 x 0.3439) = 218.6 min, frente a 82.9.
+    assert superv["minutos"] == 218.6 and captura["minutos"] < superv["minutos"]
     # Dos nodos con la misma tabla y la misma duracion son una sola fila.
     assert captura["sitios"] == ["Captura, Earth", "Gemela, Mars"]
 
@@ -139,7 +139,7 @@ def test_varias_piezas_cuentan_la_siguiente_cualquiera(con, prime):
     assert captura["probabilidad"] == 20.0
     p_plano = ruta_prime.probabilidad_por_fisura(10.0, 4)
     p_chasis = ruta_prime.probabilidad_por_fisura(20.0, 4)
-    esperado = (4.5 + 5.5 * 0.2) / (0.1 * p_plano + 0.1 * p_chasis)
+    esperado = (2.5 + 3.5 * 0.2) / (0.1 * p_plano + 0.1 * p_chasis)
     assert captura["minutos"] == round(esperado, 1)
     assert captura["minutos"] < ruta_prime.ruta_pieza(con, prime["plano"], "Radiant", 4)["minutos"]
     assert captura["reliquias"][0]["nombre_en"] == "Meso T3 Relic"  # la que mas aporta, primero
@@ -157,7 +157,7 @@ def test_catalogo_separa_objetos_sueltos_y_boveda(con, prime):
 def test_mejor_ruta_elige_por_tiempo_hasta_la_pieza(con, prime):
     ruta = relaciones.mejor_ruta(con, prime["plano"])
     assert ruta["reliquia"]["nombre_en"] == "Lith T1 Relic"
-    assert ruta["mision"]["mision"] == "Captura" and ruta["minutos_pieza"] == 146.8
+    assert ruta["mision"]["mision"] == "Captura" and ruta["minutos_pieza"] == 82.9
 
 
 def test_las_preferencias_salen_de_la_configuracion(con, prime, monkeypatch, tmp_path):
@@ -169,4 +169,4 @@ def test_las_preferencias_salen_de_la_configuracion(con, prime, monkeypatch, tmp
     ajustes[ruta_prime.CLAVE_ESCUADRA] = 1
     ajustes[ruta_prime.CLAVE_REFINAMIENTO] = "Nada"
     assert ruta_prime.preferencias() == ("Radiant", 1)
-    assert ruta_prime.ruta_pieza(con, prime["plano"])["minutos"] == 505.0
+    assert ruta_prime.ruta_pieza(con, prime["plano"])["minutos"] == 285.0
