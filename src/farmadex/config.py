@@ -52,6 +52,9 @@ POR_DEFECTO = {
     # Como se ensenan las recompensas de reliquia: "etiquetas" (pequenas, junto a cada
     # tarjeta) o "panel" (una tarjeta por recompensa bajo las del juego, con miniatura).
     "estilo_recompensas": "etiquetas",
+    # Que destacar en esas recompensas (captura/prioridad.py): "me_falta", "platino",
+    # "ducados" o "equilibrado" (el criterio de antes de existir el ajuste).
+    "prioridad_recompensas": "me_falta",
     # Lectura pasiva de las pantallas del menu (captura + OCR solo con el juego delante).
     "perfil_pasivo": True,
     "inventario_pasivo": False,  # sin calibrar con capturas del usuario: apagado

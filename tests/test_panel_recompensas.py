@@ -171,3 +171,52 @@ def test_con_dos_recompensas_iguales_la_marca_de_mejor_no_se_pierde():
     desordenadas = [llegadas[3], llegadas[2], llegadas[0], llegadas[1]]
     panel.marcar_veredicto(desordenadas, SimpleNamespace(seguro=False))
     assert sum(r.mejor for r in panel.recompensas) == 1
+
+
+def test_ajustes_elige_que_destacar_con_un_desplegable_y_se_guarda(monkeypatch, tmp_path):
+    from PySide6.QtCore import Qt
+
+    from farmadex.captura import prioridad as prio
+    from farmadex.ui import pestana_ajustes
+
+    monkeypatch.setenv("FARMADEX_DATOS", str(tmp_path))
+    _app()
+    monkeypatch.setattr(pestana_ajustes, "guardar", lambda cfg: None)
+    ajustes = pestana_ajustes.PestanaAjustes()
+    combo = ajustes.prioridad_recompensas
+    assert combo.currentData() == prio.ME_FALTA  # por defecto, "Lo que me falta"
+    assert [combo.itemData(i) for i in range(combo.count())] == list(prio.CLAVES)
+    assert all(combo.itemData(i, Qt.ToolTipRole) for i in range(combo.count()))  # una linea por opcion
+    recibidos = []
+    ajustes.prioridad_recompensas_cambiada.connect(recibidos.append)
+    combo.setCurrentIndex(combo.findData(prio.PLATINO))
+    assert recibidos == [prio.PLATINO] and ajustes.config["prioridad_recompensas"] == prio.PLATINO
+
+
+def test_las_tres_variantes_del_panel_se_pintan_con_el_motivo_del_preajuste():
+    from PySide6.QtCore import QPoint
+    from PySide6.QtGui import QImage, QPainter
+
+    from farmadex.captura import prioridad as prio
+    from farmadex.ui import panel_recompensas as modulo
+
+    _app()
+    for variante in modulo.VARIANTES:
+        for prioridad in prio.CLAVES:
+            panel = PanelRecompensas()
+            panel.variante, panel.prioridad = variante, prioridad
+            panel.resize(1920, 1080)
+            recompensas = _recompensas()
+            recompensas[0].objetivo, recompensas[0].mejor = "0/1", True
+            recompensas[1].platino, recompensas[1].criterio_platino = 12, "minimo"
+            panel.mostrar(recompensas, {}, {})
+            panel.resize(1920, 1080)
+            lienzo = QImage(1920, 1080, QImage.Format_ARGB32)
+            lienzo.fill(0)
+            pintor = QPainter(lienzo)
+            panel.render(pintor, QPoint(0, 0))
+            pintor.end()
+            rect = panel.rectangulo_panel()
+            assert rect.height() == modulo.ALTOS[variante] + 2 * modulo.HUECO + 24
+            assert lienzo.pixelColor(rect.center()).alpha() > 0
+            panel.hide()

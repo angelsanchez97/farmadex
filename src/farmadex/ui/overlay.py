@@ -40,6 +40,7 @@ from ..actualizador.datos import ComprobadorDatos
 from ..actualizador.descarga import DescargadorApp
 from ..actualizador.local import ComprobadorLocal, instalar
 from ..captura import pantalla
+from ..captura import prioridad as prioridad_recompensas
 from ..captura.comparador import ServicioComparador
 from ..captura.cursor import LectorCursor
 from ..captura.lector_pasivo import LectorPasivo
@@ -287,6 +288,11 @@ class VentanaOverlay(QWidget):
         self.etiquetas = (
             self.panel_recompensas if self.config.get("estilo_recompensas") == "panel" else self.etiquetas_pequenas
         )
+        # Que destacar (Ajustes > "Al abrir reliquias, destacar"): lo usan las dos formas
+        # de pintar para el motivo grande de cada tarjeta y el comparador para elegir.
+        self.prioridad_recompensas = prioridad_recompensas.normalizar(self.config.get("prioridad_recompensas"))
+        for vista in (self.etiquetas_pequenas, self.panel_recompensas):
+            vista.prioridad = self.prioridad_recompensas
         self.vigilante: VigilanteEELog | None = None
         self._version_encontrada = None
         # Lo que se sabe del juego: cabecera de EE.log (build, modo) y modo de pantalla.
@@ -518,6 +524,7 @@ class VentanaOverlay(QWidget):
             lambda activo: setattr(self.disparador, "activo", activo)
         )
         self.ajustes.estilo_recompensas_cambiado.connect(self.cambiar_estilo_recompensas)
+        self.ajustes.prioridad_recompensas_cambiada.connect(self.cambiar_prioridad_recompensas)
 
         # Botin que EE.log deja claro (reliquia en solitario) va directo a los objetivos.
         self.botin = Botin(self._sumar_botin, bool(self.config.get("botin_eelog_auto", True)))
@@ -555,7 +562,7 @@ class VentanaOverlay(QWidget):
         if self.hilo_comparador is not None:
             return
         self.hilo_comparador = QThread(self)
-        self.servicio_comparador = ServicioComparador(escuadra=True)
+        self.servicio_comparador = ServicioComparador(escuadra=True, prioridad=self.prioridad_recompensas)
         self.servicio_comparador.moveToThread(self.hilo_comparador)
         self.hilo_comparador.started.connect(self.servicio_comparador.iniciar)
         self.lector_recompensas.leidas.connect(self.servicio_comparador.comparar)
@@ -1313,6 +1320,17 @@ class VentanaOverlay(QWidget):
         """Ajustes: "etiquetas" o "panel". Lo que este en pantalla se esconde."""
         self.etiquetas.hide()
         self.etiquetas = self.panel_recompensas if estilo == "panel" else self.etiquetas_pequenas
+
+    def cambiar_prioridad_recompensas(self, prioridad: str) -> None:
+        """Ajustes: que destacar. Vale desde la siguiente reliquia; lo que se ve se repinta
+        con el motivo nuevo, pero la marca de "mejor" es del veredicto que ya llego."""
+        self.prioridad_recompensas = prioridad_recompensas.normalizar(prioridad)
+        for vista in (self.etiquetas_pequenas, self.panel_recompensas):
+            vista.prioridad = self.prioridad_recompensas
+            vista.update()
+        servicio = getattr(self, "servicio_comparador", None)
+        if servicio is not None:
+            servicio.prioridad = self.prioridad_recompensas
 
     def _extras_recompensas(self, recompensas: list, con) -> dict[int, dict]:
         """Lo que el panel ensena ademas: miniatura, tiempo medio de farmeo y cuantas tienes."""

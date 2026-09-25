@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import NOMBRE_APP, VERSION, idiomas
+from ..captura import prioridad as prio
 from ..config import DIR_BASE, cargar, guardar
 from ..datos import eficiencia, indice
 from ..hotkeys import parsear
@@ -123,6 +124,15 @@ class PestanaAjustes(QWidget):
             max(0, self.estilo_recompensas.findData(self.config.get("estilo_recompensas") or "etiquetas"))
         )
         self.estilo_recompensas.currentIndexChanged.connect(self._cambiar_estilo_recompensas)
+        # Un solo desplegable con preajustes: una lista ordenable de criterios no la toca
+        # nadie, y lo que se pidio fue ver de un vistazo lo importante.
+        self.prioridad_recompensas = QComboBox()
+        for clave, _texto, _ayuda in prio.PREAJUSTES:
+            self.prioridad_recompensas.addItem("", clave)
+        self._textos_prioridad()
+        self.prioridad_recompensas.setCurrentIndex(max(0, self.prioridad_recompensas.findData(
+            prio.normalizar(self.config.get("prioridad_recompensas")))))
+        self.prioridad_recompensas.currentIndexChanged.connect(self._cambiar_prioridad_recompensas)
         self.ocr_auto = QCheckBox()
         self._fijo(self.ocr_auto.setText, "Leer sola la pantalla de recompensas de reliquia")
         self.ocr_auto.setChecked(bool(self.config["ocr_reliquias_auto"]))
@@ -148,6 +158,7 @@ class PestanaAjustes(QWidget):
         self._fila(aspecto, "Disposicion de Mundo", self.diseno_mundo)
         self._fila(aspecto, "Opacidad del fondo", self.opacidad)
         self._fila(aspecto, "Recompensas de reliquia", self.estilo_recompensas)
+        self._fila(aspecto, "Al abrir reliquias, destacar", self.prioridad_recompensas)
         aspecto.addRow(self.ocr_auto)
         aspecto.addRow(self.perfil_pasivo)
         aspecto.addRow(self.inventario_pasivo)
@@ -405,6 +416,7 @@ class PestanaAjustes(QWidget):
         self._textos_ritmo()
         self.estilo_recompensas.setItemText(0, t("Etiquetas pequenas junto a cada tarjeta"))
         self.estilo_recompensas.setItemText(1, t("Panel con una tarjeta por recompensa"))
+        self._textos_prioridad()
         self.aviso_hotkey.setText("")
         self.estado_version(t("Estas en la ultima version"))
         self.refrescar_estado()
@@ -474,6 +486,22 @@ class PestanaAjustes(QWidget):
         estilo = self.estilo_recompensas.currentData()
         self._guardar("estilo_recompensas", estilo)
         self.estilo_recompensas_cambiado.emit(estilo)
+
+    prioridad_recompensas_cambiada = Signal(str)
+
+    def _textos_prioridad(self) -> None:
+        """Nombre y tooltip de una linea de cada preajuste, en el idioma activo."""
+        for i, (_clave, texto, ayuda) in enumerate(prio.PREAJUSTES):
+            self.prioridad_recompensas.setItemText(i, t(texto))
+            self.prioridad_recompensas.setItemData(i, t(ayuda), Qt.ToolTipRole)
+        actual = max(0, self.prioridad_recompensas.currentIndex())
+        self.prioridad_recompensas.setToolTip(t(prio.PREAJUSTES[actual][2]))
+
+    def _cambiar_prioridad_recompensas(self, indice: int) -> None:
+        clave = prio.normalizar(self.prioridad_recompensas.currentData())
+        self.prioridad_recompensas.setToolTip(t(prio.PREAJUSTES[max(0, indice)][2]))
+        self._guardar("prioridad_recompensas", clave)
+        self.prioridad_recompensas_cambiada.emit(clave)
 
     def _cambiar_opacidad(self, valor: int) -> None:
         self._guardar("overlay_opacidad", valor / 100)

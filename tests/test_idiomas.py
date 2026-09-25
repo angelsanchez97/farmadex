@@ -143,7 +143,7 @@ def _claves_del_codigo() -> set[str]:
             if isinstance(literal, ast.Constant) and isinstance(literal.value, str):
                 claves.add(literal.value)
     # Textos que llegan a t() desde constantes, no como literal en la llamada.
-    from farmadex.captura import reliquias
+    from farmadex.captura import prioridad, reliquias
     from farmadex.datos import modos_mision
     from farmadex.online import worldstate
     from farmadex.ui import glosario, pestana_buscador, pestana_mundo, pestana_perfil, pestana_primes, widgets
@@ -163,6 +163,8 @@ def _claves_del_codigo() -> set[str]:
         pestana_primes.NOMBRES_REFINAMIENTO.values(),
         # Que hacer y como van las recompensas de cada tipo de mision.
         modos_mision.textos(),
+        # Preajustes de "Al abrir reliquias, destacar": nombre y tooltip de cada uno.
+        (texto for _clave, nombre, ayuda in prioridad.PREAJUSTES for texto in (nombre, ayuda)),
     ):
         claves.update(grupo)
     return claves

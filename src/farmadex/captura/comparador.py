@@ -77,6 +77,7 @@ from PySide6.QtCore import QObject, QTimer, Signal, Slot
 
 from ..idiomas import t
 from ..registro_log import obtener
+from . import prioridad as prio
 from .reliquias import SIN_IDENTIFICAR, Recompensa, completar
 
 log = obtener("comparador")
@@ -118,6 +119,12 @@ class Puntuacion:
     ducados: int | None = None
     rareza: str | None = None
     objetivo: str = ""
+    # Para los preajustes de `prioridad` (copiados de la `Recompensa` completada).
+    vaulted: bool = False
+    tienes: int | None = None
+    set_tengo: int = 0
+    set_total: int = 0
+    maestria_estado: str | None = None
     valor: float | None = None  # platino equivalente; None = no se sabe
     via: str = ""  # "platino", "ducados", "nada" o "" si desconocido
     confianza: str = CONFIANZA_NINGUNA
@@ -144,6 +151,7 @@ class Veredicto:
     seguro: bool  # False = "probablemente", falta algun dato para afirmarlo
     motivo: str
     escuadra: bool = True
+    prioridad: str = prio.EQUILIBRADO
     tiempos_ms: dict[str, float] = field(default_factory=dict)
 
     @property
@@ -201,6 +209,7 @@ def puntuar(
     escuadra: bool = True,
     plazo_s: float = PLAZO_PRECIOS_S,
     reloj: Callable[[], float] = time.perf_counter,
+    prioridad: str = prio.EQUILIBRADO,
 ) -> Veredicto:
     """Completa, pone precio, puntua y elige. Deja el resultado tambien en cada `Recompensa`."""
     inicio = reloj()
@@ -217,6 +226,11 @@ def puntuar(
             ducados=r.ducados,
             rareza=r.rareza or rareza_de(indice_con, r.item_id, r.ducados),
             objetivo=r.objetivo,
+            vaulted=r.vaulted,
+            tienes=r.tienes,
+            set_tengo=r.set_tengo,
+            set_total=r.set_total,
+            maestria_estado=r.maestria_estado,
         )
         for r in recompensas
     ]
@@ -252,7 +266,7 @@ def puntuar(
     t_puntuar = reloj()
     for p in puntuaciones:
         _valorar(p)
-    veredicto = decidir(puntuaciones, escuadra)
+    veredicto = decidir(puntuaciones, escuadra, prioridad)
     tiempos["puntuar"] = (reloj() - t_puntuar) * 1000
     tiempos["total"] = (reloj() - inicio) * 1000
     veredicto.tiempos_ms = tiempos
@@ -306,11 +320,94 @@ def _aplicar_precio(p: Puntuacion, precios, escuadra: bool) -> None:
         p.platino = p.platino_mediana
 
 
-def decidir(puntuaciones: list[Puntuacion], escuadra: bool = True) -> Veredicto:
-    """Elige entre puntuaciones ya valoradas y explica por que."""
-    if not puntuaciones:
-        return Veredicto([], None, False, t("no se reconocio ninguna recompensa"), escuadra)
+def decidir(
+    puntuaciones: list[Puntuacion], escuadra: bool = True, prioridad: str = prio.EQUILIBRADO
+) -> Veredicto:
+    """Elige entre puntuaciones ya valoradas y explica por que.
 
+    `prioridad` es el preajuste de Ajustes ("Al abrir reliquias, destacar"). Por
+    defecto aqui es "equilibrado", el criterio historico; la aplicacion pasa el que
+    haya elegido el usuario (ver `ServicioComparador`).
+    """
+    if not puntuaciones:
+        return Veredicto([], None, False, t("no se reconocio ninguna recompensa"), escuadra, prioridad)
+    prioridad = prio.normalizar(prioridad) if prioridad else prio.EQUILIBRADO
+    if prioridad != prio.EQUILIBRADO:
+        return _decidir_por_criterios(puntuaciones, escuadra, prioridad)
+    veredicto = _decidir_equilibrado(puntuaciones, escuadra)
+    veredicto.prioridad = prioridad
+    return veredicto
+
+
+def _decidir_por_criterios(puntuaciones: list[Puntuacion], escuadra: bool, prioridad: str) -> Veredicto:
+    """Ordena por los criterios del preajuste; el primero que distingue decide."""
+    from functools import cmp_to_key
+
+    def veredicto(mejor, seguro, motivo):
+        return Veredicto(puntuaciones, mejor, seguro, motivo, escuadra, prioridad)
+
+    identificadas = [i for i, p in enumerate(puntuaciones) if p.item_id != SIN_IDENTIFICAR]
+    if not identificadas:
+        return veredicto(None, False, t("no se identifico ninguna recompensa"))
+    # sorted es estable: a igualdad total se queda la de mas a la izquierda, como antes.
+    orden = sorted(
+        identificadas,
+        key=cmp_to_key(lambda a, b: prio.comparar(puntuaciones[b], puntuaciones[a], prioridad)),
+    )
+    mejor = puntuaciones[orden[0]]
+    criterios = prio.CRITERIOS[prioridad]
+    if not any(prio.cumple(c, mejor) for c in criterios):
+        # Ni precio, ni ducados, ni nada del usuario en ninguna: igual que en equilibrado.
+        if mejor.rareza and len(puntuaciones) > 1:
+            return veredicto(orden[0], False, t("sin precios; es la mas rara ({rareza})", rareza=mejor.rareza))
+        return veredicto(None, False, t("sin precio ni ducados de ninguna"))
+
+    segunda = puntuaciones[orden[1]] if len(orden) > 1 else None
+    decisivo = prio.criterio_decisivo(mejor, segunda, prioridad) if segunda else None
+    if decisivo is None or decisivo == "rareza":
+        # Empate en todo lo que importa (o solo una recompensa): se explica por su motivo propio.
+        decisivo = next(c for c in criterios if prio.cumple(c, mejor))
+    motivo = _motivo_criterio(decisivo, mejor)
+    seguro = True
+    if segunda is not None and prio.comparar(mejor, segunda, prioridad) == 0:
+        seguro = False
+        motivo += t("; casi empata con {nombre}", nombre=segunda.nombre)
+    if decisivo == "platino":
+        # Lo que no tiene precio podria valer mas: no se puede afirmar del todo.
+        sin_precio = [p for i, p in enumerate(puntuaciones) if i in identificadas and p.platino is None]
+        if sin_precio:
+            seguro = False
+            motivo += t("; {nombres} sin valorar", nombres=", ".join(p.nombre for p in sin_precio))
+    if len(identificadas) < len(puntuaciones):
+        seguro = False
+    return veredicto(orden[0], seguro, motivo)
+
+
+def _motivo_criterio(criterio: str, p: Puntuacion) -> str:
+    if criterio == "falta":
+        return t("cubre tu objetivo ({progreso})", progreso=p.objetivo)
+    if criterio == "set":
+        tengo, total = prio.progreso_set(p) or (0, 0)
+        return t("completa un set ({progreso})", progreso=f"{tengo}/{total}")
+    if criterio == "nueva":
+        if prio.motivo_nueva(p) == "sin_dominar":
+            return t("aun no lo has dominado")
+        return t("no lo tienes")
+    if criterio == "platino":
+        texto = t("{n} platino", n=p.platino)
+        if p.ducados:
+            texto += " (" + t("{n} ducados", n=p.ducados) + ")"
+        return texto
+    if criterio == "ducados":
+        texto = t("{n} ducados", n=p.ducados)
+        if p.platino is not None:
+            texto += " (" + t("{n} platino", n=p.platino) + ")"
+        return texto
+    return t("ninguna vale gran cosa")
+
+
+def _decidir_equilibrado(puntuaciones: list[Puntuacion], escuadra: bool) -> Veredicto:
+    """El criterio de siempre: objetivo, luego el mayor valor en platino equivalente."""
     orden = sorted(range(len(puntuaciones)), key=lambda i: puntuaciones[i].clave, reverse=True)
     # Una tarjeta sin identificar nunca es "la mejor": no se sabe ni que es.
     sin_identificar = [i for i in orden if puntuaciones[i].item_id == SIN_IDENTIFICAR]
@@ -380,9 +477,15 @@ class ServicioComparador(QObject):
 
     veredicto = Signal(list, object)  # list[Recompensa] ya completadas, Veredicto
 
-    def __init__(self, escuadra: bool = True, ruta_usuario=None, crear_market=None, parent=None):
+    def __init__(
+        self, escuadra: bool = True, ruta_usuario=None, crear_market=None, parent=None,
+        prioridad: str = prio.PRIORIDAD_POR_DEFECTO,
+    ):
         super().__init__(parent)
         self.escuadra = escuadra
+        # El preajuste de Ajustes. Lo cambia la ventana desde otro hilo asignando el
+        # atributo: es una cadena y se lee una vez por `comparar`, no hace falta cerrojo.
+        self.prioridad = prio.normalizar(prioridad)
         self.ruta_usuario = ruta_usuario
         self._crear_market = crear_market
         self._market = None
@@ -549,7 +652,8 @@ class ServicioComparador(QObject):
             en_cache = self._en_cache(recompensas)
             t0 = time.perf_counter()
             resultado = puntuar(
-                recompensas, indice_con, precios_de, usuario_con, escuadra=self.escuadra
+                recompensas, indice_con, precios_de, usuario_con, escuadra=self.escuadra,
+                prioridad=self.prioridad,
             )
             log.info(
                 "Veredicto: puntuar %.0f ms; precios de %d de %d en cache/precarga; mejor: %s",

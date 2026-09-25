@@ -9,9 +9,10 @@ from __future__ import annotations
 import sys
 
 from PySide6.QtCore import QRect, Qt, QTimer
-from PySide6.QtGui import QColor, QFont, QGuiApplication, QPainter, QPen
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QGuiApplication, QPainter, QPen
 from PySide6.QtWidgets import QWidget
 
+from ..captura import prioridad as prio
 from ..captura.reliquias import texto_platino
 from ..idiomas import t
 from ..registro_log import obtener
@@ -34,6 +35,23 @@ COLOR_MEJOR = QColor(255, 202, 40)
 COLOR_MEJOR_DUDOSO = QColor(190, 165, 100)
 
 _COLORES_MAESTRIA = {"dominado": COLOR_DOMINADO, "a_medias": COLOR_A_MEDIAS, "sin_tocar": COLOR_SIN_DOMINAR}
+
+# Un color por motivo (captura/prioridad.py), el mismo en las etiquetas y en el panel:
+# con la cuenta atras corriendo se lee antes un color que una palabra.
+COLORES_MOTIVO = {
+    "falta": QColor(92, 214, 120),  # verde: es para lo que farmeas
+    "set": QColor(64, 200, 214),  # turquesa: casi lo mismo, pero no es un objetivo
+    "nueva": QColor(176, 146, 255),  # violeta: aun no lo tienes
+    "platino": QColor(120, 190, 255),
+    "ducados": QColor(240, 190, 90),
+    "boveda": COLOR_BOVEDA,
+}
+# Lo que no se ha elegido pierde intensidad sin dejar de leerse.
+OPACIDAD_ATENUADA = 0.6
+
+
+def color_motivo(clave: str) -> QColor:
+    return COLORES_MOTIVO.get(clave, COLOR_SIN_DOMINAR)
 
 
 def emparejar(en_pantalla: list, llegadas: list) -> list[tuple] | None:
@@ -105,6 +123,7 @@ class EtiquetasRecompensas(QWidget):
         self.recompensas: list = []
         self.maestria: dict[int, tuple[str, str]] = {}
         self._seguro = True  # del ultimo veredicto recibido; sin veredicto no marca nada
+        self.prioridad = prio.PRIORIDAD_POR_DEFECTO  # la pone la ventana desde Ajustes
 
         self._temporizador = QTimer(self)
         self._temporizador.setSingleShot(True)
@@ -168,56 +187,69 @@ class EtiquetasRecompensas(QWidget):
         pintor.setRenderHint(QPainter.Antialiasing)
         fuente = QFont("Segoe UI", 11)
         fuente.setBold(True)
-        pintor.setFont(fuente)
-        metrica = pintor.fontMetrics()
+        # El motivo del preajuste va mas grande que el resto: es lo que se lee primero.
+        grande = QFont("Segoe UI", 13)
+        grande.setBold(True)
+        muy_grande = QFont("Segoe UI", 15)
+        muy_grande.setBold(True)
+        hay_mejor = any(r.mejor for r in self.recompensas)
 
-        for r in self.recompensas:
+        # La mejor se pinta la ultima: si las etiquetas se pisan (tarjetas estrechas), queda encima.
+        for r in sorted(self.recompensas, key=lambda r: r.mejor):
             x, y, ancho, alto = r.caja
-            # Cada linea lleva su color, para no adivinarlo luego por el texto.
-            lineas = [(r.nombre, COLOR_TEXTO)]
+            motivo = prio.motivo_principal(r, self.prioridad)
+            color = color_motivo(motivo.clave)
+            # Cada linea lleva su color y su letra, para no adivinarlos luego por el texto.
+            lineas = [(r.nombre, COLOR_TEXTO, fuente)]
             color_mejor = None
             if r.mejor:
-                # Se decide en segundos y con el juego de fondo: la marca va justo
-                # bajo el nombre, no al final, para que se vea de un vistazo.
                 color_mejor = COLOR_MEJOR if self._seguro else COLOR_MEJOR_DUDOSO
+                lineas.append(("\u2605 " + motivo.texto.upper(), color, muy_grande))
+                # Se decide en segundos y con el juego de fondo: la marca va justo
+                # bajo el motivo, no al final, para que se vea de un vistazo.
                 etiqueta_mejor = t("MEJOR OPCION") if self._seguro else t("Probablemente la mejor")
-                lineas.append((etiqueta_mejor, color_mejor))
+                lineas.append((etiqueta_mejor, color_mejor, fuente))
+            else:
+                lineas.append((motivo.texto.upper(), color, grande))
             detalle = []
             if r.platino is not None:
                 detalle.append(texto_platino(r))
             if r.ducados:
                 detalle.append(t("{n} ducados", n=r.ducados))
             if detalle:
-                lineas.append((" · ".join(detalle), COLOR_TEXTO))
+                lineas.append((" · ".join(detalle), COLOR_TEXTO, fuente))
             if r.vaulted:
-                lineas.append((t("En boveda"), COLOR_BOVEDA))
+                lineas.append((t("En boveda"), COLOR_BOVEDA, fuente))
             if r.objetivo:
-                lineas.append((t("Objetivo: {nombre}", nombre=r.objetivo), COLOR_OBJETIVO))
+                lineas.append((t("Objetivo: {nombre}", nombre=r.objetivo), COLOR_OBJETIVO, fuente))
             marca = self.maestria.get(r.item_id)
             if marca:
-                lineas.append((marca[0], _COLORES_MAESTRIA.get(marca[1], COLOR_SIN_DOMINAR)))
+                lineas.append((marca[0], _COLORES_MAESTRIA.get(marca[1], COLOR_SIN_DOMINAR), fuente))
             if r.nota:
                 # Por que falta un dato o por que no se puede afirmar del todo:
                 # la duda se enseña, nunca se esconde detras de una marca segura.
-                lineas.append((r.nota, COLOR_SIN_DOMINAR))
+                lineas.append((r.nota, COLOR_SIN_DOMINAR, fuente))
 
-            ancho_caja = max(metrica.horizontalAdvance(texto) for texto, _ in lineas) + 18
-            alto_caja = metrica.height() * len(lineas) + 12
+            metricas = [QFontMetrics(f) for _texto, _color, f in lineas]
+            ancho_caja = max(m.horizontalAdvance(texto) for m, (texto, _c, _f) in zip(metricas, lineas)) + 18
+            alto_caja = sum(m.height() for m in metricas) + 12
             caja_x = max(0, x + ancho // 2 - ancho_caja // 2)
             caja_y = max(0, y - alto_caja - 8)
 
+            pintor.save()
+            if hay_mejor and not r.mejor:
+                pintor.setOpacity(OPACIDAD_ATENUADA)
             pintor.setBrush(COLOR_FONDO)
-            borde = color_mejor or (COLOR_OBJETIVO if r.objetivo else (COLOR_BOVEDA if r.vaulted else COLOR_BORDE))
-            pintor.setPen(QPen(borde, 3 if color_mejor else 2))
+            pintor.setPen(QPen(color_mejor or color, 3 if color_mejor else 2))
             pintor.drawRoundedRect(caja_x, caja_y, ancho_caja, alto_caja, 8, 8)
 
-            for i, (texto, color) in enumerate(lineas):
-                pintor.setPen(color)
-                pintor.drawText(
-                    caja_x + 9,
-                    caja_y + 6 + metrica.ascent() + i * metrica.height(),
-                    texto,
-                )
+            y_linea = caja_y + 6
+            for m, (texto, color_linea, fuente_linea) in zip(metricas, lineas):
+                pintor.setFont(fuente_linea)
+                pintor.setPen(color_linea)
+                pintor.drawText(caja_x + 9, y_linea + m.ascent(), texto)
+                y_linea += m.height()
+            pintor.restore()
         pintor.end()
 
     def keyPressEvent(self, evento):  # noqa: N802 - por si llega el foco igualmente

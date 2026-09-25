@@ -154,7 +154,8 @@ def _pasos(ventana) -> list[Paso]:
                 "Con Warframe en Ventana sin bordes (o ventana normal), al abrir una reliquia "
                 "Farmadex lee sola sus recompensas y las pinta encima. Aqui se activa o se "
                 "desactiva esa lectura automatica, y un poco mas abajo se elige si se ensenan "
-                "como etiquetas pequenas o como un panel."
+                "como etiquetas pequenas o como un panel, y que destacar en grande: lo que te "
+                "falta, el platino o los ducados."
             ),
             pestana="ajustes",
             objetivo=lambda v: getattr(getattr(v, "ajustes", None), "ocr_auto", None),

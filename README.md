@@ -118,8 +118,14 @@ búsqueda, Primes, Objetivos y las recompensas dicen siempre lo mismo.
 Cuando sale la pantalla de recompensas de una fisura, Farmadex pone debajo de
 cada tarjeta lo que necesitas para decidir: cuánto platino vale, cuántos
 ducados da, si está en bóveda, si te sirve para algo que estés farmeando y si
-ya la tienes. La mejor lleva el borde dorado. No hay que pulsar nada y aparece
-al momento.
+ya la tienes. Arriba de cada tarjeta, en grande y de color, el motivo que
+importa: «TE FALTA», «COMPLETA SET», el platino o los ducados. La mejor lleva
+una estrella y el borde dorado, y el resto se apaga un poco para que no
+distraiga. No hay que pulsar nada y aparece al momento.
+
+Lo que se considera «mejor» lo eliges tú en Ajustes, con un solo desplegable:
+lo que te falta para tus Primes, más platino, más ducados o un equilibrio
+entre todo.
 
 En la captura, las tarjetas grises de arriba imitan las del juego; lo de abajo
 es Farmadex. Si te parece mucho, en Ajustes lo puedes dejar en una etiqueta

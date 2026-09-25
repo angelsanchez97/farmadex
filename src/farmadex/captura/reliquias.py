@@ -71,6 +71,12 @@ class Recompensa:
     unique_name: str = ""
     market_slug: str = ""
     comerciable: bool = True
+    # Tambien `completar`, solo si hay base de datos del usuario y el dato se sabe
+    # (para los preajustes de `prioridad`; sin dato se quedan asi y no cuentan):
+    tienes: int | None = None  # cuantas hay en el inventario leido; None = no se leyo
+    set_tengo: int = 0  # otras piezas del mismo objeto que ya tienes
+    set_total: int = 0  # piezas que lleva ese objeto
+    maestria_estado: str | None = None  # del objeto al que pertenece, si hay perfil
     # Lo rellena `comparador.puntuar`:
     rareza: str | None = None  # "comun", "poco comun", "rara" o None si no se sabe
     valor: float | None = None  # platino equivalente; None = no se pudo valorar
@@ -653,10 +659,12 @@ def _quitar_repetidos(encontrados: list[Reconocido]) -> list[Reconocido]:
 def completar(
     recompensas: list[Recompensa], indice_con: sqlite3.Connection, usuario_con=None
 ) -> list[Recompensa]:
-    """Anade ducados, estado de boveda y si cubre algun objetivo pendiente."""
+    """Anade ducados, estado de boveda, si cubre algun objetivo pendiente y, con base
+    del usuario, lo que hace falta para priorizar: inventario, set y maestria."""
+    hay_perfil = _hay_perfil(usuario_con) if usuario_con is not None else False
     for r in recompensas:
         fila = indice_con.execute(
-            "SELECT ducados, vaulted, unique_name, market_slug, comerciable FROM items WHERE id = ?",
+            "SELECT ducados, vaulted, unique_name, market_slug, comerciable, padre_id FROM items WHERE id = ?",
             (r.item_id,),
         ).fetchone()
         if not fila:
@@ -673,7 +681,72 @@ def completar(
             ).fetchone()
             if objetivo:
                 r.objetivo = f"{objetivo[1]}/{objetivo[2]}"
+            try:
+                _datos_para_priorizar(r, fila[5], indice_con, usuario_con, hay_perfil)
+            except sqlite3.Error:  # un dato de mas nunca deja sin etiquetas
+                log.debug("Sin datos de prioridad para %s", r.unique_name, exc_info=True)
     return recompensas
+
+
+def _hay_perfil(usuario_con) -> bool:
+    try:
+        return usuario_con.execute("SELECT 1 FROM perfil_meta WHERE clave = 'nombre'").fetchone() is not None
+    except sqlite3.Error:  # tabla sin crear: nunca se importo un perfil
+        return False
+
+
+def _cantidad_leida(usuario_con, unique_name: str) -> int | None:
+    """Del inventario leido en pantalla. Solo lectura: aqui no se crea ninguna tabla,
+    porque esto tambien corre en el hilo del comparador con su propia conexion."""
+    if not unique_name:
+        return None
+    try:
+        fila = usuario_con.execute(
+            "SELECT cantidad FROM inventario_lecturas WHERE item_type = ?", (unique_name,)
+        ).fetchone()
+    except sqlite3.Error:
+        return None
+    return fila[0] if fila else None
+
+
+def _datos_para_priorizar(r: Recompensa, padre_id, indice_con, usuario_con, hay_perfil: bool) -> None:
+    """Rellena `tienes`, `set_tengo`/`set_total` y `maestria_estado` con lo que se sepa."""
+    r.tienes = _cantidad_leida(usuario_con, r.unique_name)
+    if r.tienes is None:
+        # Sin inventario leido, un objetivo ya completado de esta pieza tambien dice que la tienes.
+        hecho = usuario_con.execute(
+            "SELECT cantidad_actual FROM objetivos WHERE item_unique_name = ? AND completado_en IS NOT NULL",
+            (r.unique_name,),
+        ).fetchone()
+        if hecho:
+            r.tienes = hecho[0]
+    if padre_id:
+        piezas = indice_con.execute(
+            "SELECT id, unique_name, item_count FROM items WHERE padre_id = ?", (padre_id,)
+        ).fetchall()
+        tengo = 0
+        for pieza_id, unico, necesarias in piezas:
+            if pieza_id == r.item_id:
+                continue
+            # La tienes si el inventario lo dice o si su objetivo ya se completo
+            # (marcarla en Primes y conseguirla la deja completada).
+            cantidad = _cantidad_leida(usuario_con, unico)
+            completada = usuario_con.execute(
+                "SELECT 1 FROM objetivos WHERE item_unique_name = ? AND completado_en IS NOT NULL",
+                (unico,),
+            ).fetchone()
+            if (cantidad is not None and cantidad >= (necesarias or 1)) or completada:
+                tengo += 1
+        r.set_tengo, r.set_total = tengo, len(piezas)
+    if hay_perfil:
+        from .. import perfil as datos_perfil
+
+        # Una pieza no da maestria; lo que importa es el objeto al que pertenece.
+        estado = datos_perfil.estado_de(usuario_con, indice_con, r.item_id)
+        if estado.estado == datos_perfil.NO_APLICA and padre_id:
+            estado = datos_perfil.estado_de(usuario_con, indice_con, padre_id)
+        if estado.estado != datos_perfil.NO_APLICA:
+            r.maestria_estado = estado.estado
 
 
 def resumir(recompensas: list[Recompensa]) -> str:

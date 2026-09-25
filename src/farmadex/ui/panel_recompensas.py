@@ -8,12 +8,27 @@ Diseno: una fila de tarjetas justo DEBAJO de las tarjetas del juego, ocupando
 solo el ancho que ocupan ellas. Asi cada tarjeta queda bajo su recompensa, no se
 tapa nada del juego que importe (los nombres de la escuadra quedan detras del
 panel, semitransparente) y un overlay de terceros que viva en el borde inferior
-(AlecaFrame) sigue viendose. Cada tarjeta lleva: miniatura del objeto (las
-imagenes que ya se descargan a DIR_IMG), nombre, platino con su criterio,
-ducados, boveda, objetivo del usuario ("2/3"), cuantas tienes (si se leyo el
-inventario), tiempo medio de farmeo y maestria. La mejor opcion lleva el borde
-dorado y su banda; una tarjeta sin identificar lo dice y no lleva nada mas.
-Abajo, el total en platino de lo que hay en pantalla.
+(AlecaFrame) sigue viendose.
+
+Pensado para leerse en medio segundo: arriba de cada tarjeta, UNA etiqueta grande
+de color con el motivo principal segun el preajuste de Ajustes ("Al abrir
+reliquias, destacar", ver `captura/prioridad.py`): "TE FALTA", "COMPLETA SET 3/4",
+"12 PLATINO"... La mejor opcion lleva borde dorado y su etiqueta mas grande e
+intensa; las demas se atenuan sin dejar de leerse. Debajo, en pequeno, los
+detalles: miniatura, nombre, platino con su criterio, ducados, objetivo ("2/3"),
+cuantas tienes (si se leyo el inventario), farmeo medio, boveda y maestria. Una
+tarjeta sin identificar lo dice y no lleva nada mas. Abajo, el total en platino.
+
+Hay tres disenos (`VARIANTE`) que se probaron renderizados para elegir:
+
+- "A" cinta: la etiqueta es una cinta de color a lo ancho de la tarjeta. Es la
+  elegida: el color se ve de reojo, la palabra se lee sin esfuerzo y los
+  detalles siguen ahi para quien los quiera.
+- "B" semaforo: toda la tarjeta tenida del color del motivo y el numero o la
+  palabra enorme en el centro. Se ve de lejos, pero el fondo de color le quita
+  contraste al texto pequeno y cabe menos detalle.
+- "C" compacta: icono + una sola palabra, la mejor mas grande. La que menos
+  tapa, pero pierde casi todos los detalles.
 """
 
 from __future__ import annotations
@@ -24,6 +39,7 @@ from PySide6.QtCore import QRect, Qt, QTimer
 from PySide6.QtGui import QColor, QFont, QPainter, QPen
 from PySide6.QtWidgets import QWidget
 
+from ..captura import prioridad as prio
 from ..captura.reliquias import SIN_IDENTIFICAR, texto_platino
 from ..idiomas import t
 from ..registro_log import obtener
@@ -36,7 +52,9 @@ from .etiquetas import (
     COLOR_OBJETIVO,
     COLOR_SIN_DOMINAR,
     COLOR_TEXTO,
+    OPACIDAD_ATENUADA,
     SEGUNDOS_VISIBLE,
+    color_motivo,
     emparejar,
 )
 from .widgets import imagenes
@@ -49,14 +67,40 @@ BORDE_TARJETA = QColor(70, 90, 120)
 SUAVE = QColor(150, 165, 185)
 PLATINO = QColor(120, 190, 255)
 DUCADOS = QColor(240, 190, 90)
-ALTO_TARJETA = 128
+TINTA_OSCURA = QColor(10, 14, 20)  # texto sobre una cinta de color vivo
+
+# El diseno que se usa. Interno a proposito: se eligio uno y los otros quedan para
+# poder volver a renderizarlos (herramientas/capturas/capturar_variantes_panel.py).
+VARIANTE = "A"
+VARIANTES = ("A", "B", "C")
+ALTOS = {"A": 150, "B": 150, "C": 96}
+ALTO_TARJETA = ALTOS[VARIANTE]
 ANCHO_MINIMO_TARJETA = 190
 ANCHO_UNA_TARJETA = 260
 ANCHO_MAXIMO_TARJETA = 300
 HUECO = 8
 HUECO_RAREZA = 0.04  # fraccion del alto de pantalla bajo el nombre
-LADO_IMAGEN = 56
+LADO_IMAGEN = 48
+ESTRELLA = "★ "
 _COLORES_MAESTRIA = {"dominado": COLOR_DOMINADO, "a_medias": COLOR_A_MEDIAS, "sin_tocar": COLOR_SIN_DOMINAR}
+_ICONOS = {"falta": "!", "set": "+", "nueva": "*", "platino": "P", "ducados": "D", "boveda": "B"}
+
+
+def _fuente(puntos: float, negrita: bool = False) -> QFont:
+    fuente = QFont("Segoe UI")
+    fuente.setPointSizeF(puntos)
+    fuente.setBold(negrita)
+    return fuente
+
+
+def _mezcla(a: QColor, b: QColor, fraccion: float) -> QColor:
+    """`fraccion` de `a` sobre `b`, opaco (para tenir el fondo de una tarjeta)."""
+    return QColor(
+        round(a.red() * fraccion + b.red() * (1 - fraccion)),
+        round(a.green() * fraccion + b.green() * (1 - fraccion)),
+        round(a.blue() * fraccion + b.blue() * (1 - fraccion)),
+        235,
+    )
 
 
 class PanelRecompensas(QWidget):
@@ -73,6 +117,8 @@ class PanelRecompensas(QWidget):
         self.maestria: dict[int, tuple[str, str]] = {}
         self.extras: dict[int, dict] = {}  # item_id -> {"minutos": str, "tienes": int|None}
         self._seguro = True
+        self.prioridad = prio.PRIORIDAD_POR_DEFECTO  # la pone la ventana desde Ajustes
+        self.variante = VARIANTE
         self._temporizador = QTimer(self)
         self._temporizador.setSingleShot(True)
         self._temporizador.timeout.connect(self.hide)
@@ -120,6 +166,10 @@ class PanelRecompensas(QWidget):
 
     # -- geometria ----------------------------------------------------------------
 
+    @property
+    def alto_tarjeta(self) -> int:
+        return ALTOS.get(self.variante, ALTO_TARJETA)
+
     def _centros(self) -> list[int]:
         return [r.caja[0] + r.caja[2] // 2 for r in self.recompensas]
 
@@ -136,6 +186,7 @@ class PanelRecompensas(QWidget):
     def rectangulo_panel(self) -> QRect:
         """Bajo la fila de tarjetas del juego, abarcando justo las nuestras."""
         ancho = self._ancho_tarjeta()
+        alto = self.alto_tarjeta
         centros = self._centros()
         base = max(r.caja[1] + r.caja[3] for r in self.recompensas)
         izquierda = min(centros) - ancho // 2 - HUECO
@@ -147,8 +198,8 @@ class PanelRecompensas(QWidget):
         # como la interfaz del juego (no al alto del texto: un nombre en dos lineas
         # lo doblaria).
         hueco_rareza = max(30, round(self.height() * HUECO_RAREZA))
-        y = min(base + hueco_rareza, self.height() - ALTO_TARJETA - 2 * HUECO - 24)
-        return QRect(izquierda, y, total, ALTO_TARJETA + 2 * HUECO + 24)
+        y = min(base + hueco_rareza, self.height() - alto - 2 * HUECO - 24)
+        return QRect(izquierda, y, total, alto + 2 * HUECO + 24)
 
     def rectangulos_tarjetas(self, panel: QRect) -> list[QRect]:
         """Cada tarjeta centrada bajo SU recompensa.
@@ -161,7 +212,7 @@ class PanelRecompensas(QWidget):
         rects = []
         for c in self._centros():
             x = max(panel.x() + HUECO // 2, min(c - ancho // 2, panel.right() - ancho - HUECO // 2))
-            rects.append(QRect(x, panel.y() + HUECO, ancho, ALTO_TARJETA))
+            rects.append(QRect(x, panel.y() + HUECO, ancho, self.alto_tarjeta))
         return rects
 
     # -- pintado ------------------------------------------------------------------
@@ -176,22 +227,26 @@ class PanelRecompensas(QWidget):
         pintor.setBrush(FONDO)
         pintor.drawRoundedRect(panel, 10, 10)
 
-        normal = QFont("Segoe UI", 10)
-        negrita = QFont("Segoe UI", 10)
-        negrita.setBold(True)
-        pequena = QFont("Segoe UI", 9)
+        # Hasta que llega el veredicto no hay mejor, y entonces no se atenua nada.
+        hay_mejor = any(r.mejor for r in self.recompensas)
+        pintar = {"B": self._tarjeta_semaforo, "C": self._tarjeta_compacta}.get(self.variante, self._tarjeta_cinta)
         total_platino = 0
         con_precio = 0
         for r, caja in zip(self.recompensas, self.rectangulos_tarjetas(panel)):
-            self._pintar_tarjeta(pintor, r, caja, normal, negrita, pequena)
+            pintor.save()
+            atenuada = hay_mejor and not r.mejor
+            if atenuada:
+                pintor.setOpacity(OPACIDAD_ATENUADA)
+            pintar(pintor, r, caja, prio.motivo_principal(r, self.prioridad), atenuada)
+            pintor.restore()
             if r.platino is not None:
                 total_platino += r.platino
                 con_precio += 1
 
         # Pie: total en platino y cuantas tienen precio.
-        pintor.setFont(pequena)
+        pintor.setFont(_fuente(9))
         pintor.setPen(SUAVE)
-        pie = QRect(panel.x() + HUECO, panel.y() + HUECO + ALTO_TARJETA + 4, panel.width() - 2 * HUECO, 18)
+        pie = QRect(panel.x() + HUECO, panel.y() + HUECO + self.alto_tarjeta + 4, panel.width() - 2 * HUECO, 18)
         if con_precio:
             texto = t("Total en pantalla: {n} platino ({m} de {k} con precio)",
                       n=total_platino, m=con_precio, k=len(self.recompensas))
@@ -200,71 +255,152 @@ class PanelRecompensas(QWidget):
         pintor.drawText(pie, Qt.AlignLeft | Qt.AlignVCenter, texto)
         pintor.drawText(pie, Qt.AlignRight | Qt.AlignVCenter, "Farmadex")
 
-    def _pintar_tarjeta(self, pintor, r, caja: QRect, normal, negrita, pequena) -> None:
-        borde = BORDE_TARJETA
-        grosor = 1
+    # -- piezas comunes -------------------------------------------------------------
+
+    def _color_mejor(self) -> QColor:
+        return COLOR_MEJOR if self._seguro else COLOR_MEJOR_DUDOSO
+
+    def _marco(self, pintor, r, caja: QRect, fondo: QColor, borde_normal: QColor) -> None:
         if r.mejor:
-            borde = COLOR_MEJOR if self._seguro else COLOR_MEJOR_DUDOSO
-            grosor = 3
-        elif r.objetivo:
-            borde = COLOR_OBJETIVO
-            grosor = 2
-        elif r.vaulted:
-            borde = COLOR_BOVEDA
-            grosor = 2
-        pintor.setPen(QPen(borde, grosor))
-        pintor.setBrush(FONDO_TARJETA)
+            pintor.setPen(QPen(self._color_mejor(), 3))
+        else:
+            pintor.setPen(QPen(borde_normal, 1))
+        pintor.setBrush(fondo)
         pintor.drawRoundedRect(caja, 8, 8)
 
+    def _nombre(self, r) -> str:
+        return r.nombre if r.item_id != SIN_IDENTIFICAR else t("Sin identificar")
+
+    def _texto(self, pintor, rect: QRect, texto: str, fuente: QFont, color: QColor,
+               alineacion=Qt.AlignLeft | Qt.AlignVCenter) -> None:
+        pintor.setFont(fuente)
+        pintor.setPen(color)
+        pintor.drawText(rect, alineacion, pintor.fontMetrics().elidedText(texto, Qt.ElideRight, rect.width()))
+
+    def _detalles(self, r) -> list[tuple[str, QColor, bool]]:
+        """Las lineas pequenas de debajo: (texto, color, negrita)."""
+        if r.item_id == SIN_IDENTIFICAR:
+            return [(r.texto_ocr, SUAVE, False)]
+        extra = self.extras.get(r.item_id, {})
+        lineas: list[tuple[str, QColor, bool]] = []
+        if r.mejor:
+            lineas.append((t("MEJOR OPCION") if self._seguro else t("Probablemente la mejor"), self._color_mejor(), True))
+        if r.platino is not None:
+            lineas.append((texto_platino(r), PLATINO, False))
+        elif r.nota and r.nota.lower().startswith(("sin precio", "no price", "sans prix", "kein preis", "sem pre")):
+            lineas.append((r.nota, SUAVE, False))
+        # Siempre: si falta el dato se dice, no desaparece la linea.
+        lineas.append((t("{n} ducados", n=r.ducados), DUCADOS, False) if r.ducados else (t("Sin ducados"), SUAVE, False))
+        if r.objetivo:
+            lineas.append((t("Objetivo: {nombre}", nombre=r.objetivo), COLOR_OBJETIVO, False))
+        if extra.get("tienes") is not None:
+            lineas.append((t("Tienes {n}", n=extra["tienes"]), COLOR_OBJETIVO if extra["tienes"] else SUAVE, False))
+        if extra.get("minutos"):
+            lineas.append((t("Farmeo medio: {tiempo}", tiempo=extra["minutos"]), SUAVE, False))
+        if r.vaulted:
+            lineas.append((t("En boveda"), COLOR_BOVEDA, False))
+        marca = self.maestria.get(r.item_id)
+        if marca:
+            lineas.append((marca[0], _COLORES_MAESTRIA.get(marca[1], COLOR_SIN_DOMINAR), False))
+        return lineas
+
+    def _resumen_corto(self, r) -> str:
+        """Una sola linea de detalle para los disenos que no caben mas."""
+        trozos = []
+        if r.platino is not None:
+            trozos.append(t("{n} platino", n=r.platino))
+        if r.ducados:
+            trozos.append(t("{n} ducados", n=r.ducados))
+        if r.vaulted:
+            trozos.append(t("En boveda"))
+        return " · ".join(trozos) or (r.nota or "")
+
+    # -- A: cinta de color arriba ---------------------------------------------------
+
+    def _tarjeta_cinta(self, pintor, r, caja: QRect, motivo, atenuada: bool) -> None:
+        color = color_motivo(motivo.clave)
+        self._marco(pintor, r, caja, FONDO_TARJETA, BORDE_TARJETA)
+        margen = 3 if r.mejor else 1
+        alto_cinta = 38 if r.mejor else 30
+        cinta = QRect(caja.x() + margen, caja.y() + margen, caja.width() - 2 * margen, alto_cinta)
+        pintor.setPen(Qt.NoPen)
+        if r.mejor:
+            pintor.setBrush(color)  # viva, con la letra oscura encima
+        else:
+            tenue = QColor(color)
+            tenue.setAlpha(55)
+            pintor.setBrush(tenue)
+        pintor.drawRoundedRect(cinta, 6, 6)
+        pintor.drawRect(cinta.adjusted(0, alto_cinta // 2, 0, 0))  # esquinas de abajo rectas
+        texto = (ESTRELLA if r.mejor else "") + motivo.texto.upper()
+        self._texto(pintor, cinta.adjusted(8, 0, -8, 0), texto, _fuente(14.5 if r.mejor else 12, True),
+                    TINTA_OSCURA if r.mejor else color, Qt.AlignCenter)
+
+        y = cinta.bottom() + 5
+        self._texto(pintor, QRect(caja.x() + 10, y, caja.width() - 20, 18), self._nombre(r), _fuente(10, True),
+                    COLOR_TEXTO if r.item_id != SIN_IDENTIFICAR else COLOR_SIN_DOMINAR)
+        y += 20
         x_texto = caja.x() + 10
-        y = caja.y() + 8
         extra = self.extras.get(r.item_id, {})
         mapa = imagenes().pixmap(extra.get("imagen"), LADO_IMAGEN) if extra.get("imagen") else None
         if mapa is not None:
-            pintor.drawPixmap(caja.x() + 8, caja.y() + 30, mapa)
+            pintor.drawPixmap(caja.x() + 8, y + 2, mapa)
             x_texto = caja.x() + 8 + LADO_IMAGEN + 8
-
-        # Nombre (siempre arriba, a todo el ancho).
-        pintor.setFont(negrita)
-        pintor.setPen(COLOR_TEXTO if r.item_id != SIN_IDENTIFICAR else COLOR_SIN_DOMINAR)
-        nombre = r.nombre if r.item_id != SIN_IDENTIFICAR else t("Sin identificar")
-        pintor.drawText(QRect(caja.x() + 10, y, caja.width() - 20, 18), Qt.AlignLeft | Qt.AlignVCenter,
-                        pintor.fontMetrics().elidedText(nombre, Qt.ElideRight, caja.width() - 20))
-        y += 22
-
-        lineas: list[tuple[str, QColor, QFont]] = []
-        if r.item_id == SIN_IDENTIFICAR:
-            lineas.append((pintor.fontMetrics().elidedText(r.texto_ocr, Qt.ElideRight, caja.width() - 20), SUAVE, pequena))
-        else:
-            if r.mejor:
-                lineas.append((t("MEJOR OPCION") if self._seguro else t("Probablemente la mejor"),
-                               COLOR_MEJOR if self._seguro else COLOR_MEJOR_DUDOSO, negrita))
-            if r.platino is not None:
-                lineas.append((texto_platino(r), PLATINO, normal))
-            elif r.nota and r.nota.lower().startswith(("sin precio", "no price", "sans prix", "kein preis", "sem pre")):
-                lineas.append((r.nota, SUAVE, pequena))
-            # Siempre: si falta el dato se dice, no desaparece la linea.
-            if r.ducados:
-                lineas.append((t("{n} ducados", n=r.ducados), DUCADOS, normal))
-            else:
-                lineas.append((t("Sin ducados"), SUAVE, pequena))
-            if r.objetivo:
-                lineas.append((t("Objetivo: {nombre}", nombre=r.objetivo), COLOR_OBJETIVO, normal))
-            if extra.get("tienes") is not None:
-                lineas.append((t("Tienes {n}", n=extra["tienes"]), COLOR_OBJETIVO if extra["tienes"] else SUAVE, pequena))
-            if extra.get("minutos"):
-                lineas.append((t("Farmeo medio: {tiempo}", tiempo=extra["minutos"]), SUAVE, pequena))
-            if r.vaulted:
-                lineas.append((t("En boveda"), COLOR_BOVEDA, pequena))
-            marca = self.maestria.get(r.item_id)
-            if marca:
-                lineas.append((marca[0], _COLORES_MAESTRIA.get(marca[1], COLOR_SIN_DOMINAR), pequena))
         ancho_texto = caja.x() + caja.width() - 8 - x_texto
-        for texto, color, fuente in lineas:
-            if y + 15 > caja.y() + caja.height() - 2:
+        for texto, color_linea, negrita in self._detalles(r):
+            if y + 14 > caja.y() + caja.height() - 3:
                 break
-            pintor.setFont(fuente)
-            pintor.setPen(color)
-            pintor.drawText(QRect(x_texto, y, ancho_texto, 16), Qt.AlignLeft | Qt.AlignVCenter,
-                            pintor.fontMetrics().elidedText(texto, Qt.ElideRight, ancho_texto))
-            y += 16
+            self._texto(pintor, QRect(x_texto, y, ancho_texto, 15), texto, _fuente(8.5, negrita), color_linea)
+            y += 15
+
+    # -- B: semaforo, toda la tarjeta del color del motivo --------------------------
+
+    def _tarjeta_semaforo(self, pintor, r, caja: QRect, motivo, atenuada: bool) -> None:
+        color = color_motivo(motivo.clave)
+        fondo = _mezcla(color, FONDO_TARJETA, 0.55 if r.mejor else 0.30)
+        self._marco(pintor, r, caja, fondo, color.darker(140))
+        blanco = QColor(245, 248, 252)
+        nombre = (ESTRELLA if r.mejor else "") + self._nombre(r)
+        self._texto(pintor, QRect(caja.x() + 10, caja.y() + 8, caja.width() - 20, 18), nombre, _fuente(9.5, True),
+                    blanco, Qt.AlignCenter)
+        centro = QRect(caja.x() + 8, caja.y() + 30, caja.width() - 16, caja.height() - 62)
+        numero, _, unidad = motivo.texto.partition(" ")
+        if motivo.clave in ("platino", "ducados") and numero.isdigit():
+            pintor.setFont(_fuente(30 if r.mejor else 24, True))
+            pintor.setPen(blanco)
+            pintor.drawText(centro.adjusted(0, 0, 0, -18), Qt.AlignCenter, numero)
+            self._texto(pintor, QRect(centro.x(), centro.bottom() - 20, centro.width(), 18), unidad.upper(),
+                        _fuente(10, True), blanco, Qt.AlignCenter)
+        else:
+            pintor.setFont(_fuente(17 if r.mejor else 14, True))
+            pintor.setPen(blanco)
+            pintor.drawText(centro, Qt.AlignCenter | Qt.TextWordWrap, motivo.texto.upper())
+        pie = QRect(caja.x() + 8, caja.bottom() - 28, caja.width() - 16, 24)
+        if r.mejor:
+            texto_pie = t("MEJOR OPCION") if self._seguro else t("Probablemente la mejor")
+            self._texto(pintor, pie, texto_pie, _fuente(9, True), self._color_mejor(), Qt.AlignCenter)
+        else:
+            self._texto(pintor, pie, self._resumen_corto(r), _fuente(8.5), QColor(225, 232, 240), Qt.AlignCenter)
+
+    # -- C: compacta, icono + una palabra ---------------------------------------------
+
+    def _tarjeta_compacta(self, pintor, r, caja: QRect, motivo, atenuada: bool) -> None:
+        color = color_motivo(motivo.clave)
+        if atenuada:
+            caja = caja.adjusted(8, 8, -8, -8)  # la mejor, mas grande que las demas
+        self._marco(pintor, r, caja, FONDO_TARJETA, BORDE_TARJETA)
+        lado = 38 if r.mejor else 30
+        icono = QRect(caja.x() + 10, caja.y() + (caja.height() - lado) // 2 - 6, lado, lado)
+        pintor.setPen(Qt.NoPen)
+        pintor.setBrush(color)
+        pintor.drawEllipse(icono)
+        pintor.setFont(_fuente(15 if r.mejor else 12, True))
+        pintor.setPen(TINTA_OSCURA)
+        pintor.drawText(icono, Qt.AlignCenter, _ICONOS.get(motivo.clave, "?"))
+        x = icono.right() + 10
+        ancho = caja.right() - 8 - x
+        y = icono.y() - 4
+        palabra = (ESTRELLA if r.mejor else "") + motivo.texto.upper()
+        self._texto(pintor, QRect(x, y, ancho, 24), palabra, _fuente(14 if r.mejor else 11.5, True), color)
+        self._texto(pintor, QRect(x, y + 24, ancho, 16), self._nombre(r), _fuente(8.5, True), COLOR_TEXTO)
+        self._texto(pintor, QRect(x, y + 40, ancho, 15), self._resumen_corto(r), _fuente(8), SUAVE)

@@ -101,7 +101,9 @@ def test_veredicto_dudoso_se_distingue_del_seguro(app, indice_con, monkeypatch):
     import farmadex.datos.indice as indice_mod
 
     monkeypatch.setattr(indice_mod, "conectar", lambda *a, **k: con)
-    servicio = ServicioComparador(escuadra=False, crear_market=mercado)
+    # "Equilibrado" mide el empate por valor (45p contra 43p). Con "Lo que me falta", el que
+    # viene por defecto, el empate de platino lo resuelven los ducados (100 contra 45).
+    servicio = ServicioComparador(escuadra=False, crear_market=mercado, prioridad="equilibrado")
     etiquetas = EtiquetasRecompensas()
     servicio.veredicto.connect(etiquetas.marcar_veredicto)
 

@@ -1,5 +1,14 @@
 # Cambios
 
+## 0.4.3
+
+- Al abrir una reliquia se ve de un vistazo qué importa: cada tarjeta lleva
+  arriba, en grande y de color, su motivo ("TE FALTA", "COMPLETA SET 3/4", el
+  platino o los ducados). La mejor lleva estrella y borde dorado, y las demás se
+  atenúan.
+- Nuevo ajuste "Al abrir reliquias, destacar": lo que me falta (por defecto),
+  más platino, más ducados o equilibrado. La mejor opción se elige con eso.
+
 ## 0.4.2
 
 - Las piezas se llaman como en el juego. Farmadex traducía los nombres de las
