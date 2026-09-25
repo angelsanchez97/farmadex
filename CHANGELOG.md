@@ -1,5 +1,13 @@
 # Cambios
 
+## 0.4.2
+
+- Las piezas se llaman como en el juego. Farmadex traducía los nombres de las
+  piezas con un diccionario propio ("Extremidad superior", "Agarre", "Mango"...)
+  que no coincidía con lo que pone el juego ("Pala superior", "Empuñadura"), y
+  en las reliquias salían como "Sin identificar". Ahora usa los nombres oficiales
+  en cada idioma.
+
 ## 0.4.1
 
 - Las guías de YouTube buscan solo "warframe" y lo que estás mirando (por

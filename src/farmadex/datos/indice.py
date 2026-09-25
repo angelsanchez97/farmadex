@@ -37,7 +37,7 @@ log = obtener("indice")
 # 9: formato nuevo de WFCD (2026-09-24): piezas por referencia a Components.json y
 #    traducciones por idioma. El indice queda igual, pero los que tengan uno construido con
 #    un volcado a medias (la descarga fallaba con un 404) lo rehacen entero.
-VERSION_ESQUEMA = "12"  # 10: boveda de reliquias con las tablas de drops; 11: tambien piezas y primes
+VERSION_ESQUEMA = "13"  # 13: nombres de piezas del juego (WFCD i18n), no del glosario
 # 12: fecha de salida y actualizacion de cada objeto (items.fecha_salida, items.actualizacion),
 #     para "lo nuevo" del buscador. Un indice de antes se sigue pudiendo leer: el codigo
 #     que usa esas columnas (datos/novedades.py) tolera que falten y lo dice.
@@ -45,7 +45,7 @@ VERSION_ESQUEMA = "12"  # 10: boveda de reliquias con las tablas de drops; 11: t
 # reconstruccion falla (sin red, la fuente cambio de formato...), con un indice de estas
 # se sigue trabajando en vez de enseñar "Error preparando los datos". Al cambiar la
 # ESTRUCTURA de las tablas, dejar aqui solo la version nueva.
-ESQUEMAS_COMPATIBLES = {"8", "9", "10", "11", "12"}
+ESQUEMAS_COMPATIBLES = {"8", "9", "10", "11", "12", "13"}
 
 # Piezas de receta que pueden quedarse sin completar (referencias a objetos que no estan en
 # ningun catalogo) antes de dar el volcado por roto. Con el de hoy son un punado de

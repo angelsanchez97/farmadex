@@ -163,6 +163,37 @@ CAMPOS_INGREDIENTE = (
 CATEGORIAS_SIN_INGREDIENTES = frozenset({"Relics", "Node"})
 
 
+# Palabras que unen pieza y padre en los nombres del juego: "Pala superior de Daikyu
+# Prime", "Chassis d'Ash Prime", "Telaio di ...", "Chassi do ...".
+_UNIONES = ("de", "del", "d'", "du", "des", "di", "da", "do", "dos", "das", "von", "der")
+
+
+def _sin_padre(texto: str, *padres: str | None) -> str | None:
+    """La parte de la pieza en un nombre completo: "Pala superior de Daikyu Prime" -> "Pala superior".
+
+    Vale con el padre delante o detras ("Daikyu Prime Oberer Wurfarm"). Si al quitarlo
+    no queda nada, None (se usara el glosario).
+    """
+    for padre in padres:
+        if not padre:
+            continue
+        bajo, clave = texto.lower(), padre.lower()
+        pos = bajo.find(clave)
+        if pos == -1:
+            continue
+        resto = (texto[:pos] + " " + texto[pos + len(padre):]).strip()
+        palabras = resto.replace("’", "'").split()
+        while palabras and palabras[-1].lower() in _UNIONES:
+            palabras.pop()
+        while palabras and palabras[0].lower() in _UNIONES:
+            palabras.pop(0)
+        if palabras and palabras[-1].lower().endswith("d'"):
+            palabras[-1] = palabras[-1][:-2]
+        parte = " ".join(p for p in palabras if p)
+        return parte[:1].upper() + parte[1:] if parte else None
+    return None
+
+
 class ImportadorItems:
     """Vuelca warframe-items en las tablas items / nodos / reliquia_recompensas."""
 
@@ -393,12 +424,16 @@ class ImportadorItems:
         if not unico or not nombre:
             return
         nombre_es, desc_es = self._es(unico)
-        # Desde el formato nuevo WFCD traduce tambien las piezas, pero con el nombre entero
-        # ("Chasis de Ash Prime"). Aqui la pieza lleva solo su parte ("Chasis") porque la
-        # busqueda, el OCR y la interfaz le anteponen el padre; con el nombre entero saldria
-        # "Ash Prime Chasis de Ash Prime". Se queda el del glosario, como antes.
+        # Desde el formato nuevo WFCD traduce tambien las piezas con el nombre entero que
+        # pinta el juego ("Pala superior de Daikyu Prime"). La pieza lleva solo su parte
+        # porque la busqueda, el OCR y la interfaz le anteponen el padre, asi que se le
+        # quita el padre ("Pala superior"). Antes se tiraba y se usaba el glosario propio
+        # ("Extremidad superior", "Agarre"), que no es lo que dice el juego: el OCR leia
+        # "Pala Superior De Daikyu Prime" y no lo reconocia.
         del_catalogo = unico in self.catalogo_piezas
-        if nombre_es and (del_catalogo or self._nombra_al_padre(nombre_es, padre_en, padre_es)):
+        if nombre_es and self._nombra_al_padre(nombre_es, padre_en, padre_es):
+            nombre_es = _sin_padre(nombre_es, padre_es, padre_en)
+        elif nombre_es and del_catalogo:
             nombre_es = None
         nombre_es = nombre_es or self.componentes_es.get(nombre)
         recetas = self.recetas_por_ingrediente.setdefault(unico, set())
@@ -427,11 +462,14 @@ class ImportadorItems:
         # Nombre en fr/de/pt/it/pl: primero el de WFCD si lo trae (raro en piezas),
         # si no el del glosario de componentes de ese idioma ("Chassis" -> "Châssis").
         padre_idioma = self.nombres_extra_por_item.get(padre_id, {})
-        nombres_idioma = {
-            idioma: texto
-            for idioma, texto in self._extra(unico).items()
-            if not del_catalogo and not self._nombra_al_padre(texto, padre_en, padre_idioma.get(idioma))
-        }
+        nombres_idioma = {}
+        for idioma, texto in self._extra(unico).items():
+            if self._nombra_al_padre(texto, padre_en, padre_idioma.get(idioma)):
+                parte = _sin_padre(texto, padre_idioma.get(idioma), padre_en)
+                if parte:
+                    nombres_idioma[idioma] = parte
+            elif not del_catalogo:
+                nombres_idioma[idioma] = texto
         for idioma, palabras in self.componentes_extra.items():
             if idioma not in nombres_idioma and palabras.get(nombre):
                 nombres_idioma[idioma] = palabras[nombre]

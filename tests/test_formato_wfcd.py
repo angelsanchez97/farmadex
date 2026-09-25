@@ -349,3 +349,17 @@ def test_el_motivo_para_el_usuario_es_corto_y_sin_urls():
         motivo = motivo_para_el_usuario(error)
         assert motivo == esperado
         assert "http" not in motivo and "mozilla" not in motivo
+
+
+def test_la_pieza_se_llama_como_en_el_juego_sin_el_padre():
+    """El juego dice "Pala Superior De Daikyu Prime"; el glosario propio decia "Extremidad
+    superior" y el OCR no lo reconocia. Se usa el nombre de WFCD quitandole el padre."""
+    from farmadex.datos.items import _sin_padre
+
+    assert _sin_padre("Pala superior de Daikyu Prime", "Daikyu Prime") == "Pala superior"
+    assert _sin_padre("Empuñadura de Daikyu Prime", "Daikyu Prime") == "Empuñadura"
+    assert _sin_padre("Châssis d'Ash Prime", "Ash Prime") == "Châssis"
+    assert _sin_padre("Telaio di Ash Prime", "Ash Prime") == "Telaio"
+    assert _sin_padre("Daikyu Prime Oberer Wurfarm", "Daikyu Prime") == "Oberer Wurfarm"
+    assert _sin_padre("Ash Prime", "Ash Prime") is None
+    assert _sin_padre("Chasis", "Ash Prime") is None
