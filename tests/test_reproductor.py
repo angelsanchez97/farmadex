@@ -19,7 +19,7 @@ from PySide6.QtWidgets import QApplication, QWidget  # noqa: E402
 from farmadex import idiomas, video  # noqa: E402
 from farmadex.ui import reproductor  # noqa: E402
 
-URL = "https://www.youtube.com/results?search_query=warframe+Hepit+Captura+guia&sp=CAM%253D"
+URL = "https://www.youtube.com/results?search_query=warframe+Hepit+Captura&sp=CAM%253D"
 
 
 @pytest.fixture(scope="module")

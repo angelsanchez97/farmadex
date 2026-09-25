@@ -172,11 +172,11 @@ def test_los_objetos_siguen_delante_si_casan(buscador):
 # -- guias en YouTube -----------------------------------------------------------------
 
 @pytest.mark.parametrize(("idioma", "consulta"), [
-    ("es", "warframe+Hydron+Defensa+guia"),
-    ("en", "warframe+Hydron+Defense+guide"),
-    ("fr", "warframe+Hydron+Defense+guide+fr"),
-    ("de", "warframe+Hydron+Defense+Anleitung"),
-    ("pt", "warframe+Hydron+Defense+guia"),
+    ("es", "warframe+Hydron+Defensa"),
+    ("en", "warframe+Hydron+Defense"),
+    ("fr", "warframe+Hydron+Defense"),
+    ("de", "warframe+Hydron+Defense"),
+    ("pt", "warframe+Hydron+Defense"),
 ])
 def test_url_de_youtube_en_el_idioma_de_la_interfaz(buscador, idioma, consulta):
     _buscar(buscador, "hydron")
@@ -190,7 +190,7 @@ def test_el_boton_de_youtube_va_al_reproductor_o_al_navegador(buscador, abiertas
     assert buscador.boton_youtube.isEnabled()
     # Sin reproductor (pestana suelta): navegador del sistema.
     buscador.boton_youtube.click()
-    assert abiertas == [f"{YT}warframe+Hydron+Defensa+guia&sp=CAM%253D"]
+    assert abiertas == [f"{YT}warframe+Hydron+Defensa&sp=CAM%253D"]
     # Con reproductor (la ventana lo pone): dentro de Farmadex, sin navegador.
     pedidas = []
     buscador.reproductor = pedidas.append
@@ -199,7 +199,7 @@ def test_el_boton_de_youtube_va_al_reproductor_o_al_navegador(buscador, abiertas
     # Con una ficha de objeto, la guia es del objeto.
     ash = buscador.con.execute("SELECT id FROM items WHERE nombre_en = 'Ash Prime'").fetchone()[0]
     buscador.abrir(ash)
-    assert buscador.url_youtube() == f"{YT}warframe+Ash+Prime+guia&sp=CAM%253D"
+    assert buscador.url_youtube() == f"{YT}warframe+Ash+Prime&sp=CAM%253D"
 
 
 def test_la_clave_de_api_es_solo_un_punto_de_extension():

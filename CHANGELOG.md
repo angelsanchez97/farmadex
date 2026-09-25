@@ -1,5 +1,11 @@
 # Cambios
 
+## 0.4.1
+
+- Las guías de YouTube buscan solo "warframe" y lo que estás mirando (por
+  ejemplo "warframe Citrine Prime"), sin añadir "guía": con esa palabra de más
+  YouTube dejaba fuera los mejores vídeos.
+
 ## 0.4.0
 
 **Misiones**

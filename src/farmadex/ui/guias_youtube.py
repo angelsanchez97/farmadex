@@ -2,7 +2,7 @@
 
 Quien juega con un solo monitor quiere ver como se hace una mision sin salir del
 juego. Farmadex no descarga nada de YouTube ni usa su API: arma la direccion de la
-busqueda ("warframe Hepit captura guia"), ordenada por visitas, y el reproductor de
+busqueda ("warframe Hepit Captura"), ordenada por visitas, y el reproductor de
 Farmadex (ui/reproductor.py) la abre para que el usuario elija el video ahi mismo.
 
 Punto de extension (NO implementado): con una clave de la YouTube Data API v3 puesta
@@ -16,7 +16,6 @@ from __future__ import annotations
 
 from urllib.parse import quote_plus
 
-from ..idiomas import t
 
 # Filtro de YouTube "ordenar por numero de visualizaciones" (sp=CAM= ya codificado).
 ORDEN_POR_VISITAS = "CAM%253D"
@@ -26,8 +25,13 @@ CLAVE_API = "youtube_api_clave"
 
 
 def consulta(tema: str) -> str:
-    """'warframe Hepit Captura guia' en castellano, '... guide' en ingles, etc."""
-    return " ".join(t("warframe {tema} guia", tema=tema.strip()).split())
+    """'warframe Citrine Prime', 'warframe Hepit Captura': solo el juego y el tema.
+
+    Antes se anadia "guia"/"guide" en el idioma de la interfaz, y el usuario vio que
+    "warframe Citrine Prime guia" no daba nada mientras que "warframe Citrine Prime"
+    si: la palabra de mas filtraba justo los videos buenos, que no la llevan en el titulo.
+    """
+    return " ".join(f"warframe {tema.strip()}".split())
 
 
 def url_busqueda(texto: str) -> str:
