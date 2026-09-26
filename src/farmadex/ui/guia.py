@@ -3,6 +3,10 @@
 Se lanza sola la primera vez que la ventana esta lista (ver `VentanaOverlay.mostrar_guia`
 y `_datos_listos`) o a mano con el boton "Guia" de la cabecera. Siempre se puede saltar
 con el boton o con Escape.
+
+Estilo C: la burbuja es un panel con esquinas cortadas y filete de acento (rombo y
+titulo en mayusculas, botones C) y el hueco resaltado lleva el mismo corte en las
+esquinas, con un remate dorado.
 """
 
 from __future__ import annotations
@@ -10,18 +14,20 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
-from PySide6.QtCore import QEvent, QPoint, QRect, Qt
-from PySide6.QtGui import QColor, QPainter, QPainterPath
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QScrollArea, QVBoxLayout, QWidget
+from PySide6.QtCore import QEvent, QPoint, QPointF, QRect, QRectF, Qt
+from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
+from PySide6.QtWidgets import QScrollArea, QWidget
 
 from .. import NOMBRE_APP
 from ..idiomas import t
+from .estilo_c import BotonC, EtiquetaC, PanelC, Rombo, fila, px, ruta_chaflan
 from .widgets import PALETA
 
 # Margen alrededor del widget resaltado y tamano maximo de la burbuja: con esto no se
 # sale de la ventana ni en el minimo de la vista completa (760x420).
 MARGEN_RESALTE = 6
-ANCHO_BURBUJA = 320
+ANCHO_BURBUJA = 340
+GLIFO_ATRAS = "\ue72b"
 MARGEN_VENTANA = 12
 
 
@@ -74,7 +80,7 @@ def _pasos(ventana) -> list[Paso]:
             objetivo=None,
         ),
         Paso(
-            titulo=t("Tablero"),
+            titulo=t("Tablero||menu"),
             cuerpo=t(
                 "Farmadex se abre aqui. \"Tu siguiente paso\" es la pieza de tus metas que antes puedes "
                 "conseguir: que reliquia es, donde sale y en que fisura abrirla. Al lado, las fisuras "
@@ -141,7 +147,8 @@ def _pasos(ventana) -> list[Paso]:
             titulo=t("Tus objetivos"),
             cuerpo=t(
                 "Aqui se quedan apuntados, con su progreso y la reliquia o el sitio directo "
-                "donde farmear cada uno ahora mismo."
+                "donde farmear cada uno ahora mismo. A la derecha, \"Para esto te sirve hoy\" te "
+                "dice que fisuras, invasiones, alertas o cosas de Baro abiertas ahora te sirven."
             ),
             pestana="objetivos",
             objetivo=lambda v: getattr(v, "objetivos", None),
@@ -174,9 +181,9 @@ def _pasos(ventana) -> list[Paso]:
         Paso(
             titulo=t("Mundo"),
             cuerpo=t(
-                "Fisuras del Vacio abiertas, los ciclos de Cetus, el Valle del Orbe y Cambion, "
-                "invasiones, arbitracion y demas: que hacer ahora mismo, marcando lo que sirve "
-                "para tus objetivos pendientes."
+                "Lo que pasa ahora en el juego, en cuatro partes: Todo, Fisuras, Baro y Teshin, e "
+                "Invasiones y alertas. Fisuras del Vacio, ciclos, invasiones, arbitraje y demas, "
+                "marcando lo que sirve para tus objetivos pendientes."
             ),
             pestana="mundo",
             objetivo=lambda v: getattr(v, "mundo", None),
@@ -186,8 +193,9 @@ def _pasos(ventana) -> list[Paso]:
             cuerpo=t(
                 "En \"Personalizar y avisos\" eliges que te avise Windows aunque tengas la ventana "
                 "escondida: cuando llega Baro, cuando hay una fisura o una invasion que te interesa, "
-                "la noche en Cetus... Ahi tambien ocultas las secciones que no uses y filtras por "
-                "faccion. Y si pulsas una recompensa, se abre su ficha."
+                "la noche en Cetus... Ahi tambien ocultas los bloques que no uses. Las facciones se "
+                "eligen en Fisuras, con el boton \"Facciones\". Y si pulsas una recompensa, se abre "
+                "su ficha."
             ),
             pestana="mundo",
             objetivo=lambda v: getattr(getattr(v, "mundo", None), "boton_personalizar", None),
@@ -240,7 +248,12 @@ def _pasos(ventana) -> list[Paso]:
                 atajo=ventana.config.get("hotkey_build", "Ctrl+Alt+B"),
             ),
             pestana="builds",
-            objetivo=lambda v: getattr(getattr(v, "builds", None), "boton", None),
+            # El boton de leer y su atajo, a la derecha de las sub-pestanas de Herramientas.
+            objetivo=lambda v: tuple(
+                w for w in (getattr(getattr(v, "builds", None), "boton", None),
+                            getattr(getattr(v, "builds", None), "tecla_atajo", None))
+                if w is not None
+            ) or None,
         ),
         Paso(
             titulo=t("Agrietados"),
@@ -251,7 +264,11 @@ def _pasos(ventana) -> list[Paso]:
                 atajo=ventana.config.get("hotkey_agrietado", "Ctrl+Alt+G"),
             ),
             pestana="agrietados",
-            objetivo=lambda v: getattr(getattr(v, "agrietados", None), "boton_leer", None),
+            objetivo=lambda v: tuple(
+                w for w in (getattr(getattr(v, "agrietados", None), "boton_leer", None),
+                            getattr(getattr(v, "agrietados", None), "tecla_atajo", None))
+                if w is not None
+            ) or None,
         ),
         Paso(
             titulo=t("Modo juego"),
@@ -321,44 +338,30 @@ class CapaGuia(QWidget):
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setFocusPolicy(Qt.StrongFocus)
 
-        self.burbuja = QFrame(self)
+        # Burbuja en estilo C: panel con esquinas cortadas y filete de acento.
+        self.burbuja = PanelC(fondo="panel", borde="acento", parent=self)
         self.burbuja.setObjectName("burbujaGuia")
-        self.burbuja.setFixedWidth(ANCHO_BURBUJA)
-        self.burbuja.setStyleSheet(
-            f"#burbujaGuia {{ background: {PALETA['panel']}; border: 1px solid {PALETA['acento']};"
-            " border-radius: 10px; }}"
-        )
+        self.burbuja.poner_marcado(True)
+        self.burbuja.setFixedWidth(px(ANCHO_BURBUJA, False))
 
-        self.titulo = QLabel()
-        self.titulo.setWordWrap(True)
-        self.titulo.setStyleSheet(f"color: {PALETA['acento']}; font-weight: 700; font-size: 15px;")
-        self.cuerpo = QLabel()
-        self.cuerpo.setWordWrap(True)
-        self.cuerpo.setStyleSheet(f"color: {PALETA['texto']}; font-size: 13px;")
-        self.contador = QLabel()
-        self.contador.setStyleSheet(f"color: {PALETA['suave']}; font-size: 11px;")
+        self.titulo = EtiquetaC("", "seccion", tinta="acento", mayus=True, envolver=True)
+        self.cuerpo = EtiquetaC("", "normal", envolver=True)
+        self.contador = EtiquetaC("", "pequeno")
 
-        self.boton_saltar = QPushButton(t("Saltar guia"))
+        self.boton_saltar = BotonC(t("Saltar guia"), tam=10)
         self.boton_saltar.clicked.connect(self.saltar)
-        self.boton_atras = QPushButton(t("Atras"))
+        self.boton_atras = BotonC(t("Atras"), icono=GLIFO_ATRAS, tam=10)
         self.boton_atras.clicked.connect(self.atras)
-        self.boton_siguiente = QPushButton()
-        self.boton_siguiente.setObjectName("principal")
+        self.boton_siguiente = BotonC(principal=True, icono="derecha", tam=10)
         self.boton_siguiente.clicked.connect(self.siguiente)
 
-        botones = QHBoxLayout()
-        botones.addWidget(self.boton_saltar)
-        botones.addStretch(1)
-        botones.addWidget(self.boton_atras)
-        botones.addWidget(self.boton_siguiente)
-
-        dentro = QVBoxLayout(self.burbuja)
-        dentro.setContentsMargins(14, 12, 14, 12)
-        dentro.setSpacing(6)
-        dentro.addWidget(self.titulo)
+        dentro = self.burbuja.capa
+        dentro.setContentsMargins(px(16, False), px(12, False), px(16, False), px(14, False))
+        dentro.setSpacing(px(8, False))
+        dentro.addLayout(fila(Rombo(8, "acento"), self.titulo, espacio=px(8, False)))
         dentro.addWidget(self.cuerpo)
         dentro.addWidget(self.contador)
-        dentro.addLayout(botones)
+        dentro.addLayout(fila(self.boton_saltar, None, self.boton_atras, self.boton_siguiente, espacio=px(6, False)))
 
         self.setGeometry(ventana.rect())
         self._ir_a_paso(0)
@@ -482,17 +485,26 @@ class CapaGuia(QWidget):
         painter.setRenderHint(QPainter.Antialiasing)
         camino = QPainterPath()
         camino.addRect(float(self.rect().x()), float(self.rect().y()), float(self.rect().width()), float(self.rect().height()))
+        hueco = None
         if self._rect_resalte is not None:
-            sub = QPainterPath()
-            sub.addRoundedRect(self._rect_resalte, 8, 8)
-            camino = camino.subtracted(sub)
+            # El hueco con las esquinas cortadas, como los paneles del estilo C.
+            r = QRectF(self._rect_resalte).adjusted(0.5, 0.5, -0.5, -0.5)
+            corte = min(10.0, r.width() / 4, r.height() / 4)
+            hueco = ruta_chaflan(r, corte)
+            camino = camino.subtracted(hueco)
         painter.setPen(Qt.NoPen)
         painter.setBrush(QColor(0, 0, 0, 150))
         painter.drawPath(camino)
-        if self._rect_resalte is not None:
-            painter.setPen(QColor(PALETA["acento"]))
+        if hueco is not None:
+            acento = QColor(PALETA["acento"])
+            painter.setPen(QPen(acento, 1.2))
             painter.setBrush(Qt.NoBrush)
-            painter.drawRoundedRect(self._rect_resalte, 8, 8)
+            painter.drawPath(hueco)
+            # Remate dorado arriba a la izquierda y abajo a la derecha.
+            largo = min(40.0, r.width() / 4)
+            painter.setPen(QPen(acento, 2.5))
+            painter.drawLine(QPointF(r.left() + corte, r.top()), QPointF(r.left() + corte + largo, r.top()))
+            painter.drawLine(QPointF(r.right() - corte - largo, r.bottom()), QPointF(r.right() - corte, r.bottom()))
 
     def event(self, evento) -> bool:  # noqa: N802 - firma de Qt
         # Escape tiene que saltar la guia, no cerrar el overlay: se corta aqui, antes de

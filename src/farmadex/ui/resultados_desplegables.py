@@ -138,7 +138,7 @@ class ResultadosDesplegables(QScrollArea):
             clave = colores_tipo.tipo_de(r)
             color = colores_tipo.color(clave, p["panel2"])
             fila.cabecera.setText(
-                f"<span style='color:{color}'>&#9679;</span>&nbsp;"
+                f"<span style='color:{color}'>&#9670;</span>&nbsp;"
                 f"<b style='color:{p['texto']}'>{html.escape(titulo_resultado(r))}</b>"
                 f"&nbsp;&nbsp;<span style='color:{color};font-size:11px'>{html.escape(colores_tipo.nombre(clave))}</span>"
             )

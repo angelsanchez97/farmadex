@@ -149,7 +149,7 @@ def test_el_glosario_en_mundo_y_en_el_filtro(app):
 
     idiomas.cargar("es")
     mundo = PestanaMundo()
-    assert "Lith, Meso" in mundo.filtro_era.toolTip()
-    assert "<b>Camino de Acero</b>" in mundo.filtro_modo.toolTip()
+    assert "<b>Fisura del Vacio</b>" in mundo.fisuras_todo.rotulo.toolTip()
+    assert "<b>Camino de Acero</b>" in mundo.botones_modo["acero"].toolTip()
     buscador = PestanaBuscador()
     assert "<b>Boveda</b>" in buscador.ocultar_vaulted.toolTip()

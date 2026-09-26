@@ -98,9 +98,17 @@ def es_castellano() -> bool:
     return _actual == POR_DEFECTO
 
 
+SEPARADOR_CONTEXTO = "||"
+
+
 def t(texto: str, **valores) -> str:
-    """Traduce un texto de la interfaz. Los huecos `{asi}` se rellenan con `valores`."""
-    traducido = _catalogo.get(texto, texto)
+    """Traduce un texto de la interfaz. Los huecos `{asi}` se rellenan con `valores`.
+
+    Una clave "Tablero||menu" es el texto "Tablero" con un contexto propio: en castellano
+    sale "Tablero", y cada catalogo la traduce aparte de la otra "Tablero" (el menu dice
+    "Home" en ingles y la disposicion de Mundo, "Board")."""
+    castellano = texto.split(SEPARADOR_CONTEXTO, 1)[0]
+    traducido = _catalogo.get(texto, castellano)
     if not valores:
         return traducido
     try:
@@ -108,7 +116,7 @@ def t(texto: str, **valores) -> str:
     except (KeyError, IndexError, ValueError):
         # Un catalogo editado a mano con un hueco mal escrito no puede romper la interfaz.
         log.warning("Huecos incorrectos en la traduccion de %r", texto)
-        return texto.format(**valores)
+        return castellano.format(**valores)
 
 
 def _campo(fila, clave: str):

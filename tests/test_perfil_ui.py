@@ -61,7 +61,7 @@ def _id(catalogo, nombre_en):
 
 
 def test_sin_perfil_dice_que_no_hay_fuente_y_como_importar(pestana):
-    texto = pestana.vista.toPlainText()
+    texto = pestana.texto_plano()
     # DE cerro la descarga del perfil (403): nada de mandar al usuario a una URL rota.
     assert "warframe.com/api" not in texto and "getProfileViewingData" not in texto
     assert "Digital Extremes" in texto
@@ -77,8 +77,8 @@ def test_importar_ensena_resumen_pendientes_y_nodos(pestana, catalogo):
     assert cambios == [1]
     assert pestana.hay_perfil()
     assert "importado" in pestana.estado.text()
-    texto = pestana.vista.toPlainText()
-    assert "Rango de maestria 21" in texto
+    texto = pestana.texto_plano()
+    assert pestana.rango.text() == "21" and "RANGO DE MAESTRIA" in texto
     assert "MAESTRIA POR CATEGORIA" in texto
     assert "POR DOMINAR" in texto
     assert "NODOS PENDIENTES" in texto
@@ -117,8 +117,8 @@ def test_la_pestana_cambia_de_idioma(pestana):
     idiomas.cargar("en")
     pestana.retraducir()
     assert pestana.boton.text() == "Import profile (JSON)..."
-    texto = pestana.vista.toPlainText()
-    assert "Mastery Rank 21" in texto
+    texto = pestana.texto_plano()
+    assert "MASTERY RANK" in texto and pestana.rango.text() == "21"
     assert "Steel Meridian" in texto
 
 

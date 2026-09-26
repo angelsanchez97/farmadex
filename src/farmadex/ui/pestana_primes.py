@@ -23,16 +23,10 @@ from PySide6.QtCore import QEvent, QEventLoop, QPoint, QRect, QSize, Qt, QTimer,
 from PySide6.QtGui import QCursor, QDesktopServices
 from PySide6.QtWidgets import (
     QApplication,
-    QButtonGroup,
-    QCheckBox,
-    QComboBox,
     QFrame,
     QGridLayout,
-    QHBoxLayout,
-    QLabel,
     QLayout,
     QLineEdit,
-    QPushButton,
     QScrollArea,
     QSplitter,
     QToolTip,
@@ -49,7 +43,23 @@ from ..estado import inventario as estado_inventario
 from ..estado import objetivos as estado_objetivos
 from ..estado import usuario_db
 from ..idiomas import nombre as nombre_idioma, t
-from . import desglose_tiempo, enlaces_wiki, glosario, relleno_filas
+from . import desglose_tiempo, enlaces_wiki, glosario, relleno_filas, widgets
+from .estilo_c import (
+    BotonC,
+    CasillaRombo,
+    DesplegableC,
+    EtiquetaC,
+    Insignia,
+    InterruptorTexto,
+    PanelC,
+    Rombo,
+    columna,
+    fila,
+    icono,
+    px,
+    transparente,
+)
+from .pestana_objetivos import Miniatura
 from .maestria import estado_con_padre
 from .widgets import COLOR_BOVEDA, COLOR_DISPONIBLE, PALETA
 
@@ -412,41 +422,59 @@ class DisposicionFluida(QLayout):
         return y - rect.y() + m.bottom()
 
 
-class CajaPrime(QFrame):
-    """Un objeto prime (o los sueltos) con una casilla por pieza."""
+class CajaPrime(PanelC):
+    """Un objeto prime (o los sueltos) con una casilla de rombo por pieza, como la
+    casilla del arsenal: imagen, nombre, BOVEDA / SE FARMEA y las piezas debajo."""
 
     marcada = Signal(dict, bool)
 
     def __init__(self, titulo: str, piezas: list[dict], objeto: dict | None = None, columnas: int = 1,
-                 parent=None, nombres: dict[str, str] | None = None):
-        super().__init__(parent)
-        self.setObjectName("cajaPrime")
+                 parent=None, nombres: dict[str, str] | None = None, imagen: str | None = None,
+                 pedir_imagen=None):
+        super().__init__(remate=False, fondo="panel2", chaflan=12, parent=parent)
         self.objeto = objeto
         self.piezas = piezas
         # unique_name -> texto de la casilla, cuando no basta con el nombre de la pieza
         # (en los genericos, "Plano" solo no dice de que es).
         self.nombres = nombres or {}
-        self.titulo = QLabel()
-        self.titulo.setTextFormat(Qt.RichText)
         self._titulo = titulo
-        self.casillas: dict[str, QCheckBox] = {}
-        caja = QVBoxLayout(self)
-        caja.setContentsMargins(10, 6, 10, 8)
-        caja.setSpacing(2)
-        caja.addWidget(self.titulo)
+        self._imagen, self._pedir_imagen, self._imagen_pedida = imagen, pedir_imagen, False
+        m = px(12, False)
+        self.capa.setContentsMargins(m, px(10, False), m, px(10, False))
+        self.capa.setSpacing(px(2, False))
+        self.miniatura = None
+        self.titulo = EtiquetaC(titulo, "fuerte", recortar=True)
+        self.insignia = None
+        self.maestria = Insignia("", "ok", tam=10)
+        self.maestria.hide()
+        textos = columna(self.titulo, espacio=px(3, False))
+        if objeto is not None:
+            en_boveda = bool(objeto.get("en_boveda"))
+            self.insignia = Insignia(t("Boveda") if en_boveda else t("Se farmea"),
+                                     COLOR_BOVEDA if en_boveda else "ok", tam=10)
+            glosario.aplicar(self.insignia, "boveda")
+            textos.addLayout(fila(self.insignia, self.maestria, None, espacio=px(6, False)))
+        cabeza = []
+        if objeto is not None:
+            self.miniatura = Miniatura(34)
+            cabeza.append(self.miniatura)
+        cabeza.append(textos)
+        self.capa.addLayout(fila(*cabeza, espacio=px(8, False)))
+        self.capa.addSpacing(px(4, False))
+        self.casillas: dict[str, CasillaRombo] = {}
         rejilla = QGridLayout()
         rejilla.setContentsMargins(0, 0, 0, 0)
-        rejilla.setHorizontalSpacing(14)
-        rejilla.setVerticalSpacing(1)
+        rejilla.setHorizontalSpacing(px(18, False))
+        rejilla.setVerticalSpacing(px(1, False))
+        filas = max(1, (len(piezas) + columnas - 1) // columnas)
         for i, pieza in enumerate(piezas):
-            casilla = QCheckBox()
+            casilla = CasillaRombo("")
             casilla.toggled.connect(lambda marcado, pieza=pieza: self.marcada.emit(pieza, marcado))
             self.casillas[pieza["unique_name"]] = casilla
-            filas = (len(piezas) + columnas - 1) // columnas
             rejilla.addWidget(casilla, i % filas, i // filas)
-        caja.addLayout(rejilla)
+        self.capa.addLayout(rejilla)
         # En una fila todas las cajas miden lo mismo: lo que sobra, abajo.
-        caja.addStretch(1)
+        self.capa.addStretch(1)
         # Texto para el filtro: el objeto y sus piezas en los dos idiomas del indice.
         partes = [titulo]
         if objeto:
@@ -456,45 +484,41 @@ class CajaPrime(QFrame):
         partes += list(self.nombres.values())
         self.texto_filtro = normalizar(" ".join(partes))
 
+    def showEvent(self, evento):  # noqa: N802 - firma de Qt
+        super().showEvent(evento)
+        # La imagen se pide al verse la caja por primera vez, no por todas a la vez.
+        if not self._imagen_pedida and self.miniatura is not None and self._pedir_imagen and self._imagen:
+            self._imagen_pedida = True
+            self._pedir_imagen(self._imagen, self.miniatura)
+
     def pintar(self, estados: dict[str, tuple[bool, str | None, str]], maestria: str = "") -> None:
         """estados: unique_name -> (marcada, estado 'conseguido'/'tienes'/None, pista)."""
-        p = PALETA
         alguna = False
         for unico, casilla in self.casillas.items():
             pieza = next(x for x in self.piezas if x["unique_name"] == unico)
             marcada, estado, pista = estados.get(unico, (False, None, ""))
             alguna = alguna or marcada
             texto = self.nombres.get(unico) or nombre_idioma(pieza)
-            if (pieza.get("item_count") or 1) > 1:
-                texto += f" ×{pieza['item_count']}"
-            color = p["texto"]
+            extra = f"×{pieza['item_count']}" if (pieza.get("item_count") or 1) > 1 else ""
+            tinta = None
             if estado:
                 texto += " ✓"
-                color = COLOR_DISPONIBLE
-            elif pieza["en_boveda"]:
-                color = p["suave"]
+                tinta = "ok"
             casilla.blockSignals(True)
             casilla.setChecked(marcada)
             casilla.blockSignals(False)
-            casilla.setText(texto)
-            casilla.setStyleSheet(f"QCheckBox {{ color: {color}; font-size: 13px; }}")
+            casilla.poner(texto, extra, tinta)
             ayuda = [pista] if pista else []
             if pieza["en_boveda"]:
                 ayuda.append(t("En boveda: solo por intercambio, Baro Ki'Teer o Prime Resurgence"))
             casilla.setToolTip("\n".join(ayuda))
-        etiquetas = ""
-        if self.objeto and self.objeto.get("en_boveda"):
-            etiquetas += f" <span style='color:{COLOR_BOVEDA};font-size:11px'>{html.escape(t('BOVEDA'))}</span>"
         if maestria:
-            etiquetas += f" <span style='color:{COLOR_DISPONIBLE};font-size:11px'>✓ {html.escape(maestria)}</span>"
-        self.titulo.setText(
-            f"<span style='color:{p['acento'] if alguna else p['texto']};font-weight:600;font-size:13px'>"
-            f"{html.escape(self._titulo.upper())}</span>{etiquetas}"
-        )
-        self.setStyleSheet(
-            f"#cajaPrime {{ background: {p['panel2']}; border: 1px solid "
-            f"{p['acento'] if alguna else p['borde']}; border-radius: 8px; }}"
-        )
+            self.maestria.poner("✓ " + maestria)
+        self.maestria.setVisible(bool(maestria))
+        self.titulo.poner_tinta("acento" if alguna else None)
+        self.poner_marcado(alguna)
+        if self.insignia is not None:
+            self.insignia.refrescar_estilo()
 
 
 class VistaResultado(glosario.FichaConGlosario):
@@ -541,82 +565,98 @@ class PestanaPrimes(QWidget):
         self._cambiando = False
         self._vista = "rejilla"
 
-        # -- barra de arriba
-        self.boton_rejilla = QPushButton()
-        self.boton_resultado = QPushButton()
-        self._grupo_vista = QButtonGroup(self)
-        for boton in (self.boton_rejilla, self.boton_resultado):
-            boton.setCheckable(True)
-            self._grupo_vista.addButton(boton)
-        self.boton_rejilla.setChecked(True)
-        self.boton_rejilla.clicked.connect(lambda: self._elegir_vista("rejilla"))
-        self.boton_resultado.clicked.connect(lambda: self._elegir_vista("resultado"))
-        self.refinamiento = QComboBox()
-        self.escuadra = QComboBox()
+        self._imagenes: dict[int, str | None] = {}  # id del objeto -> nombre de su imagen
+        self._esperando_imagen: dict[str, list] = {}
+        widgets.imagenes().lista.connect(self._imagen_lista)
+
+        # -- cabecera: con que refinamiento abres y si juegas en escuadra (a la derecha de
+        # las sub-pestanas cuando la pagina va dentro de MIS METAS)
+        self.refinamiento = DesplegableC()
+        self.escuadra = DesplegableC()
         glosario.aplicar(self.refinamiento, "refinamiento")
         glosario.aplicar(self.escuadra, "radshare")
         self.refinamiento.currentIndexChanged.connect(self._cambiar_modo)
         self.escuadra.currentIndexChanged.connect(self._cambiar_modo)
+        self.etiqueta_refinamiento = EtiquetaC("", "pequeno")
+        self.etiqueta_escuadra = EtiquetaC("", "pequeno")
+        self.controles_cabecera = transparente(QWidget(self))
+        self.controles_cabecera.setLayout(fila(
+            self.etiqueta_refinamiento, self.refinamiento, px(12, False), self.etiqueta_escuadra, self.escuadra,
+            espacio=px(6, False)))
 
-        arriba = QHBoxLayout()
-        arriba.setSpacing(6)
-        arriba.addWidget(self.boton_rejilla)
-        arriba.addWidget(self.boton_resultado)
-        arriba.addStretch(1)
-        arriba.addWidget(self.refinamiento)
-        arriba.addWidget(self.escuadra)
-
-        # -- rejilla
+        # -- barra de la rejilla
         self.filtro = QLineEdit()
         self.filtro.setClearButtonEnabled(True)
+        self.filtro.setStyleSheet("QLineEdit { background: transparent; border: none; padding: 4px 2px; }")
         self.filtro.textChanged.connect(lambda _: self._aplicar_filtro())
-        self.incluir_boveda = QCheckBox()
-        self.incluir_boveda.setChecked(bool(self.config.get(CLAVE_BOVEDA, False)))
+        self.caja_filtro = PanelC(remate=False, fondo="panel2", chaflan=8)
+        self.caja_filtro.capa.setContentsMargins(px(10, False), px(1, False), px(6, False), px(1, False))
+        self.caja_filtro.capa.addLayout(fila(icono("buscar", 13, "suave"), self.filtro, espacio=px(4, False)))
+        self.caja_filtro.setMinimumWidth(px(300, False))
+        self.caja_filtro.setMaximumWidth(px(340, False))
+        self.incluir_boveda = InterruptorTexto("", bool(self.config.get(CLAVE_BOVEDA, False)))
         self.incluir_boveda.toggled.connect(self._cambiar_boveda)
         glosario.aplicar(self.incluir_boveda, "boveda")
         self._cargando_boveda = False
-        self.orden = QComboBox()
+        self.etiqueta_orden = EtiquetaC("", "pequeno")
+        self.orden = DesplegableC()
         self.orden.currentIndexChanged.connect(self._cambiar_orden)
-        self.limpiar = QPushButton()
+        self.limpiar = BotonC("", tam=11)
         self.limpiar.clicked.connect(self._desmarcar_todo)
-        barra_rejilla = QHBoxLayout()
-        barra_rejilla.setSpacing(6)
-        barra_rejilla.addWidget(self.filtro, 1)
-        barra_rejilla.addWidget(self.orden)
-        barra_rejilla.addWidget(self.incluir_boveda)
-        barra_rejilla.addWidget(self.limpiar)
+        # Rejilla <-> resultado (en una ventana ancha se ven los dos y sobran).
+        self.boton_resultado = BotonC("", principal=True, icono="derecha", tam=11)
+        self.boton_rejilla = BotonC("", tam=11)
+        self.boton_resultado.clicked.connect(lambda: self._elegir_vista("resultado"))
+        self.boton_rejilla.clicked.connect(lambda: self._elegir_vista("rejilla"))
+        # Filtro y boveda a la izquierda; ordenar y botones a la derecha, en la misma fila si
+        # caben y debajo si la ventana es estrecha (ver `_colocar_barra`).
+        self._grupo_derecha = transparente(QWidget())
+        self._grupo_derecha.setLayout(fila(self.etiqueta_orden, self.orden, self.limpiar, self.boton_rejilla,
+                                           self.boton_resultado, espacio=px(8, False)))
+        self._barra1 = fila(self.caja_filtro, px(8, False), self.incluir_boveda, None, espacio=px(8, False))
+        self._barra2 = fila(None, espacio=px(8, False))
+        self._barra_doble: bool | None = None
+        barra = columna(self._barra1, self._barra2, espacio=px(8, False))
 
-        self.contenido = QWidget()
-        self.fluida = DisposicionFluida(self.contenido)
-        self._cabeceras: dict[str, QLabel] = {}
+        self.contenido = transparente(QWidget())
+        self.fluida = DisposicionFluida(self.contenido, espacio=px(12, False))
+        self._cabeceras: dict[str, QWidget] = {}
         self._fechas: dict[int, str] | None = None
         self.desplazable = QScrollArea()
         self.desplazable.setWidgetResizable(True)
+        self.desplazable.setFrameShape(QFrame.NoFrame)
+        transparente(self.desplazable)
+        transparente(self.desplazable.viewport())
         self.desplazable.setWidget(self.contenido)
-        self.panel_rejilla = QWidget()
+        self.panel_rejilla = transparente(QWidget())
         caja_rejilla = QVBoxLayout(self.panel_rejilla)
-        caja_rejilla.setContentsMargins(0, 0, 0, 0)
-        caja_rejilla.setSpacing(6)
-        caja_rejilla.addLayout(barra_rejilla)
+        caja_rejilla.setContentsMargins(0, 0, px(4, False), 0)
+        caja_rejilla.setSpacing(0)
         caja_rejilla.addWidget(self.desplazable, 1)
 
-        # -- resultado
+        # -- resultado: la ficha de reliquias y misiones, en su panel
         self.resultado = VistaResultado()
         self.resultado.setOpenLinks(False)
         self.resultado.anchorClicked.connect(self._enlace)
+        self.resultado.setFrameShape(QFrame.NoFrame)
+        self.resultado.setStyleSheet("QTextBrowser { background: transparent; border: none; }")
         self._relleno = relleno_filas.RellenoFilas(self.resultado)
+        self.panel_resultado = PanelC("")
+        self.panel_resultado.capa.addWidget(self.resultado, 1)
 
         self.divisor = QSplitter(Qt.Horizontal)
         self.divisor.setChildrenCollapsible(False)
         self.divisor.addWidget(self.panel_rejilla)
-        self.divisor.addWidget(self.resultado)
+        self.divisor.addWidget(self.panel_resultado)
         self.divisor.setStretchFactor(0, 1)
         self.divisor.setStretchFactor(1, 1)
 
         caja = QVBoxLayout(self)
-        caja.setContentsMargins(4, 8, 4, 4)
-        caja.setSpacing(6)
-        caja.addLayout(arriba)
+        caja.setContentsMargins(px(4, False), px(6, False), px(4, False), px(4, False))
+        caja.setSpacing(px(10, False))
+        # Suelta (sin MIS METAS, en los tests) la cabecera va aqui; la seccion se la lleva.
+        caja.addWidget(self.controles_cabecera, 0, Qt.AlignRight)
+        caja.addLayout(barra)
         caja.addWidget(self.divisor, 1)
 
         self._temporizador = QTimer(self)
@@ -640,6 +680,7 @@ class PestanaPrimes(QWidget):
                 self._piezas[pieza["unique_name"]] = {**pieza, "padre": o}
         for pieza in self._sueltos:
             self._piezas[pieza["unique_name"]] = {**pieza, "padre": None}
+        self._imagenes = self._leer_imagenes(con, [o["id"] for o in self._objetos])
         self._construir_rejilla()
 
     def retraducir(self) -> None:
@@ -647,6 +688,10 @@ class PestanaPrimes(QWidget):
         if not self._cargando_boveda:
             self.incluir_boveda.setText(t("Incluir lo que esta en boveda"))
         self.limpiar.setText(t("Desmarcar todo"))
+        self.etiqueta_refinamiento.setText(t("Reliquias:"))
+        self.etiqueta_escuadra.setText(t("Jugando:"))
+        self.etiqueta_orden.setText(t("Ordenar:"))
+        self.panel_resultado.poner_titulo(t("Donde farmear"))
         self._rellenar_orden()
         self._rellenar_combos()
         self._construir_rejilla()
@@ -658,6 +703,47 @@ class PestanaPrimes(QWidget):
     def resizeEvent(self, evento):  # noqa: N802 - firma de Qt
         super().resizeEvent(evento)
         self._ajustar_disposicion()
+        self._colocar_barra()
+
+    def _colocar_barra(self) -> None:
+        """Ordenar y los botones van en la fila del filtro si caben; si no, debajo."""
+        necesario = (self.caja_filtro.minimumWidth() + self.incluir_boveda.sizeHint().width()
+                     + self._grupo_derecha.sizeHint().width() + px(60, False))
+        doble = self.width() < necesario
+        if doble == self._barra_doble:
+            return
+        self._barra_doble = doble
+        for capa in (self._barra1, self._barra2):
+            capa.removeWidget(self._grupo_derecha)
+        (self._barra2 if doble else self._barra1).addWidget(self._grupo_derecha)
+
+    # -- imagenes ------------------------------------------------------------------
+
+    @staticmethod
+    def _leer_imagenes(con: sqlite3.Connection, ids: list[int]) -> dict[int, str | None]:
+        salida: dict[int, str | None] = {}
+        for i in range(0, len(ids), 500):
+            trozo = ids[i:i + 500]
+            try:
+                marcas = ",".join("?" * len(trozo))
+                for item_id, imagen in con.execute(f"SELECT id, imagen FROM items WHERE id IN ({marcas})", trozo):
+                    salida[item_id] = imagen
+            except sqlite3.Error:
+                return salida  # indice sin imagenes: las cajas van sin ella
+        return salida
+
+    def _pedir_imagen(self, nombre: str, miniatura) -> None:
+        mapa = widgets.imagenes().pixmap(nombre, 64)
+        miniatura.poner(mapa)
+        if mapa is None:
+            self._esperando_imagen.setdefault(nombre, []).append(miniatura)
+
+    def _imagen_lista(self, nombre: str) -> None:
+        for miniatura in self._esperando_imagen.pop(nombre, []):
+            try:
+                miniatura.poner(widgets.imagenes().pixmap(nombre, 64))
+            except RuntimeError:
+                pass  # la caja ya se rehizo
 
     # -- disposicion -------------------------------------------------------------
 
@@ -670,15 +756,16 @@ class PestanaPrimes(QWidget):
             mitad = max(1, self.divisor.width() // 2)
             self.divisor.setSizes([mitad, mitad])
         self._era_doble = doble
-        self.boton_rejilla.setVisible(not doble)
-        self.boton_resultado.setVisible(not doble)
-        self.panel_rejilla.setVisible(doble or self._vista == "rejilla")
-        self.resultado.setVisible(doble or self._vista == "resultado")
+        rejilla = doble or self._vista == "rejilla"
+        self.boton_rejilla.setVisible(not doble and self._vista == "resultado")
+        self.boton_resultado.setVisible(not doble and self._vista == "rejilla")
+        for w in (self.caja_filtro, self.incluir_boveda, self.etiqueta_orden, self.orden, self.limpiar):
+            w.setVisible(rejilla)
+        self.panel_rejilla.setVisible(rejilla)
+        self.panel_resultado.setVisible(doble or self._vista == "resultado")
 
     def _elegir_vista(self, vista: str) -> None:
         self._vista = vista
-        self.boton_rejilla.setChecked(vista == "rejilla")
-        self.boton_resultado.setChecked(vista == "resultado")
         self._ajustar_disposicion()
 
     def _rellenar_combos(self) -> None:
@@ -693,6 +780,7 @@ class PestanaPrimes(QWidget):
                 combo.addItem(texto, dato)
             combo.setCurrentIndex(max(0, combo.findData(actual)))
             combo.blockSignals(False)
+            combo.updateGeometry()
 
     # -- rejilla -------------------------------------------------------------------
 
@@ -720,7 +808,8 @@ class PestanaPrimes(QWidget):
             if es_generico(o["nombre_en"]):
                 genericos.append({**o, "piezas": piezas})
                 continue
-            caja = CajaPrime(nombre_idioma(o), piezas, o)
+            caja = CajaPrime(nombre_idioma(o), piezas, o, imagen=self._imagenes.get(o["id"]),
+                             pedir_imagen=self._pedir_imagen)
             caja.marcada.connect(self._marcar)
             self._cajas_sets.append(caja)
         # Genericos: Formas y Adaptadores Exilus juntos, y lo demas (Kuva, mods de Requiem...)
@@ -736,7 +825,8 @@ class PestanaPrimes(QWidget):
                     nombres[pieza["unique_name"]] = f"{nombre_idioma(o)}: {nombre_idioma(pieza)}"
                     piezas_formas.append(pieza)
             else:
-                caja = CajaPrime(nombre_idioma(o), o["piezas"], o)
+                caja = CajaPrime(nombre_idioma(o), o["piezas"], o, imagen=self._imagenes.get(o["id"]),
+                                 pedir_imagen=self._pedir_imagen)
                 caja.marcada.connect(self._marcar)
                 self._cajas_genericas.append(caja)
         if piezas_formas:
@@ -754,9 +844,11 @@ class PestanaPrimes(QWidget):
         self._cajas = self._cajas_genericas + self._cajas_sets
         for clave in ("sets", "genericos"):
             if clave not in self._cabeceras:
-                cabecera = QLabel()
+                cabecera = transparente(QWidget())
                 cabecera.setProperty("fila_entera", True)
-                cabecera.setTextFormat(Qt.RichText)
+                cabecera.rotulo = EtiquetaC("", "rotulo", mayus=True)
+                cabecera.setLayout(fila(Rombo(8, "acento"), cabecera.rotulo, None, espacio=px(8, False),
+                                        margen=(0, px(4, False), 0, 0)))
                 self._cabeceras[clave] = cabecera
         self._pintar_cabeceras()
         self._colocar_cajas()
@@ -765,16 +857,12 @@ class PestanaPrimes(QWidget):
         self._ajustar_celdas()
 
     def _pintar_cabeceras(self) -> None:
-        p = PALETA
         textos = {
             "sets": t("Sets Prime ({n})", n=len(getattr(self, "_cajas_sets", []))),
             "genericos": t("Objetos genericos: no son de ningun set"),
         }
         for clave, cabecera in self._cabeceras.items():
-            cabecera.setText(
-                f"<span style='color:{p['acento']};font-size:12px;font-weight:bold;letter-spacing:1px'>"
-                f"{html.escape(textos[clave].upper())}</span>"
-            )
+            cabecera.rotulo.setText(textos[clave])
 
     def _colocar_cajas(self) -> None:
         """Pone las cajas en la rejilla en el orden elegido; los genericos, aparte y al final."""
@@ -1021,8 +1109,8 @@ class PestanaPrimes(QWidget):
                     maestria = t("Dominado")
             caja.pintar(estados, maestria)
         self._n_marcadas = sum(1 for u in objetivos if u in self._piezas)
-        self.boton_rejilla.setText(t("Piezas ({n})", n=self._n_marcadas))
-        self.boton_resultado.setText(t("Donde farmear"))
+        self.boton_rejilla.setText(t("Volver a las piezas ({n})", n=self._n_marcadas))
+        self.boton_resultado.setText(t("Ver que farmear"))
         self._temporizador.start()
 
     def _estado_pieza(self, pieza: dict, objetivo) -> tuple[str | None, str]:

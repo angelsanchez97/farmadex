@@ -37,6 +37,7 @@ from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPainterPath, Q
 from PySide6.QtWidgets import (
     QAbstractButton,
     QButtonGroup,
+    QComboBox,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -91,6 +92,10 @@ ICONO = {
     "abajo": "", "cerrar": "", "mas": "", "sol": "", "luna": "",
     "ayuda": "", "mundo": "", "estrella": "", "info": "",
 }
+
+
+# Glifos de MIS METAS (marcar hecho, editar, leer la pantalla, importar).
+ICONO.update({"hecho": "", "editar": "", "leer": "", "importar": "", "menos": ""})
 
 
 def px(tamano: float, letra: bool = True) -> int:
@@ -980,3 +985,254 @@ class CasillaC(PanelC):
         lado = px(self._lado, False)
         self.imagen.setStyleSheet("background: transparent;")
         self.imagen.setPixmap(mapa.scaled(lado, lado, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+
+
+# -- controles de formulario (MIS METAS) -------------------------------------------------------
+
+
+class CasillaRombo(QAbstractButton, PiezaC):
+    """Casilla marcable con un rombo: hueco sin marcar, lleno (de acento) marcada.
+
+    Es un boton marcable de verdad (`toggled`, `isChecked`, `setChecked`, `text`). `extra`
+    es un texto pequeno pegado a la derecha ("×2"). Sin marcar, el texto va apagado y
+    marcado, en claro; `tinta` lo fuerza (una clave de la paleta: "ok" = ya conseguido).
+    """
+
+    def __init__(self, texto: str = "", marcada: bool = False, extra: str = "", tinta: str | None = None,
+                 tam: int = 13, parent=None):
+        super().__init__(parent)
+        transparente(self)
+        self.extra, self.tinta, self.tam = extra, tinta, tam
+        self.setCheckable(True)
+        self.setChecked(marcada)
+        self.setText(texto)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+
+    def poner(self, texto: str | None = None, extra: str | None = None, tinta: str | None = "") -> None:
+        """Cambia texto, extra o tinta (tinta None = la de por defecto; "" = no tocarla)."""
+        if texto is not None:
+            self.setText(texto)
+        if extra is not None:
+            self.extra = extra
+        if tinta != "":
+            self.tinta = tinta
+        self.updateGeometry()
+        self.update()
+
+    def _medidas(self) -> tuple[QFont, QFont, int]:
+        return fuente("normal", self.tam), fuente("pequeno"), px(10, False) + 2
+
+    def sizeHint(self) -> QSize:  # noqa: N802
+        f, f_extra, lado = self._medidas()
+        ancho = lado + px(8, False) + QFontMetrics(f).horizontalAdvance(self.text()) + 4
+        if self.extra:
+            ancho += px(12, False) + QFontMetrics(f_extra).horizontalAdvance(self.extra)
+        return QSize(ancho, QFontMetrics(f).height() + px(4, False))
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        f, _fe, lado = self._medidas()
+        return QSize(lado + px(40, False), QFontMetrics(f).height() + px(4, False))
+
+    def paintEvent(self, _evento):  # noqa: N802
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        f, f_extra, lado = self._medidas()
+        marcada = self.isChecked()
+        encima = self.underMouse() and self.isEnabled()
+        tinta_rombo = color("acento") if marcada else color("texto" if encima else "suave")
+        p.setPen(QPen(tinta_rombo, 1.2))
+        p.setBrush(tinta_rombo if marcada else Qt.NoBrush)
+        medio = (lado - 2) / 2
+        p.drawPolygon(_rombo_poligono(medio + 1, self.height() / 2, medio))
+        x = lado + px(8, False)
+        derecha = self.width()
+        if self.extra:
+            p.setFont(f_extra)
+            p.setPen(color("suave"))
+            ancho_extra = QFontMetrics(f_extra).horizontalAdvance(self.extra)
+            p.drawText(QRectF(derecha - ancho_extra - 2, 0, ancho_extra + 2, self.height()),
+                       Qt.AlignVCenter | Qt.AlignRight, self.extra)
+            derecha -= ancho_extra + px(10, False)
+        tinta = self.tinta or ("texto" if (marcada or encima) else "suave")
+        if not self.isEnabled():
+            tinta = "tenue"
+        p.setFont(f)
+        p.setPen(color(tinta))
+        visible = QFontMetrics(f).elidedText(self.text(), Qt.ElideRight, max(10, int(derecha - x)))
+        p.drawText(QRectF(x, 0, derecha - x, self.height()), Qt.AlignVCenter | Qt.AlignLeft, visible)
+        p.end()
+
+    def enterEvent(self, evento):  # noqa: N802
+        self.update()
+        super().enterEvent(evento)
+
+    def leaveEvent(self, evento):  # noqa: N802
+        self.update()
+        super().leaveEvent(evento)
+
+
+class DesplegableC(QComboBox, PiezaC):
+    """QComboBox con forma de boton C: esquina cortada, filete de acento, flecha y el
+    texto elegido en mayusculas. Todo lo demas es un QComboBox normal (addItem,
+    currentData, findData, currentIndexChanged...)."""
+
+    def __init__(self, tam: int = 12, parent=None):
+        super().__init__(parent)
+        transparente(self)
+        self.tam = tam
+        self.setCursor(Qt.PointingHandCursor)
+        self.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
+
+    def _fuentes(self) -> tuple[QFont, QFont]:
+        return fuente("dato", self.tam, 600), fuente_iconos(self.tam)
+
+    def sizeHint(self) -> QSize:  # noqa: N802
+        f, _fi = self._fuentes()
+        fm = QFontMetrics(f)
+        ancho = max((fm.horizontalAdvance(self.itemText(i).upper()) for i in range(self.count())), default=px(60, False))
+        return QSize(ancho + px(14, False) * 2 + px(20, False), px(self.tam, True) + px(16, False))
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        return self.sizeHint()
+
+    def paintEvent(self, _evento):  # noqa: N802
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        r = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+        camino = ruta_chaflan(r, px(CHAFLAN_BOTON, False), "d")
+        base = color("acento") if self.isEnabled() else color("tenue")
+        c = QColor(base)
+        c.setAlpha(55 if (self.underMouse() and self.isEnabled()) else 22)
+        p.fillPath(camino, c)
+        c.setAlpha(190 if self.hasFocus() else 150)
+        p.setPen(QPen(c, 1))
+        p.drawPath(camino)
+        f, fi = self._fuentes()
+        x = px(12, False)
+        p.setFont(fi)
+        p.setPen(base)
+        p.drawText(QRectF(x, 0, px(14, False), self.height()), Qt.AlignCenter, ICONO["abajo"])
+        x += px(20, False)
+        p.setFont(f)
+        texto = QFontMetrics(f).elidedText(self.currentText().upper(), Qt.ElideRight,
+                                           max(10, int(self.width() - x - px(8, False))))
+        p.drawText(QRectF(x, 0, self.width() - x, self.height()), Qt.AlignVCenter | Qt.AlignLeft, texto)
+        p.end()
+
+    def enterEvent(self, evento):  # noqa: N802
+        self.update()
+        super().enterEvent(evento)
+
+    def leaveEvent(self, evento):  # noqa: N802
+        self.update()
+        super().leaveEvent(evento)
+
+
+class InterruptorTexto(Interruptor):
+    """`Interruptor` con su texto al lado ("Incluir lo que esta en boveda")."""
+
+    def __init__(self, texto: str = "", marcado: bool = False, parent=None):
+        super().__init__(marcado, parent)
+        self.setText(texto)
+
+    def refrescar_estilo(self) -> None:
+        self.setMinimumSize(0, 0)
+        self.setMaximumSize(16777215, 16777215)
+        self.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
+        self.updateGeometry()
+        self.update()
+
+    def sizeHint(self) -> QSize:  # noqa: N802
+        fm = QFontMetrics(fuente("normal", 13))
+        return QSize(px(38, False) + px(8, False) + fm.horizontalAdvance(self.text()) + 4,
+                     max(px(20, False), fm.height() + px(2, False)))
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        return self.sizeHint()
+
+    def paintEvent(self, _evento):  # noqa: N802
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        w, h = px(38, False), px(20, False)
+        arriba = (self.height() - h) / 2
+        on = self.isChecked()
+        acento = color("acento") if self.isEnabled() else color("tenue")
+        r = QRectF(0.5, arriba + h * 0.18, w - 1, h * 0.64)
+        p.setPen(QPen(acento if on else color("tenue"), 1))
+        fondo = QColor(acento)
+        fondo.setAlpha(60 if on else 0)
+        p.setBrush(fondo)
+        p.drawRoundedRect(r, r.height() / 2, r.height() / 2)
+        medio = h / 2 - 1
+        x = w - medio - 1 if on else medio + 1
+        p.setPen(Qt.NoPen)
+        p.setBrush(acento if on else color("suave"))
+        p.drawPolygon(_rombo_poligono(x, arriba + h / 2, medio))
+        p.setFont(fuente("normal", 13))
+        p.setPen(color("texto" if self.isEnabled() else "suave"))
+        x = w + px(8, False)
+        p.drawText(QRectF(x, 0, self.width() - x, self.height()), Qt.AlignVCenter | Qt.AlignLeft, self.text())
+        p.end()
+
+
+class Linea(QWidget, PiezaC):
+    """Raya fina horizontal que separa bloques dentro de un panel (cabecera de una tabla,
+    pie de un menu). `tinta` es una clave de la paleta ("borde" o "acento_tenue")."""
+
+    def __init__(self, tinta: str = "borde", parent=None):
+        super().__init__(parent)
+        transparente(self)
+        self.tinta = tinta
+        self.setFixedHeight(5)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+
+    def paintEvent(self, _evento):  # noqa: N802
+        p = QPainter(self)
+        p.setPen(QPen(color(self.tinta), 1))
+        p.drawLine(0, 2, self.width(), 2)
+        p.end()
+
+
+class BotonGlifo(QPushButton, PiezaC):
+    """Boton plano con un solo glifo de la fuente de iconos (marcar hecho, editar, quitar,
+    desplegar). `text()` no se pinta: sirve de nombre accesible y de tooltip si no hay otro."""
+
+    def __init__(self, glifo: str, texto: str = "", tinta: str = "suave", tam: int = 14, parent=None):
+        super().__init__(texto, parent)
+        transparente(self)
+        self.glifo, self.tinta, self.tam = ICONO.get(glifo, glifo), tinta, tam
+        self.setCursor(Qt.PointingHandCursor)
+        self.setFlat(True)
+        self.refrescar_estilo()
+
+    def poner_glifo(self, glifo: str) -> None:
+        self.glifo = ICONO.get(glifo, glifo)
+        self.update()
+
+    def refrescar_estilo(self) -> None:
+        lado = px(self.tam + 12, False)
+        self.setFixedSize(lado, lado)
+        self.update()
+
+    def paintEvent(self, _evento):  # noqa: N802
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        if not self.isEnabled():
+            tinta = color("tenue")
+        elif self.underMouse():
+            tinta = color("texto")
+        else:
+            tinta = color(self.tinta)
+        p.setFont(fuente_iconos(self.tam))
+        p.setPen(tinta)
+        p.drawText(QRectF(self.rect()), Qt.AlignCenter, self.glifo)
+        p.end()
+
+    def enterEvent(self, evento):  # noqa: N802
+        self.update()
+        super().enterEvent(evento)
+
+    def leaveEvent(self, evento):  # noqa: N802
+        self.update()
+        super().leaveEvent(evento)

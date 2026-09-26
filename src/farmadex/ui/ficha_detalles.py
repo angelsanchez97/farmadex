@@ -123,7 +123,98 @@ def html_detalles(con: sqlite3.Connection | None, item: dict | None, compacto: b
     return "".join(p for p in partes if p)
 
 
-def bloque_glifo(glifo: dict, compacto: bool = False) -> str:
+# Tope de cada barra de estadisticas de la ficha C: lo que en el juego ya es "mucho".
+# Solo sirve para dibujar la barra; el numero que se ensena es el de verdad.
+TOPES_ARMA = {
+    "critico": 0.5, "mult_critico": 4.0, "estado": 0.5, "cadencia": 15.0, "cargador": 200.0,
+    "recarga": 5.0, "multidisparo": 5.0, "alcance": 5.0,
+}
+
+
+def estadisticas_arma(arma: dict | None) -> list[tuple[str, str, float | None]]:
+    """(nombre, valor, parte de la barra 0..1 o None) de cada estadistica de un arma, para
+    la ficha C. La recarga va al reves: cuanto mas corta, mas llena."""
+    if not arma:
+        return []
+    melee = arma.get("cuerpo_a_cuerpo")
+    salida: list[tuple[str, str, float | None]] = []
+
+    def poner(es, en, valor, clave=None, crudo=None, al_reves=False):
+        if not valor:
+            return
+        parte = None
+        if clave and crudo is not None and TOPES_ARMA.get(clave):
+            parte = max(0.0, min(1.0, float(crudo) / TOPES_ARMA[clave]))
+            if al_reves:
+                parte = 1.0 - parte
+        salida.append((_g(es, en), valor, parte))
+
+    poner("Probabilidad crítica", "Critical chance", _pct(arma.get("critico")), "critico", arma.get("critico"))
+    if arma.get("mult_critico"):
+        poner("Multiplicador crítico", "Critical multiplier", f"×{_n(arma['mult_critico'])}", "mult_critico",
+              arma["mult_critico"])
+    poner("Probabilidad de estado", "Status chance", _pct(arma.get("estado")), "estado", arma.get("estado"))
+    if melee:
+        poner("Velocidad de ataque", "Attack speed", _n(arma.get("cadencia"), 2))
+        poner("Alcance", "Range", f"{_n(arma.get('alcance'))} m" if arma.get("alcance") else "", "alcance",
+              arma.get("alcance"))
+    else:
+        if arma.get("cadencia"):
+            poner("Cadencia", "Fire rate", t("{n} por segundo", n=_n(arma["cadencia"], 2)), "cadencia",
+                  arma["cadencia"])
+        poner("Cargador", "Magazine", _n(arma.get("cargador"), 0), "cargador", arma.get("cargador"))
+        poner("Recarga", "Reload", f"{_n(arma.get('recarga'), 2)} s" if arma.get("recarga") else "", "recarga",
+              arma.get("recarga"), al_reves=True)
+        if arma.get("multidisparo") and float(arma["multidisparo"]) != 1:
+            poner("Multidisparo", "Multishot", _n(arma["multidisparo"]), "multidisparo", arma["multidisparo"])
+        gatillo = arma.get("gatillo")
+        if gatillo:
+            poner("Gatillo", "Trigger", glosa(GATILLOS.get(gatillo, gatillo), gatillo))
+    return salida
+
+
+def dano_arma(arma: dict | None) -> list[tuple[str, str, float, str]]:
+    """(clave, nombre, valor, color) de cada tipo de dano de un arma, en su orden."""
+    salida = []
+    for clave, cantidad in ((arma or {}).get("dano") or {}).items():
+        if cantidad:
+            salida.append((clave, _g(DANO.get(clave, clave), clave.capitalize()), float(cantidad),
+                           COLOR_DANO.get(clave, PALETA["texto"])))
+    return salida
+
+
+def numero(valor, decimales: int = 1) -> str:
+    """El numero como lo escribe la ficha, sin ceros de relleno (para las piezas C)."""
+    return _n(valor, decimales)
+
+
+def bloques(con: sqlite3.Connection | None, item: dict | None) -> dict:
+    """Los bloques de detalles por separado y sin su titulo, para repartirlos en paneles.
+
+    Claves posibles: "glifo", "arma" (la tabla de siempre), "warframe" (vida, escudo... y
+    la pasiva), "habilidades", "mod", "arcano"; y "_datos" con lo leido de `detalles`.
+    """
+    if con is None or not item:
+        return {}
+    datos = detalles.leer(con, item.get("id"))
+    if not datos:
+        return {}
+    salida: dict = {"_datos": datos}
+    if "glifo" in datos:
+        salida["glifo"] = bloque_glifo(datos["glifo"], titulo=False)
+    if "arma" in datos:
+        salida["arma"] = bloque_arma(datos["arma"])
+    if "warframe" in datos:
+        salida["warframe"] = bloque_warframe(datos["warframe"], titulo=False, con_habilidades=False)
+        salida["habilidades"] = html_habilidades(datos["warframe"])
+    if "mod" in datos:
+        salida["mod"] = bloque_efecto(datos["mod"], es_mod=True, titulo=False)
+    if "arcano" in datos:
+        salida["arcano"] = bloque_efecto(datos["arcano"], es_mod=False, titulo=False)
+    return {k: v for k, v in salida.items() if v}
+
+
+def bloque_glifo(glifo: dict, compacto: bool = False, titulo: bool = True) -> str:
     codigo = (glifo or {}).get("codigo")
     if not codigo:
         return ""
@@ -142,7 +233,7 @@ def bloque_glifo(glifo: dict, compacto: bool = False) -> str:
     nota = html.escape(t("Escribelo en el Mercado del juego o en la web de Warframe. Sale de la wiki "
                          "oficial: si ya no funciona, es que ha caducado."))
     return (
-        _seccion(t("Codigo de canje"))
+        (_seccion(t("Codigo de canje")) if titulo else "")
         + f"<div>{cabecera} &nbsp; {canjear}</div>"
         + f"<div style='color:{p['suave']};font-size:12px;margin-top:3px'>{nota}</div>"
     )
@@ -209,7 +300,7 @@ def bloque_arma(arma: dict, compacto: bool = False) -> str:
     return salida
 
 
-def bloque_warframe(wf: dict, compacto: bool = False) -> str:
+def bloque_warframe(wf: dict, compacto: bool = False, titulo: bool = True, con_habilidades: bool = True) -> str:
     if not wf:
         return ""
     p = PALETA
@@ -225,25 +316,35 @@ def bloque_warframe(wf: dict, compacto: bool = False) -> str:
         nombres = ", ".join(html.escape((h.get("es") if castellano else "") or h["en"]) for h in habilidades)
         return (f"<div style='margin-top:4px'>{linea}</div>"
                 + (f"<div style='color:{p['suave']}'>{nombres}</div>" if nombres else ""))
-    salida = _seccion(t("Estadisticas")) + _tabla(_celdas(pares, 4)) if pares else ""
+    salida = ((_seccion(t("Estadisticas")) if titulo else "") + _tabla(_celdas(pares, 4))) if pares else ""
     pasiva = wf.get("pasiva") or {}
     texto_pasiva = (pasiva.get("es") if castellano else "") or pasiva.get("en") or ""
     if texto_pasiva:
         salida += (f"<p style='margin:6px 0 2px 4px'><b>{html.escape(_g('Pasiva', 'Passive'))}:</b> "
                    f"{html.escape(texto_pasiva)}</p>")
-    if habilidades:
-        filas = []
-        for i, h in enumerate(habilidades, start=1):
-            nombre = (h.get("es") if castellano else "") or h["en"]
-            desc = (h.get("desc_es") if castellano else "") or h.get("desc_en") or ""
-            filas.append(f"<tr><td valign='top' style='color:{p['suave']}'>{i}</td>"
-                         f"<td><b>{html.escape(nombre)}</b><br>"
-                         f"<span style='color:{p['suave']}'>{html.escape(desc)}</span></td></tr>")
-        salida += _seccion(_g("Habilidades", "Abilities")) + _tabla(filas)
+    if habilidades and con_habilidades:
+        salida += _seccion(_g("Habilidades", "Abilities")) + html_habilidades(wf)
     return salida
 
 
-def bloque_efecto(datos: dict, compacto: bool = False, es_mod: bool = True) -> str:
+def html_habilidades(wf: dict | None) -> str:
+    """Las habilidades de un warframe, numeradas y con su descripcion (sin titulo)."""
+    habilidades = (wf or {}).get("habilidades") or []
+    if not habilidades:
+        return ""
+    p = PALETA
+    castellano = es_castellano()
+    filas = []
+    for i, h in enumerate(habilidades, start=1):
+        nombre = (h.get("es") if castellano else "") or h["en"]
+        desc = (h.get("desc_es") if castellano else "") or h.get("desc_en") or ""
+        filas.append(f"<tr><td valign='top' style='color:{p['suave']}'>{i}</td>"
+                     f"<td><b>{html.escape(nombre)}</b><br>"
+                     f"<span style='color:{p['suave']}'>{html.escape(desc)}</span></td></tr>")
+    return _tabla(filas)
+
+
+def bloque_efecto(datos: dict, compacto: bool = False, es_mod: bool = True, titulo: bool = True) -> str:
     """Efecto de un mod o arcano: al maximo arriba y, en la ficha completa, rango a rango."""
     efectos = detalles.efecto_en_idioma(datos.get("efecto"), es_castellano())
     if not efectos:
@@ -267,7 +368,7 @@ def bloque_efecto(datos: dict, compacto: bool = False, es_mod: bool = True) -> s
     if compacto:
         return (f"<div style='margin-top:4px'><span style='color:{p['suave']}'>{titulo_max}:</span> "
                 f"{al_maximo}</div>")
-    salida = _seccion(_g("Efecto", "Effect"))
+    salida = _seccion(_g("Efecto", "Effect")) if titulo else ""
     salida += f"<div style='margin:2px 0 4px 4px'><span style='color:{p['suave']}'>{titulo_max}:</span> <b>{al_maximo}</b></div>"
     if extra:
         salida += f"<div style='margin:0 0 6px 4px;color:{p['suave']}'>{' &middot; '.join(extra)}</div>"

@@ -103,8 +103,7 @@ def test_las_pestanas_cambian_de_idioma_al_vuelo(castellano_al_salir, tmp_path, 
         pestana.retraducir()
     assert buscador.boton_objetivo.text() == "+ Goal"
     assert mundo.tarjetas["fisuras"].title() == "Void Fissures"
-    assert mundo.filtro_modo.itemText(2) == "Steel Path"
-    assert mundo.filtro_modo.itemData(2) == "Camino de Acero"  # el filtro compara por clave
+    assert mundo.botones_modo["acero"].text() == "Steel Path"  # el filtro compara por clave, no por texto
     assert ajustes.tema.itemText(ajustes.tema.findData("vacio")) == "Void (blue)"
     assert ajustes.aviso_version.text() == "You are on the latest version"
 

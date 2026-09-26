@@ -28,7 +28,8 @@ TIPOS: dict[str, tuple[str, str]] = {
     "recurso": ("Recurso", "#ffd54f"),
     "reliquia": ("Reliquia", "#d7b27a"),
     "glifo": ("Glifo", "#f48fb1"),
-    "mision": ("Mision", "#4dd0a8"),
+    # "Mision||nodo": una mision del mapa ("Mission"), no una de historia ("Quest").
+    "mision": ("Mision||nodo", "#4dd0a8"),
     "cosmetico": ("Aspecto", "#b0a8c8"),
     "otro": ("Otros", "#9aa4b2"),
 }
@@ -96,13 +97,13 @@ def nombre(clave: str) -> str:
 
 
 def leyenda_html(claves, fondo: str | None = None) -> str:
-    """'● Warframe  ● Mod  ● Recurso' solo con los tipos que salen en la lista, en su orden."""
+    """'◆ Warframe  ◆ Mod  ◆ Recurso' solo con los tipos que salen en la lista, en su orden."""
     vistas = set(claves)
     presentes = [c for c in ORDEN if c in vistas]
     if not presentes:
         return ""
     trozos = [
-        f"<span style='color:{color(c, fondo)}'>&#9679;</span>&nbsp;{html.escape(nombre(c))}"
+        f"<span style='color:{color(c, fondo)}'>&#9670;</span>&nbsp;{html.escape(nombre(c))}"
         for c in presentes
     ]
     return "&nbsp;&nbsp; ".join(trozos)

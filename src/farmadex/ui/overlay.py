@@ -49,6 +49,7 @@ from ..captura.builds import LectorBuild
 from ..captura.comparador import ServicioComparador
 from ..captura.cursor import LectorCursor, TurnoLecturas
 from ..captura.lector_pasivo import LectorPasivo
+from ..captura.ocr import modo_de_config
 from ..captura.reliquias import DisparadorAutomatico, LectorRecompensas, Recompensa, completar, resumir
 from ..online.servicio_market import ServicioMarket
 from ..online.worldstate import ServicioMundo
@@ -86,7 +87,8 @@ ATAJO_MODO = "Ctrl+M"
 # Menu superior: (clave, titulo). Las rutas son "seccion" o "seccion/subseccion"; ver
 # `VentanaOverlay.ir_a`, que es el UNICO sitio que cambia de pagina.
 SECCIONES = (
-    ("tablero", "Tablero"),
+    # Clave propia: "Tablero" a secas es tambien la disposicion de Mundo ("Board").
+    ("tablero", "Tablero||menu"),
     ("buscar", "Buscar"),
     ("metas", "Mis metas"),
     ("mundo", "Mundo"),
@@ -394,6 +396,9 @@ class VentanaOverlay(QWidget):
         self.objetivos.cambiados.connect(self.tablero.marcar_sucio)
         self.compacta = VistaCompacta(self.buscador)
         self.compacta.abrir_completo.connect(self._abrir_completo)
+        # Modo juego: sus tarjetas salen de los mismos calculos que el Tablero.
+        self.compacta.usar_tablero(self.tablero, self.config)
+        self.objetivos.cambiados.connect(self.compacta.marcar_sucio)
         self.servicio_mundo: ServicioMundo | None = None
         self.hilo_captura: QThread | None = None
         self.hilo_comparador: QThread | None = None
@@ -462,7 +467,13 @@ class VentanaOverlay(QWidget):
         dentro = QVBoxLayout(self.marco)
         dentro.setContentsMargins(8, 6, 8, 8)
         dentro.setSpacing(6)
-        dentro.addLayout(cabecera)
+        # La cabecera va en su propio widget: en el modo juego el fondo de la ventana es
+        # transparente (las tarjetas flotan sobre la partida) y la cabecera lleva el suyo.
+        self.barra_cabecera = QWidget()
+        self.barra_cabecera.setObjectName("barraCabecera")
+        self.barra_cabecera.setAttribute(Qt.WA_StyledBackground, True)
+        self.barra_cabecera.setLayout(cabecera)
+        dentro.addWidget(self.barra_cabecera)
         dentro.addWidget(self.filete)
         dentro.addWidget(self.banner)
         dentro.addWidget(self.zona_secciones, 1)
@@ -634,6 +645,9 @@ class VentanaOverlay(QWidget):
         self.servicio_mundo.actualizado.connect(self.mundo.actualizar)
         self.servicio_mundo.fallo.connect(self.mundo.marcar_desactualizado)
         self.servicio_mundo.actualizado.connect(self.tablero.actualizar_mundo)
+        # "Para esto te sirve hoy" de Objetivos cruza el mismo mundo con tus metas.
+        self.servicio_mundo.actualizado.connect(self.objetivos.actualizar_mundo)
+        self.servicio_mundo.actualizado.connect(lambda _m: self.compacta.marcar_sucio())
         self.servicio_mundo.fallo.connect(self.tablero.marcar_desactualizado)
         self.hilo_mundo.start()
 
@@ -654,7 +668,7 @@ class VentanaOverlay(QWidget):
         """OCR y vigilancia de EE.log, cada cosa en su hilo."""
         if self.hilo_captura is not None:
             return
-        motor = self.config.get("motor_ocr", "rapidocr")
+        motor = modo_de_config(self.config)  # Ajustes > Avanzado > Lectura de pantalla (OCR)
         self.hilo_captura = QThread(self)
         self.lector_recompensas = LectorRecompensas(motor)
         self.lector_cursor = LectorCursor(motor)
@@ -697,6 +711,10 @@ class VentanaOverlay(QWidget):
         )
         self.ajustes.estilo_recompensas_cambiado.connect(self.cambiar_estilo_recompensas)
         self.ajustes.prioridad_recompensas_cambiada.connect(self.cambiar_prioridad_recompensas)
+        # Cambio de modo de OCR en Ajustes: cada lector rehace su motor en el hilo de captura.
+        for lector in (self.lector_recompensas, self.lector_cursor, self.lector_build,
+                       self.lector_agrietado, self.lector_pasivo):
+            self.ajustes.ocr_modo_cambiado.connect(lector.cambiar_motor)
 
         # Botin que EE.log deja claro (reliquia en solitario) va directo a los objetivos.
         self.botin = Botin(self._sumar_botin, bool(self.config.get("botin_eelog_auto", True)))
@@ -1623,6 +1641,7 @@ class VentanaOverlay(QWidget):
         self.modo = modo
         compacto = modo == "compacto"
         video = modo == "video"
+        self.aplicar_opacidad(self._opacidad)
         self.zona_secciones.setVisible(not compacto)
         # En modo video se ve solo el video: sin menu ni sub-pestanas.
         self.menu.setVisible(not compacto and not video)
@@ -1661,11 +1680,12 @@ class VentanaOverlay(QWidget):
             tamano = (ANCHO_COMPACTO, ALTO_COMPACTO) if compacto else (ANCHO_COMPLETO, ALTO_COMPLETO)
             self.resize(*tamano)
             if compacto and self.isVisible():
-                # Sin sitio guardado, la compacta nace en la esquina superior derecha
-                # de donde estaba la ventana grande, que es donde menos tapa.
-                g = self.config.get("overlay_geometria")
-                if g and len(g) == 4:
-                    self.move(g[0] + g[2] - ANCHO_COMPACTO, g[1])
+                # Sin sitio guardado, el modo juego nace pegado al borde izquierdo, por
+                # debajo de los objetivos de la mision: arriba a la derecha estan el
+                # minimapa y la vida, y abajo el chat y las habilidades del juego.
+                zona = self.screen().availableGeometry() if self.screen() else None
+                if zona is not None:
+                    self.move(zona.left() + 16, zona.top() + round(zona.height() * 0.26))
         self._pintar_banner()
         self._asegurar_en_pantalla()
         self._aplicar_encima()
@@ -1840,10 +1860,21 @@ class VentanaOverlay(QWidget):
 
     def aplicar_opacidad(self, opacidad: float) -> None:
         self._opacidad = opacidad
-        self.marco.setStyleSheet(
-            f"#marco {{ background: rgba({PALETA['fondo_rgb']}, {opacidad});"
-            f" border: 1px solid {PALETA['borde']}; border-radius: 6px; }}"
-        )
+        if getattr(self, "modo", "completo") == "compacto":
+            # Modo juego: las tarjetas flotan sobre la partida. Un fondo casi invisible, no
+            # del todo: con transparencia total Windows deja pasar los clics al juego y ya
+            # no se podria arrastrar la ventana desde los huecos.
+            self.marco.setStyleSheet(f"#marco {{ background: rgba({PALETA['fondo_rgb']}, 0.01); border: none; }}")
+            cabecera = (f"#barraCabecera {{ background: rgba({PALETA['fondo_rgb']}, {opacidad});"
+                        f" border: 1px solid {PALETA['borde']}; border-radius: 4px; }}")
+        else:
+            self.marco.setStyleSheet(
+                f"#marco {{ background: rgba({PALETA['fondo_rgb']}, {opacidad});"
+                f" border: 1px solid {PALETA['borde']}; border-radius: 6px; }}"
+            )
+            cabecera = "#barraCabecera { background: transparent; border: none; }"
+        if hasattr(self, "barra_cabecera"):
+            self.barra_cabecera.setStyleSheet(cabecera)
 
     # -- navegacion ------------------------------------------------------------
 
@@ -1950,6 +1981,8 @@ class VentanaOverlay(QWidget):
     def _pintar_pista(self) -> None:
         atajo = self.config.get("hotkey_overlay", "Ctrl+Alt+W")
         self.pista.setText(t("{atajo} o Escape para cerrar", atajo=atajo) + "  ")
+        if hasattr(self, "compacta"):
+            self.compacta._poner_tecla()
 
     def cambiar_idioma(self, codigo: str) -> None:
         """Cambio al vuelo: todo lo que esta en pantalla se vuelve a escribir."""
@@ -2209,6 +2242,12 @@ class SeccionConSub(QWidget):
         self.paginas = dict(paginas)
         for clave, _texto in opciones:
             self.pila.addWidget(self.paginas[clave])
+            # Controles propios de la pagina (filtros, botones): a la derecha de las
+            # sub-pestanas, visibles solo con su pagina delante.
+            controles = getattr(self.paginas[clave], "controles_cabecera", None)
+            if isinstance(controles, QWidget):
+                self.subpestanas.derecha.addWidget(controles)
+                controles.setVisible(False)
         capa = QVBoxLayout(self)
         capa.setContentsMargins(0, 0, 0, 0)
         capa.setSpacing(8)
@@ -2224,6 +2263,10 @@ class SeccionConSub(QWidget):
             return
         self.pila.setCurrentWidget(pagina)
         self.subpestanas.poner_activa(clave)
+        for otra in self.paginas.values():
+            controles = getattr(otra, "controles_cabecera", None)
+            if isinstance(controles, QWidget):
+                controles.setVisible(otra is pagina)
 
 
 def poner_encima_sin_foco(widget: QWidget) -> bool:

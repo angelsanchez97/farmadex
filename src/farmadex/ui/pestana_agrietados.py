@@ -8,21 +8,27 @@ deja corregirlo antes de evaluar.
 Los grados siguen la guia de agrietados (S..F segun donde cayo el azar dentro
 del margen posible para esa arma), y el precio sale de las subastas abiertas de
 warframe.market con estadisticas parecidas y de la media semanal que publica DE.
+
+Estilo C (maqueta C_herramientas.png): a la izquierda el panel "El agrietado" con el
+formulario; a la derecha "Que tal ha salido" (tabla con la barra de donde cayo cada
+valor y la escala de grados), "Veredicto" con "Consultar precio" y el precio de los
+parecidos. El boton de leer la tarjeta va a la derecha de las sub-pestanas
+(`controles_cabecera`, lo coloca `SeccionConSub`).
 """
 
 from __future__ import annotations
 
 from PySide6.QtCore import QCoreApplication, QObject, Qt, QThread, Signal, Slot
+from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import (
-    QCheckBox,
     QComboBox,
     QCompleter,
     QDoubleSpinBox,
-    QFormLayout,
     QGridLayout,
     QHBoxLayout,
-    QLabel,
-    QPushButton,
+    QHeaderView,
+    QScrollArea,
+    QSizePolicy,
     QSpinBox,
     QTableWidget,
     QTableWidgetItem,
@@ -35,27 +41,66 @@ from ..agrietados.lector import TarjetaLeida
 from ..config import cargar
 from ..idiomas import t
 from ..registro_log import obtener
+from .estilo_c import (
+    TITULAR,
+    BarraFina,
+    BotonC,
+    CasillaRombo,
+    EtiquetaC,
+    Linea,
+    PanelC,
+    RombosDisposicion,
+    Tecla,
+    columna,
+    fila,
+    px,
+    transparente,
+)
 from .widgets import PALETA
 
 log = obtener("ui.agrietados")
 
 FILAS_STATS = 4
+# Tienda (Segoe Fluent/MDL2): el boton de consultar precio.
+GLIFO_TIENDA = ""
+# Columnas de la tabla de resultados. La barra va la ultima por dentro (asi el grado
+# sigue en la columna 3 para quien la lea) pero se ensena antes del grado.
+COL_NOMBRE, COL_VALOR, COL_RANGO, COL_GRADO, COL_BARRA = range(5)
+# Titular del veredicto segun la posicion media (0 peor .. 1 mejor) de lo evaluado.
+TITULARES = (
+    (0.7, "Tirada muy buena: las estadisticas han salido altas."),
+    (0.5, "Buena tirada: por encima de lo normal."),
+    (0.3, "Tirada normal: ni buena ni mala."),
+    (0.0, "Tirada floja: las estadisticas han salido bajas."),
+)
+
+
+def rombos_disposicion(disposicion: float) -> int:
+    """Los rombos que ensena el juego: 5 de 1.31 a 1.55, 1 de 0.5 a 0.69."""
+    if disposicion >= 1.31:
+        return 5
+    if disposicion >= 1.11:
+        return 4
+    if disposicion >= 0.9:
+        return 3
+    if disposicion >= 0.7:
+        return 2
+    return 1
 
 
 def puntos_disposicion(disposicion: float) -> str:
-    """Los circulos que ensena el juego: 5 de 1.31 a 1.55, 1 de 0.5 a 0.69."""
-    if disposicion >= 1.31:
-        n = 5
-    elif disposicion >= 1.11:
-        n = 4
-    elif disposicion >= 0.9:
-        n = 3
-    elif disposicion >= 0.7:
-        n = 2
-    else:
-        n = 1
+    """Los mismos rombos en texto (para tooltips y registros)."""
+    n = rombos_disposicion(disposicion)
     return "●" * n + "○" * (5 - n)
 
+
+def titular_de(evaluaciones: list) -> str:
+    """Una frase de resumen a partir de donde cayo cada estadistica (sin las de fuera)."""
+    posiciones = [ev.posicion for ev in evaluaciones if ev.grado and ev.posicion is not None]
+    if not posiciones:
+        return ""
+    media = sum(posiciones) / len(posiciones)
+    return next(t(texto) for desde, texto in TITULARES if media >= desde)
 
 
 def _parar_hilo(hilo) -> None:
@@ -66,6 +111,7 @@ def _parar_hilo(hilo) -> None:
             hilo.wait(2000)
     except RuntimeError:  # objeto de Qt ya destruido
         pass
+
 
 class _Trabajador(QObject):
     """Red en su hilo: lista de armas (con disposicion), subastas y medias de DE."""
@@ -95,6 +141,11 @@ class _Trabajador(QObject):
             self.fallo.emit(str(e))
 
 
+def _rotulo(clave: str = "") -> EtiquetaC:
+    """Rotulo pequeno en mayusculas y apagado (ARMA, ESTADISTICA...)."""
+    return EtiquetaC(t(clave) if clave else "", "rotulo", tinta="suave", mayus=True)
+
+
 class PestanaAgrietados(QWidget):
     pedir_lectura = Signal()
     _pedir_armas = Signal()
@@ -102,6 +153,7 @@ class PestanaAgrietados(QWidget):
 
     def __init__(self, parent=None, con_red: bool = True):
         super().__init__(parent)
+        transparente(self)
         self.config = cargar()
         self.armas: list[mercado.Arma] = []
         self.nombres_es: dict[str, str] = {}
@@ -109,112 +161,152 @@ class PestanaAgrietados(QWidget):
         self.evaluaciones: list[grados.Evaluacion] = []
         self._precio_pedido: str | None = None
 
-        # -- lectura de pantalla ----------------------------------------------------
-        self.boton_leer = QPushButton()
-        self.boton_leer.setObjectName("principal")
-        self.boton_leer.setCursor(Qt.PointingHandCursor)
+        # -- lectura de pantalla (a la derecha de las sub-pestanas) --------------------
+        self.boton_leer = BotonC(principal=True, icono="buscar", tam=11)
         self.boton_leer.clicked.connect(self.pedir_lectura.emit)
-        self.nota = QLabel()
-        self.nota.setWordWrap(True)
-        self.nota.setStyleSheet(f"color: {PALETA['suave']};")
-        self.estado = QLabel("")
-        self.estado.setWordWrap(True)
+        self.tecla_atajo = Tecla("")
+        self.controles_cabecera = transparente(QWidget())
+        self.controles_cabecera.setLayout(fila(self.boton_leer, self.tecla_atajo, espacio=px(8, False)))
 
-        # -- formulario --------------------------------------------------------------
+        # -- panel "El agrietado": el formulario ---------------------------------------
+        self.panel_form = PanelC(t("El agrietado"))
+        self.nombre = EtiquetaC("", "fuerte", tinta="secundario", recortar=True)
+        self.panel_form.cabecera.addWidget(self.nombre)
+        self.estado = EtiquetaC("", "pequeno", envolver=True)
+        self.estado.hide()
+
         self.arma = QComboBox()
         self.arma.setEditable(True)
         self.arma.setInsertPolicy(QComboBox.NoInsert)
+        self.arma.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.arma.currentIndexChanged.connect(self._arma_cambiada)
-        self.disposicion = QLabel("")
-        self.disposicion.setStyleSheet(f"color: {PALETA['suave']};")
-        self.nombre = QLabel("")
-        self.nombre.setStyleSheet(f"color: {PALETA['suave']};")
-        self.filas: list[tuple[QComboBox, QDoubleSpinBox, QCheckBox]] = []
+        self.etiqueta_arma = _rotulo()
+        self.etiqueta_disposicion = _rotulo()
+        self.rombos = RombosDisposicion(0)
+        self.disposicion = EtiquetaC("", "dato", tinta="acento")
+
+        self.filas: list[tuple[QComboBox, QDoubleSpinBox, CasillaRombo]] = []
         rejilla = QGridLayout()
-        rejilla.setHorizontalSpacing(8)
-        self.etiqueta_stat = QLabel()
-        self.etiqueta_valor = QLabel()
-        self.etiqueta_negativo = QLabel()
+        rejilla.setContentsMargins(0, 0, 0, 0)
+        rejilla.setHorizontalSpacing(px(8, False))
+        rejilla.setVerticalSpacing(px(6, False))
+        self.etiqueta_stat = _rotulo()
+        self.etiqueta_valor = _rotulo()
+        self.etiqueta_negativo = _rotulo()
         rejilla.addWidget(self.etiqueta_stat, 0, 0)
         rejilla.addWidget(self.etiqueta_valor, 0, 1)
-        rejilla.addWidget(self.etiqueta_negativo, 0, 2)
+        rejilla.addWidget(self.etiqueta_negativo, 0, 2, Qt.AlignCenter)
         for i in range(FILAS_STATS):
             atributo = QComboBox()
             atributo.addItem("—", "")
             for a in grados.ATRIBUTOS:
                 atributo.addItem(f"{a.nombre_es} ({a.nombre_en})", a.slug)
+            atributo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            atributo.setMinimumWidth(px(120, False))
             valor = QDoubleSpinBox()
             valor.setDecimals(1)
             valor.setRange(0.0, 999.0)
             valor.setSingleStep(0.1)
-            negativo = QCheckBox()
+            valor.setFixedWidth(px(96, False))
+            negativo = CasillaRombo()
             rejilla.addWidget(atributo, i + 1, 0)
             rejilla.addWidget(valor, i + 1, 1)
-            rejilla.addWidget(negativo, i + 1, 2)
+            rejilla.addWidget(negativo, i + 1, 2, Qt.AlignCenter)
             self.filas.append((atributo, valor, negativo))
+        rejilla.setColumnStretch(0, 1)
+
         self.maestria = QSpinBox()
         self.maestria.setRange(0, 30)
         self.maestria.setSpecialValueText("?")
         self.variado = QSpinBox()
         self.variado.setRange(0, 999)
-        self.boton_evaluar = QPushButton()
-        self.boton_evaluar.setObjectName("principal")
+        self.etiqueta_maestria = _rotulo()
+        self.etiqueta_variado = _rotulo()
+        self.boton_evaluar = BotonC(principal=True, tam=11)
         self.boton_evaluar.clicked.connect(self.evaluar)
-        self.boton_limpiar = QPushButton()
+        self.boton_limpiar = BotonC(tam=11)
         self.boton_limpiar.clicked.connect(self.limpiar)
 
-        formulario = QFormLayout()
-        formulario.setHorizontalSpacing(12)
-        self.etiqueta_arma = QLabel()
-        self.etiqueta_maestria = QLabel()
-        self.etiqueta_variado = QLabel()
-        fila_arma = QHBoxLayout()
-        fila_arma.addWidget(self.arma, 1)
-        fila_arma.addWidget(self.disposicion)
-        formulario.addRow(self.etiqueta_arma, fila_arma)
-        fila_pie = QHBoxLayout()
-        fila_pie.addWidget(self.etiqueta_maestria)
-        fila_pie.addWidget(self.maestria)
-        fila_pie.addSpacing(12)
-        fila_pie.addWidget(self.etiqueta_variado)
-        fila_pie.addWidget(self.variado)
-        fila_pie.addStretch(1)
-        fila_pie.addWidget(self.boton_limpiar)
-        fila_pie.addWidget(self.boton_evaluar)
+        form = self.panel_form.capa
+        form.addWidget(self.estado)
+        form.addLayout(fila(self.etiqueta_arma, self.arma, espacio=px(10, False)))
+        form.addLayout(fila(self.etiqueta_disposicion, self.rombos, self.disposicion, None, espacio=px(10, False)))
+        form.addWidget(Linea())
+        form.addLayout(rejilla)
+        form.addLayout(fila(self.etiqueta_maestria, self.maestria, px(12, False), self.etiqueta_variado,
+                            self.variado, None, espacio=px(8, False)))
+        form.addLayout(fila(None, self.boton_limpiar, self.boton_evaluar, espacio=px(8, False)))
 
-        # -- resultado ------------------------------------------------------------------
-        self.tabla = QTableWidget(0, 4)
+        # -- panel "Que tal ha salido": la tabla de grados -------------------------------
+        self.panel_tabla = PanelC(t("Que tal ha salido"))
+        self.tabla = QTableWidget(0, 5)
         self.tabla.verticalHeader().hide()
         self.tabla.setEditTriggers(QTableWidget.NoEditTriggers)
         self.tabla.setSelectionMode(QTableWidget.NoSelection)
-        self.tabla.horizontalHeader().setStretchLastSection(True)
-        self.veredicto = QLabel("")
-        self.veredicto.setWordWrap(True)
-        self.precio = QLabel("")
-        self.precio.setWordWrap(True)
-        self.precio.setTextFormat(Qt.RichText)
-        self.boton_precio = QPushButton()
+        self.tabla.setFocusPolicy(Qt.NoFocus)
+        self.tabla.setShowGrid(False)
+        self.tabla.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.tabla.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        cabecera = self.tabla.horizontalHeader()
+        cabecera.setHighlightSections(False)
+        cabecera.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        cabecera.moveSection(COL_BARRA, COL_GRADO)  # la barra se ve antes que el grado
+        for col, modo in ((COL_NOMBRE, QHeaderView.ResizeToContents), (COL_VALOR, QHeaderView.ResizeToContents),
+                          (COL_RANGO, QHeaderView.ResizeToContents), (COL_BARRA, QHeaderView.Stretch),
+                          (COL_GRADO, QHeaderView.Fixed)):
+            cabecera.setSectionResizeMode(col, modo)
+        self.tabla.setColumnWidth(COL_GRADO, px(64, False))
+        self.tabla.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.vacio_tabla = EtiquetaC("", "pequeno", envolver=True)
+        self.leyenda = EtiquetaC("", "pequeno")
+        self.panel_tabla.capa.addWidget(self.tabla)
+        self.panel_tabla.capa.addWidget(self.vacio_tabla)
+        self.panel_tabla.capa.addWidget(Linea())
+        self.panel_tabla.capa.addWidget(self.leyenda)
+
+        # -- panel "Veredicto" ------------------------------------------------------------
+        self.panel_veredicto = PanelC(t("Veredicto"))
+        self.titular = EtiquetaC("", "destacado", envolver=True)
+        self.titular.hide()
+        self.veredicto = EtiquetaC("", "normal", tinta="suave", envolver=True)
+        self.veredicto.hide()
+        self.boton_precio = BotonC(icono=GLIFO_TIENDA, tam=11)
         self.boton_precio.clicked.connect(self.consultar_precio)
         self.boton_precio.setEnabled(False)
-        fila_precio = QHBoxLayout()
-        fila_precio.addWidget(self.boton_precio)
-        fila_precio.addWidget(self.precio, 1)
+        self.nota_precio = EtiquetaC("", "pequeno", envolver=True)
+        self.panel_veredicto.capa.addWidget(self.titular)
+        self.panel_veredicto.capa.addWidget(self.veredicto)
+        self.panel_veredicto.capa.addLayout(fila(self.boton_precio, self.nota_precio, espacio=px(10, False)))
 
-        arriba = QHBoxLayout()
-        arriba.addWidget(self.boton_leer)
-        arriba.addWidget(self.nombre, 1)
+        # -- panel del precio (solo cuando hay algo que ensenar) --------------------------
+        self.panel_precio = PanelC(t("Precio de agrietados parecidos"), remate=False)
+        self.precio = EtiquetaC("", "normal", envolver=True)
+        self.precio.setTextFormat(Qt.RichText)
+        self.panel_precio.capa.addWidget(self.precio)
+        self.panel_precio.hide()
+
+        # -- pie: como se usa --------------------------------------------------------------
+        self.nota = EtiquetaC("", "pequeno", tinta="tenue", envolver=True)
+
+        izquierda = columna(self.panel_form, None, espacio=px(12, False))
+        derecha = columna(self.panel_tabla, self.panel_veredicto, self.panel_precio, None, espacio=px(12, False))
+        cuerpo = QHBoxLayout()
+        cuerpo.setSpacing(px(16, False))
+        cuerpo.addLayout(izquierda, 4)
+        cuerpo.addLayout(derecha, 6)
+        contenido = transparente(QWidget())
+        caja_contenido = QVBoxLayout(contenido)
+        caja_contenido.setContentsMargins(0, px(4, False), px(4, False), 0)
+        caja_contenido.setSpacing(px(12, False))
+        caja_contenido.addLayout(cuerpo, 1)
+        caja_contenido.addWidget(self.nota)
+        area = QScrollArea()
+        area.setWidgetResizable(True)
+        area.setFrameShape(QScrollArea.NoFrame)
+        area.setWidget(contenido)
         caja = QVBoxLayout(self)
-        caja.setContentsMargins(4, 8, 4, 4)
-        caja.setSpacing(8)
-        caja.addLayout(arriba)
-        caja.addWidget(self.nota)
-        caja.addWidget(self.estado)
-        caja.addLayout(formulario)
-        caja.addLayout(rejilla)
-        caja.addLayout(fila_pie)
-        caja.addWidget(self.tabla, 1)
-        caja.addWidget(self.veredicto)
-        caja.addLayout(fila_precio)
+        caja.setContentsMargins(0, 0, 0, 0)
+        caja.addWidget(area)
 
         # -- hilo de red -----------------------------------------------------------------
         self.hilo: QThread | None = None
@@ -238,7 +330,9 @@ class PestanaAgrietados(QWidget):
             # running"). `destroyed` llega antes de borrar los hijos: se para aqui el hilo.
             hilo = self.hilo
             self.destroyed.connect(lambda *_: _parar_hilo(hilo))
+        self.repintar()
         self.retraducir()
+        self._vaciar_tabla()
 
     # -- ciclo de vida ---------------------------------------------------------------------
 
@@ -258,16 +352,24 @@ class PestanaAgrietados(QWidget):
 
     def retraducir(self) -> None:
         atajo = self.config.get("hotkey_agrietado", "")
-        self.boton_leer.setText(
+        self.boton_leer.setText(t("Leer la tarjeta bajo el cursor"))
+        self.boton_leer.setToolTip(
             t("Leer la tarjeta bajo el cursor ({atajo})", atajo=atajo) if atajo else t("Leer la tarjeta bajo el cursor")
         )
+        self.tecla_atajo.setText(atajo.upper())
+        self.tecla_atajo.setVisible(bool(atajo))
         self.nota.setText(t(
             "Elige el arma, apunta cada estadistica con su valor (marca la negativa) y pulsa Evaluar: "
             "veras entre que valores puede salir cada una en esa arma y que grado tiene la tuya, de S "
             "(lo mejor) a F. Si pones el raton encima de la tarjeta en el juego y pulsas el boton o el "
             "atajo, Farmadex intenta rellenarlo por ti; si no lo lee seguro, te avisa para que lo revises."
         ))
+        self.panel_form.poner_titulo(t("El agrietado"))
+        self.panel_tabla.poner_titulo(t("Que tal ha salido"))
+        self.panel_veredicto.poner_titulo(t("Veredicto"))
+        self.panel_precio.poner_titulo(t("Precio de agrietados parecidos"))
         self.etiqueta_arma.setText(t("Arma"))
+        self.etiqueta_disposicion.setText(t("Disposicion"))
         self.etiqueta_stat.setText(t("Estadistica"))
         self.etiqueta_valor.setText(t("Valor"))
         self.etiqueta_negativo.setText(t("Negativa"))
@@ -276,16 +378,44 @@ class PestanaAgrietados(QWidget):
         self.boton_evaluar.setText(t("Evaluar"))
         self.boton_limpiar.setText(t("Limpiar"))
         self.boton_precio.setText(t("Consultar precio"))
-        self.tabla.setHorizontalHeaderLabels([t("Estadistica"), t("Valor"), t("Puede salir entre"), t("Grado")])
+        self.nota_precio.setText(t("Mira las subastas de warframe.market y la media de la semana."))
+        self.vacio_tabla.setText(t("Apunta las estadisticas y pulsa Evaluar: aqui veras que tal ha salido cada una."))
+        self.tabla.setHorizontalHeaderLabels(
+            [t("Estadistica").upper(), t("Valor").upper(), t("Puede salir entre").upper(), t("Grado").upper(), ""]
+        )
+        self._pintar_leyenda()
+        self._arma_cambiada(self.arma.currentIndex())
         if self.evaluaciones:
             self._pintar_evaluaciones()
 
     def repintar(self) -> None:
-        self.nota.setStyleSheet(f"color: {PALETA['suave']};")
-        self.disposicion.setStyleSheet(f"color: {PALETA['suave']};")
-        self.nombre.setStyleSheet(f"color: {PALETA['suave']};")
+        """Tras cambiar de tema o de tamano: la tabla y los campos llevan su hoja propia."""
+        p = PALETA
+        self.setStyleSheet(
+            f"QSpinBox, QDoubleSpinBox {{ background: {p['panel2']}; border: 1px solid {p['borde']};"
+            f" padding: {px(4, False)}px {px(8, False)}px; font-family: '{TITULAR}'; font-weight: 600;"
+            f" font-size: {px(13)}px; }}"
+            f" QSpinBox:focus, QDoubleSpinBox:focus {{ border-color: {p['acento']}; }}"
+        )
+        self.tabla.setStyleSheet(
+            f"QTableWidget {{ background: transparent; border: none; }}"
+            f" QTableWidget::item {{ padding: 0 {px(8, False)}px 0 0; border: none; }}"
+            f" QHeaderView {{ background: transparent; }}"
+            f" QHeaderView::section {{ background: transparent; color: {p['suave']}; border: none;"
+            f" border-bottom: 1px solid {p['borde']}; padding: 0 {px(8, False)}px {px(4, False)}px 0;"
+            f" font-family: '{TITULAR}'; font-size: {px(11)}px; font-weight: 600; }}"
+        )
+        self._pintar_leyenda()
         if self.evaluaciones:
             self._pintar_evaluaciones()
+
+    def _pintar_leyenda(self) -> None:
+        """"De peor a mejor: F C- C ... S", cada letra en el color de su grado."""
+        letras = " ".join(
+            f"<span style='color: {grados.COLOR_GRADO[letra]}; font-family: {TITULAR}; font-weight: 700;'>"
+            f"{letra}</span>" for letra, _d, _h in reversed(grados.GRADOS)
+        )
+        self.leyenda.setText(f"{t('De peor a mejor:')}&nbsp; {letras}")
 
     # -- armas ------------------------------------------------------------------------------
 
@@ -306,7 +436,7 @@ class PestanaAgrietados(QWidget):
         if actual is not None:
             self.elegir_arma(actual.slug)
         if not self.armas:
-            self.estado.setText(t("No hay lista de armas con agrietado: hace falta conexion la primera vez."))
+            self._poner_estado(t("No hay lista de armas con agrietado: hace falta conexion la primera vez."))
 
     def _nombre_arma(self, arma: mercado.Arma) -> str:
         nombre_es = self.nombres_es.get(arma.unique_name)
@@ -330,13 +460,16 @@ class PestanaAgrietados(QWidget):
         arma = self.arma_elegida()
         if arma is None:
             self.disposicion.setText("")
+            self.rombos.poner(0)
+            self.rombos.setToolTip("")
             return
         extra = ""
         if arma.tipo == "kitgun":
             extra = "  " + t("(kitgun: se evalua como secundaria)")
-        self.disposicion.setText(
-            t("disposicion {d} {puntos}", d=f"{arma.disposicion:.2f}", puntos=puntos_disposicion(arma.disposicion)) + extra
-        )
+        self.rombos.poner(rombos_disposicion(arma.disposicion))
+        self.rombos.setToolTip(t("disposicion {d} {puntos}", d=f"{arma.disposicion:.2f}",
+                                 puntos=puntos_disposicion(arma.disposicion)))
+        self.disposicion.setText(f"×{arma.disposicion:.2f}{extra}")
         self.boton_precio.setEnabled(True)
 
     # -- formulario -------------------------------------------------------------------------
@@ -372,10 +505,30 @@ class PestanaAgrietados(QWidget):
         self.maestria.setValue(0)
         self.variado.setValue(0)
         self.nombre.setText("")
-        self.estado.setText("")
-        self.veredicto.setText("")
-        self.precio.setText("")
+        self._poner_estado("")
+        self._poner_veredicto("")
+        self._poner_precio("")
+        self._vaciar_tabla()
+
+    def _poner_estado(self, texto: str) -> None:
+        self.estado.setText(texto)
+        self.estado.setVisible(bool(texto))
+
+    def _poner_veredicto(self, texto: str, titular: str = "", aviso: bool = False) -> None:
+        self.titular.setText(titular)
+        self.titular.setVisible(bool(titular))
+        self.veredicto.setText(texto)
+        self.veredicto.setVisible(bool(texto))
+        self.veredicto.poner_tinta("aviso" if aviso else "suave")
+
+    def _poner_precio(self, texto: str) -> None:
+        self.precio.setText(texto)
+        self.panel_precio.setVisible(bool(texto))
+
+    def _vaciar_tabla(self) -> None:
         self.tabla.setRowCount(0)
+        self._ajustar_alto_tabla()
+        self.vacio_tabla.show()
 
     # -- lectura de pantalla ---------------------------------------------------------------
 
@@ -384,11 +537,11 @@ class PestanaAgrietados(QWidget):
         """Rellena el formulario con lo leido y evalua si todo esta claro."""
         self.tarjeta = tarjeta
         self.evaluaciones = []
-        self.tabla.setRowCount(0)
-        self.veredicto.setText("")
-        self.precio.setText("")
+        self._vaciar_tabla()
+        self._poner_veredicto("")
+        self._poner_precio("")
         if tarjeta.velado:
-            self.estado.setText(t("La tarjeta esta velada: no tiene estadisticas hasta que hagas su desafio."))
+            self._poner_estado(t("La tarjeta esta velada: no tiene estadisticas hasta que hagas su desafio."))
             return
         if tarjeta.arma_slug:
             if not self.elegir_arma(tarjeta.arma_slug):
@@ -401,12 +554,16 @@ class PestanaAgrietados(QWidget):
         self.maestria.setValue(tarjeta.maestria or 0)
         self.variado.setValue(tarjeta.variado or 0)
         if tarjeta.fiable:
-            self.estado.setText(t("Leido de la pantalla. Si algo no cuadra, corrigelo y vuelve a evaluar."))
+            self._poner_estado(t("Leido de la pantalla. Si algo no cuadra, corrigelo y vuelve a evaluar."))
+            self.estado.poner_tinta("suave")
             self.evaluar()
         elif tarjeta.avisos:
-            self.estado.setText(t("Leido a medias, revisa antes de evaluar:") + "\n• " + "\n• ".join(t(a) for a in tarjeta.avisos))
+            self._poner_estado(t("Leido a medias, revisa antes de evaluar:") + "\n• "
+                               + "\n• ".join(t(a) for a in tarjeta.avisos))
+            self.estado.poner_tinta("aviso")
         else:
-            self.estado.setText(t("No se ve ninguna tarjeta de agrietado bajo el cursor."))
+            self._poner_estado(t("No se ve ninguna tarjeta de agrietado bajo el cursor."))
+            self.estado.poner_tinta("aviso")
 
     # -- evaluacion --------------------------------------------------------------------------
 
@@ -414,58 +571,84 @@ class PestanaAgrietados(QWidget):
         arma = self.arma_elegida()
         estadisticas = self.estadisticas()
         if arma is None:
-            self.veredicto.setText(t("Elige el arma del agrietado."))
+            self._poner_veredicto(t("Elige el arma del agrietado."), aviso=True)
             return
         if len(estadisticas) < 2:
-            self.veredicto.setText(t("Apunta al menos dos estadisticas."))
+            self._poner_veredicto(t("Apunta al menos dos estadisticas."), aviso=True)
             return
         positivos = [e for e in estadisticas if not e[2]]
         negativos = [e for e in estadisticas if e[2]]
         if len(positivos) not in (2, 3) or len(negativos) > 1:
-            self.veredicto.setText(t("Un agrietado lleva 2 o 3 positivas y como mucho 1 negativa."))
+            self._poner_veredicto(t("Un agrietado lleva 2 o 3 positivas y como mucho 1 negativa."), aviso=True)
             return
         self.evaluaciones = grados.evaluar(estadisticas, arma.clase, arma.disposicion)
         self._pintar_evaluaciones()
         self.boton_precio.setEnabled(True)
 
+    def _celda(self, texto: str, tinta: str = "texto", rol: str = "normal", alineacion=None) -> QTableWidgetItem:
+        celda = QTableWidgetItem(texto)
+        celda.setForeground(QColor(PALETA.get(tinta, tinta)))
+        f = QFont("Segoe UI" if rol == "normal" else TITULAR)
+        f.setPixelSize(px(14 if rol != "grado" else 20))
+        f.setWeight(QFont.Weight(600 if rol != "suave" else 400))
+        if rol == "suave":
+            f.setPixelSize(px(13))
+        celda.setFont(f)
+        celda.setTextAlignment(alineacion or (Qt.AlignLeft | Qt.AlignVCenter))
+        return celda
+
     def _pintar_evaluaciones(self) -> None:
         self.tabla.setRowCount(len(self.evaluaciones))
+        self.vacio_tabla.setVisible(not self.evaluaciones)
         fuera = []
         letras = []
-        for fila, ev in enumerate(self.evaluaciones):
+        for fila_t, ev in enumerate(self.evaluaciones):
             atributo = ev.atributo
             nombre = atributo.nombre_es if atributo else ev.slug
-            self.tabla.setItem(fila, 0, QTableWidgetItem(nombre + ("  (−)" if ev.negativo else "")))
-            self.tabla.setItem(fila, 1, QTableWidgetItem(grados.formatear_valor(ev.slug, ev.valor)))
+            self.tabla.setItem(fila_t, COL_NOMBRE, self._celda(nombre + (f" ({t('negativa')})" if ev.negativo else "")))
+            self.tabla.setItem(fila_t, COL_VALOR, self._celda(grados.formatear_valor(ev.slug, ev.valor), rol="dato"))
+            self.tabla.removeCellWidget(fila_t, COL_BARRA)
             if ev.minimo is None:
-                self.tabla.setItem(fila, 2, QTableWidgetItem(t("no puede salir en esta arma")))
-                self.tabla.setItem(fila, 3, QTableWidgetItem("?"))
+                self.tabla.setItem(fila_t, COL_RANGO, self._celda(t("no puede salir en esta arma"), "aviso", "suave"))
+                self.tabla.setItem(fila_t, COL_GRADO, self._celda("?", "aviso", "grado", Qt.AlignCenter))
                 fuera.append(nombre)
                 continue
-            self.tabla.setItem(fila, 2, QTableWidgetItem(
-                f"{grados.formatear_valor(ev.slug, ev.minimo)}  …  {grados.formatear_valor(ev.slug, ev.maximo)}"
+            self.tabla.setItem(fila_t, COL_RANGO, self._celda(
+                f"{grados.formatear_valor(ev.slug, ev.minimo)}  …  {grados.formatear_valor(ev.slug, ev.maximo)}",
+                "suave", "suave",
             ))
-            celda = QTableWidgetItem(ev.grado or t("fuera de rango"))
+            color_grado = grados.COLOR_GRADO.get(ev.grado or "", PALETA["aviso"])
             if ev.grado:
-                celda.setForeground(Qt.GlobalColor.black)
-                celda.setBackground(_color(grados.COLOR_GRADO[ev.grado]))
+                self.tabla.setItem(fila_t, COL_GRADO, self._celda(ev.grado, color_grado, "grado", Qt.AlignCenter))
                 letras.append(ev.grado)
             else:
+                self.tabla.setItem(fila_t, COL_GRADO, self._celda(t("fuera de rango"), "aviso", "suave", Qt.AlignCenter))
                 fuera.append(nombre)
-            celda.setTextAlignment(Qt.AlignCenter)
-            self.tabla.setItem(fila, 3, celda)
-        self.tabla.resizeColumnsToContents()
+            barra = BarraFina(ev.posicion or 0.0, tinta=color_grado, alto=6)
+            hueco = transparente(QWidget())
+            hueco.setLayout(fila(barra, espacio=0, margen=(0, 0, px(12, False), 0)))
+            barra.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            self.tabla.setCellWidget(fila_t, COL_BARRA, hueco)
+        for fila_t in range(self.tabla.rowCount()):
+            self.tabla.setRowHeight(fila_t, px(32, False))
+        self._ajustar_alto_tabla()
         if fuera:
-            self.veredicto.setText(t(
+            self._poner_veredicto(t(
                 "{lista}: el valor no entra en lo posible para esta arma. Suele ser que el arma no es esa, "
                 "que el valor esta mal apuntado o que el signo esta al reves.", lista=", ".join(fuera),
-            ))
-            self.veredicto.setStyleSheet(f"color: {PALETA['aviso']};")
+            ), aviso=True)
         else:
-            self.veredicto.setStyleSheet("")
-            self.veredicto.setText(t("Grados: {grados}. Un grado alto solo dice que la tirada fue buena; que el agrietado "
-                                     "sirva depende de que las estadisticas le vengan bien al arma.",
-                                     grados=", ".join(letras)))
+            self._poner_veredicto(
+                t("Grados: {grados}. Un grado alto solo dice que la tirada fue buena; que el agrietado "
+                  "sirva depende de que las estadisticas le vengan bien al arma.", grados=", ".join(letras)),
+                titular=titular_de(self.evaluaciones),
+            )
+
+    def _ajustar_alto_tabla(self) -> None:
+        """La tabla tan alta como sus filas: el desplazamiento lo lleva la pagina entera."""
+        alto = self.tabla.horizontalHeader().sizeHint().height()
+        alto += sum(self.tabla.rowHeight(f) for f in range(self.tabla.rowCount()))
+        self.tabla.setFixedHeight(alto + 4)
 
     # -- precio ------------------------------------------------------------------------------
 
@@ -477,19 +660,19 @@ class PestanaAgrietados(QWidget):
         positivos = [s for s, _, n in estadisticas if not n]
         negativos = [s for s, _, n in estadisticas if n]
         self._precio_pedido = arma.slug
-        self.precio.setText(t("Consultando warframe.market..."))
+        self._poner_precio(t("Consultando warframe.market..."))
         self._pedir_precio.emit(arma.slug, arma.nombre_en, positivos, negativos)
 
     @Slot(str, object, object, object)
     def _precio_listo(self, slug: str, resumen, media_sin, media_con) -> None:
         if slug != self._precio_pedido:
             return
-        self.precio.setText(texto_precio(resumen, media_sin, media_con, variado=self.variado.value()))
+        self._poner_precio(texto_precio(resumen, media_sin, media_con, variado=self.variado.value()))
 
     @Slot(str)
     def _fallo_red(self, motivo: str) -> None:
         if self._precio_pedido:
-            self.precio.setText(t("No se pudo consultar el precio ({motivo}).", motivo=motivo))
+            self._poner_precio(t("No se pudo consultar el precio ({motivo}).", motivo=motivo))
 
 
 def texto_precio(resumen, media_sin, media_con, variado: int = 0) -> str:
@@ -514,9 +697,3 @@ def texto_precio(resumen, media_sin, media_con, variado: int = 0) -> str:
         ))
     partes.append(t("Es solo una referencia: lo que vale de verdad depende de que estadisticas lleve y de a quien le sirvan."))
     return "<br>".join(partes)
-
-
-def _color(hexadecimal: str):
-    from PySide6.QtGui import QColor
-
-    return QColor(hexadecimal)

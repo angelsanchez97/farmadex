@@ -8,7 +8,6 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import Qt  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from farmadex import idiomas  # noqa: E402
@@ -16,6 +15,7 @@ from farmadex.agrietados import mercado  # noqa: E402
 from farmadex.agrietados.lector import ArmaConocida, LectorTarjeta, TarjetaLeida, parsear_texto  # noqa: E402
 from farmadex.captura.builds import Build  # noqa: E402
 from farmadex.captura.ocr import Reconocido  # noqa: E402
+from farmadex.ui.pestana_agrietados import rombos_disposicion, titular_de  # noqa: E402
 
 from conftest import FIXTURES  # noqa: E402
 from test_captura import _insertar  # noqa: E402
@@ -75,7 +75,14 @@ def test_tarjeta_fiable_rellena_y_evalua_sola(pestana, armas):
     assert pestana.tabla.rowCount() == 4
     assert pestana.tabla.item(3, 0).text().startswith("Daño a Corpus")
     assert "Grados: B, B, B, B" in pestana.veredicto.text()
-    assert "disposicion" in pestana.disposicion.text()
+    rubico = pestana.arma_elegida()
+    assert pestana.disposicion.text().startswith("×")
+    assert pestana.rombos.n == rombos_disposicion(rubico.disposicion)
+    assert "disposicion" in pestana.rombos.toolTip()
+    # Titular del veredicto (todo B: una tirada normal) y la tabla con su barra.
+    assert pestana.titular.isVisibleTo(pestana) and "normal" in pestana.titular.text()
+    assert pestana.tabla.cellWidget(0, 4) is not None
+    assert not pestana.vacio_tabla.isVisibleTo(pestana)
 
 
 def test_tarjeta_dudosa_no_evalua_y_avisa(pestana, armas):
@@ -148,6 +155,7 @@ def test_precio_de_otra_arma_se_ignora(pestana):
 def test_puntos_de_disposicion():
     from farmadex.ui.pestana_agrietados import puntos_disposicion
 
+    assert rombos_disposicion(1.4) == 5 and rombos_disposicion(0.5) == 1
     assert puntos_disposicion(1.4) == "●●●●●"
     assert puntos_disposicion(1.0) == "●●●○○"
     assert puntos_disposicion(0.5) == "●○○○○"
@@ -191,17 +199,20 @@ def test_build_se_lista_y_se_pulsa(builds):
     p.mostrar_build(build)
     assert p.ids_listados() == [ids["/w/Excalibur"], ids["/m/Vitality"], ids["/a/Energize"], ids["/m/Flow"]]
     assert "Excalibur" in p.estado.text() and "2 mods" in p.estado.text()
-    textos = [p.lista.item(i).text() for i in range(p.lista.count())]
+    textos = p.textos_listados()
     assert any("Absorci" in t for t in textos)
     assert any("(Mod)" in t for t in textos) and any("(Arcano)" in t for t in textos)
+    # Cada cosa en su panel: el mod equipado en una casilla, arcano y coleccion en filas.
+    for panel in (p.panel_mods, p.panel_arcanos, p.panel_coleccion, p.panel_sueltos):
+        assert not panel.isHidden()
+    assert p.nombre_equipo.texto_completo() == "EXCALIBUR"
     abiertos = []
     p.abrir_item.connect(abiertos.append)
-    fila = next(p.lista.item(i) for i in range(p.lista.count()) if p.lista.item(i).data(Qt.UserRole) == ids["/m/Flow"])
-    p._pulsado(fila)
+    p.widget_de(ids["/m/Flow"]).pulsado.emit()
     assert abiertos == [ids["/m/Flow"]]
-    # Una cabecera no abre nada.
-    p._pulsado(p.lista.item(0))
-    assert abiertos == [ids["/m/Flow"]]
+    # "Abrir ficha" abre el equipo.
+    p.boton_ficha.click()
+    assert abiertos == [ids["/m/Flow"], ids["/w/Excalibur"]]
 
 
 def test_build_vacia(builds):
@@ -209,6 +220,8 @@ def test_build_vacia(builds):
     p.mostrar_build(Build(sin_identificar=["CONFIG A"]))
     assert p.ids_listados() == []
     assert "No se ha reconocido nada" in p.estado.text()
+    assert p.textos_listados() == ["CONFIG A"] and not p.panel_sueltos.isHidden()
+    assert p.panel_mods.isHidden() and p.boton_ficha.isHidden()
     p.retraducir()
     assert "Leer la pantalla de mejoras" in p.boton.text()
 
@@ -233,3 +246,40 @@ def test_destruir_la_pestana_con_red_no_mata_el_proceso(tmp_path):
                    PYTHONPATH=str(Path(__file__).resolve().parents[1] / "src"))
     r = subprocess.run([sys.executable, "-c", codigo], env=entorno, capture_output=True, text=True, timeout=60)
     assert r.returncode == 0 and "OK" in r.stdout, r.stderr[-500:]
+
+
+def test_titular_del_veredicto_segun_la_tirada():
+    from types import SimpleNamespace as N
+
+    def evs(*posiciones):
+        return [N(grado="B", posicion=x) for x in posiciones]
+
+    assert "muy buena" in titular_de(evs(0.9, 0.8))
+    assert "Buena tirada" in titular_de(evs(0.6, 0.55))
+    assert "normal" in titular_de(evs(0.5, 0.3))
+    assert "floja" in titular_de(evs(0.1, 0.2))
+    assert titular_de([N(grado=None, posicion=None)]) == ""
+
+
+def test_el_boton_de_leer_va_junto_a_las_subpestanas_con_su_atajo(pestana):
+    assert pestana.boton_leer.parentWidget() is pestana.controles_cabecera
+    atajo = pestana.config.get("hotkey_agrietado", "")
+    assert pestana.tecla_atajo.text() == atajo.upper()
+    assert pestana.boton_leer.text() == "Leer la tarjeta bajo el cursor"
+
+
+def test_error_de_evaluacion_sale_en_aviso_y_sin_titular(pestana):
+    pestana.limpiar()
+    pestana.evaluar()
+    assert "Elige el arma" in pestana.veredicto.text()
+    assert pestana.veredicto.property("tinta") == "aviso"
+    assert not pestana.titular.isVisibleTo(pestana)
+
+
+def test_el_panel_de_precio_solo_se_ve_con_precio(pestana):
+    assert pestana.panel_precio.isHidden()
+    pestana._precio_pedido = "soma"
+    pestana._precio_listo("soma", mercado.ResumenSubastas(arma="soma"), None, None)
+    assert not pestana.panel_precio.isHidden() and "no hay subastas" in pestana.precio.text()
+    pestana.limpiar()
+    assert pestana.panel_precio.isHidden()

@@ -86,6 +86,12 @@ class LectorPasivo(QObject):
     def activar_inventario(self, activo: bool) -> None:
         self.activo_inventario = activo
 
+    @Slot(str)
+    def cambiar_motor(self, motor_ocr: str) -> None:
+        """El usuario cambio la lectura de pantalla en Ajustes (modo de OCR)."""
+        MotorOCR.olvidar_fallo(motor_ocr)
+        self.motor = MotorOCR(motor_ocr)
+
     @Slot(str, str)
     def pantalla_juego(self, accion: str, nombre: str) -> None:
         """Lo que EE.log cuenta de las pantallas del menu; sirve para no mirar de mas."""

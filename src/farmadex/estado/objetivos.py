@@ -52,6 +52,16 @@ class Objetivo:
     recursos_empezados: int = 0
 
     @property
+    def nombre_completo(self) -> str:
+        """El nombre con su set delante si es una pieza guardada solo como "Sistemas"
+        (anadida suelta desde la ficha): sin el set, dos "Sistemas" de sets distintos
+        parecian la misma fila repetida."""
+        grupo = (self.grupo_nombre or "").strip()
+        if not grupo or self.nombre.startswith(grupo):
+            return self.nombre
+        return f"{grupo}: {self.nombre}"
+
+    @property
     def porcentaje(self) -> int:
         if self.objetivo <= 0:
             return 100
@@ -188,7 +198,7 @@ def entradas(
     for grupo, piezas in grupos.items():
         if len(piezas) == 1:
             # Una sola pieza del set: fila normal, no hace falta desplegar nada.
-            lista.append(Entrada(f"o:{piezas[0].id}", piezas[0].nombre, piezas))
+            lista.append(Entrada(f"o:{piezas[0].id}", piezas[0].nombre_completo, piezas))
             continue
         piezas.sort(key=lambda o: o.nombre)
         nombre = piezas[0].grupo_nombre or piezas[0].nombre.split(":")[0]

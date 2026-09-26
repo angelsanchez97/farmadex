@@ -181,6 +181,39 @@ def recompensa_teshin(mundo, ahora: datetime) -> tuple[str, datetime]:
     return teshin_de_la_semana(ahora), inicio_semana(ahora) + timedelta(weeks=1)
 
 
+def teshin_actual(mundo, ahora: datetime) -> tuple[str, datetime, str]:
+    """(nombre en ingles, fin, fuente) de lo que ofrece Teshin esta semana.
+
+    `fuente` = "api" si lo ha publicado la API (dato seguro) o "rotacion" si sale de la
+    cuenta fija de semanas (el respaldo oficial de DE no lo trae): la pestana lo dice.
+    """
+    publicado = any(r.texto for r in getattr(mundo, "acero", None) or [])
+    nombre, fin = recompensa_teshin(mundo, ahora)
+    return nombre, fin, "api" if publicado else "rotacion"
+
+
+def _puesto_teshin(nombre_en: str) -> int | None:
+    plano = _plano(nombre_en).replace(",", "").replace(".", "")
+    for i, conocido in enumerate(ROTACION_TESHIN):
+        if _plano(conocido).replace(",", "") == plano:
+            return i
+    return None
+
+
+def teshin_siguientes(mundo, ahora: datetime, n: int = 3) -> list[tuple[str, datetime]] | None:
+    """Lo que toca las `n` semanas siguientes: [(nombre en ingles, desde cuando)].
+
+    Sigue el orden fijo del juego a partir de lo de esta semana. None si lo de esta
+    semana no esta en la rotacion conocida: entonces no se sabe y no se inventa.
+    """
+    nombre, fin, _fuente = teshin_actual(mundo, ahora)
+    puesto = _puesto_teshin(nombre)
+    if puesto is None:
+        return None
+    total = len(ROTACION_TESHIN)
+    return [(ROTACION_TESHIN[(puesto + i) % total], fin + timedelta(weeks=i - 1)) for i in range(1, n + 1)]
+
+
 def nombre_teshin(nombre_en: str) -> str:
     return t(NOMBRES_TESHIN.get(nombre_en, nombre_en))
 

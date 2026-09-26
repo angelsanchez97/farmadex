@@ -4,6 +4,11 @@ General (idioma, arranque, version), Atajos, Apariencia (tema, tamanos y colores
 vista previa), Reliquias (lecturas de pantalla y diagnostico), Datos del juego
 (con el mantenimiento plegado en "Avanzado") y Ayuda (bienvenida, guia, Acerca de).
 
+Estilo C (maqueta C_ajustes.png): la columna de secciones es un panel con esquinas
+cortadas, con "Acerca de", "Salir" y los creditos al pie; cada grupo de opciones es un
+panel con su rotulo. En Apariencia los temas son tarjetas con sus colores, los tamanos
+una fila de botones y los colores unas muestras con su flecha para volver al del tema.
+
 Cada opcion rara lleva debajo una linea que dice que hace y que pasa al usarla:
 lo pidio un tester, con razon, porque un boton que nadie entiende no lo usa nadie.
 """
@@ -15,28 +20,26 @@ import subprocess
 import sqlite3
 from collections.abc import Callable
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor
+from PySide6.QtCore import QPointF, QRectF, QSize, Qt, Signal
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPen, QPolygonF
 from PySide6.QtWidgets import (
+    QAbstractButton,
     QBoxLayout,
+    QButtonGroup,
     QCheckBox,
     QColorDialog,
     QComboBox,
     QFormLayout,
     QFrame,
     QGridLayout,
-    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QListWidget,
-    QListWidgetItem,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QSlider,
     QStackedWidget,
-    QStyle,
-    QTabBar,
     QVBoxLayout,
     QWidget,
 )
@@ -47,7 +50,26 @@ from ..config import DIR_BASE, cargar, guardar
 from ..datos import eficiencia, indice
 from ..hotkeys import parsear
 from ..idiomas import t
+from . import widgets
 from .acerca_de import abrir_acerca_de, texto_autor
+from .estilo_c import (
+    TITULAR,
+    BotonC,
+    BotonGlifo,
+    EtiquetaC,
+    Filete,
+    Linea,
+    PanelC,
+    PiezaC,
+    Rombo,
+    color,
+    fila,
+    fuente,
+    fuente_iconos,
+    px,
+    ruta_chaflan,
+    transparente,
+)
 from .widgets import (
     CATEGORIAS_COLOR,
     ESCALAS_INTERFAZ,
@@ -58,7 +80,6 @@ from .widgets import (
     aspecto_guardado,
     hoja_estilos,
     paleta_de,
-    px,
 )
 
 # Secciones de la columna izquierda: (clave, titulo). El orden es el de la columna.
@@ -70,13 +91,434 @@ SECCIONES = (
     ("datos", "Datos del juego"),
     ("ayuda", "Ayuda"),
 )
+# Glifo (Segoe Fluent/MDL2) de cada seccion: ajustes, mando, sol, reliquia, reloj, info.
+GLIFOS_SECCION = {
+    "general": "", "atajos": "", "aspecto": "",
+    "reliquias": "", "datos": "", "ayuda": "",
+}
+GLIFO_DESHACER = ""
+# Colores de cada tarjeta de tema, de izquierda a derecha.
+MUESTRAS_TEMA = ("fondo", "panel2", "acento", "texto")
+# Modos del lector de pantalla (captura/ocr.py): (clave en config, texto).
+MODOS_OCR = (
+    ("auto", "Automatico (recomendado)"),
+    ("rapido", "Rapido (usa mas procesador)"),
+    ("ligero", "Ligero (usa menos procesador)"),
+    ("windows", "OCR de Windows"),
+)
 
 
-def _texto_sobre(color: str) -> str:
-    """Negro o blanco, lo que mas se lea encima de `color` (para las muestras)."""
-    c = QColor(color)
+def _texto_sobre(color_hex: str) -> str:
+    """Negro o blanco, lo que mas se lea encima de `color_hex` (para las muestras)."""
+    c = QColor(color_hex)
     luz = 0.299 * c.red() + 0.587 * c.green() + 0.114 * c.blue()
     return "#101010" if luz > 140 else "#f4f4f4"
+
+
+def _rombo(cx: float, cy: float, medio: float) -> QPolygonF:
+    return QPolygonF([QPointF(cx, cy - medio), QPointF(cx + medio, cy), QPointF(cx, cy + medio),
+                      QPointF(cx - medio, cy)])
+
+
+# -- piezas propias de Ajustes ---------------------------------------------------------------
+
+
+class _EntradaSeccion(QAbstractButton, PiezaC):
+    """Una seccion de la columna: glifo y nombre en mayusculas; la activa con fondo tenue,
+    barra de acento a la izquierda y letra de acento."""
+
+    def __init__(self, glifo: str, parent=None):
+        super().__init__(parent)
+        transparente(self)
+        self.glifo = glifo
+        self.setCheckable(True)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setFocusPolicy(Qt.TabFocus)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+
+    def _fuente(self) -> QFont:
+        f = fuente("dato", 13, 600)
+        f.setLetterSpacing(QFont.AbsoluteSpacing, 1.5)
+        return f
+
+    def sizeHint(self) -> QSize:  # noqa: N802
+        fm = QFontMetrics(self._fuente())
+        ancho = px(10, False) + px(22, False) + px(10, False) + fm.horizontalAdvance(self.text().upper()) + px(10, False)
+        return QSize(ancho, fm.height() + px(16, False))
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        return self.sizeHint()
+
+    def paintEvent(self, _evento):  # noqa: N802
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        activa = self.isChecked()
+        if activa:
+            fondo = QColor(color("acento"))
+            fondo.setAlpha(30)
+            p.fillRect(self.rect(), fondo)
+            p.fillRect(0, 0, px(3, False), self.height(), color("acento"))
+        tinta = color("acento") if activa else color("texto" if self.underMouse() else "suave")
+        x = px(10, False)
+        p.setFont(fuente_iconos(15))
+        p.setPen(tinta)
+        p.drawText(QRectF(x, 0, px(22, False), self.height()), Qt.AlignCenter, self.glifo)
+        x += px(22, False) + px(10, False)
+        p.setFont(self._fuente())
+        p.drawText(QRectF(x, 0, self.width() - x, self.height()), Qt.AlignVCenter | Qt.AlignLeft, self.text().upper())
+        p.end()
+
+    def enterEvent(self, evento):  # noqa: N802
+        self.update()
+        super().enterEvent(evento)
+
+    def leaveEvent(self, evento):  # noqa: N802
+        self.update()
+        super().leaveEvent(evento)
+
+
+class MenuSecciones(QWidget):
+    """La columna de secciones. Imita lo que se usaba de QListWidget: `count()`,
+    `item(i).text()`, `setCurrentRow()`, `currentRow()` y `currentRowChanged(int)`."""
+
+    currentRowChanged = Signal(int)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        transparente(self)
+        self._grupo = QButtonGroup(self)
+        self._grupo.setExclusive(True)
+        self._entradas: list[_EntradaSeccion] = []
+        self._actual = -1
+        self._capa = QVBoxLayout(self)
+        self._capa.setContentsMargins(0, 0, 0, 0)
+        self._capa.setSpacing(px(2, False))
+
+    def anadir(self, glifo: str) -> _EntradaSeccion:
+        entrada = _EntradaSeccion(glifo)
+        indice_entrada = len(self._entradas)
+        entrada.clicked.connect(lambda _=False, i=indice_entrada: self.setCurrentRow(i))
+        self._grupo.addButton(entrada)
+        self._entradas.append(entrada)
+        self._capa.addWidget(entrada)
+        return entrada
+
+    def count(self) -> int:
+        return len(self._entradas)
+
+    def item(self, i: int) -> _EntradaSeccion:
+        return self._entradas[i]
+
+    def currentRow(self) -> int:  # noqa: N802 - nombre de QListWidget
+        return self._actual
+
+    def setCurrentRow(self, i: int) -> None:  # noqa: N802
+        if not 0 <= i < len(self._entradas):
+            return
+        self._entradas[i].setChecked(True)
+        if i != self._actual:
+            self._actual = i
+            self.currentRowChanged.emit(i)
+
+    def ancho_necesario(self) -> int:
+        return max((e.sizeHint().width() for e in self._entradas), default=px(150, False))
+
+
+class _OpcionTamano(BotonC):
+    """Un tamano (NORMAL, GRANDE...): boton C marcable, lleno cuando es el elegido."""
+
+    def __init__(self, texto: str, parent=None):
+        super().__init__(texto, tam=10, parent=parent)
+        self.setCheckable(True)
+
+
+class TarjetaTema(QAbstractButton, PiezaC):
+    """Un tema: sus cuatro colores principales y su nombre, pintados con SUS colores (no
+    con los del tema activo), para ver como queda antes de elegirlo."""
+
+    def __init__(self, clave: str, texto: str, parent=None):
+        super().__init__(parent)
+        transparente(self)
+        self.clave = clave
+        self.setText(texto)
+        self.setCheckable(True)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+
+    def _tema(self) -> dict:
+        return TEMAS.get(self.clave) or TEMAS[TEMA_POR_DEFECTO]
+
+    def sizeHint(self) -> QSize:  # noqa: N802
+        fm = QFontMetrics(fuente("fuerte", 12))
+        return QSize(max(px(120, False), fm.horizontalAdvance(self.text()) + px(28, False)),
+                     px(16, False) + px(12, False) + fm.height() + px(18, False))
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        return QSize(px(110, False), self.sizeHint().height())
+
+    def paintEvent(self, _evento):  # noqa: N802
+        tema = self._tema()
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        r = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+        corte = px(10, False)
+        camino = ruta_chaflan(r, corte)
+        p.fillPath(camino, QColor(tema["panel"]))
+        elegido = self.isChecked()
+        borde = QColor(tema["acento"] if elegido else PALETA["borde"])
+        if self.underMouse() and not elegido:
+            borde = QColor(PALETA["acento_tenue"])
+        p.setPen(QPen(borde, 1.5 if elegido else 1))
+        p.drawPath(camino)
+        if elegido:
+            p.setPen(QPen(QColor(tema["acento"]), 2))
+            largo = min(40.0, r.width() / 3)
+            p.drawLine(QPointF(r.right() - corte - largo, r.bottom() - 1), QPointF(r.right() - corte, r.bottom() - 1))
+        lado = px(14, False)
+        x, y = px(12, False), px(10, False)
+        for clave in MUESTRAS_TEMA:
+            cuadro = QRectF(x, y, lado, lado)
+            p.fillPath(ruta_chaflan(cuadro, 3, "i"), QColor(tema[clave]))
+            p.setPen(QPen(QColor(tema["borde"]), 1))
+            p.drawPath(ruta_chaflan(cuadro, 3, "i"))
+            x += lado + px(5, False)
+        p.setFont(fuente("fuerte", 12))
+        p.setPen(QColor(tema["texto"]))
+        arriba = y + lado + px(6, False)
+        p.drawText(QRectF(px(12, False), arriba, r.width() - px(20, False), r.height() - arriba - px(4, False)),
+                   Qt.AlignLeft | Qt.AlignVCenter,
+                   QFontMetrics(p.font()).elidedText(self.text(), Qt.ElideRight, int(r.width() - px(20, False))))
+        p.end()
+
+    def enterEvent(self, evento):  # noqa: N802
+        self.update()
+        super().enterEvent(evento)
+
+    def leaveEvent(self, evento):  # noqa: N802
+        self.update()
+        super().leaveEvent(evento)
+
+
+class SelectorC(QWidget, PiezaC):
+    """Opciones exclusivas a la vista (una fila de botones o de tarjetas) con la API de un
+    QComboBox: addItem, count, itemText, setItemText, itemData, findData, currentIndex,
+    setCurrentIndex, currentData, currentText y la senal currentIndexChanged(int)."""
+
+    currentIndexChanged = Signal(int)
+
+    def __init__(self, fabrica: Callable[[str, object], QAbstractButton], columnas: int = 0, parent=None):
+        super().__init__(parent)
+        transparente(self)
+        self._fabrica = fabrica
+        self._columnas = columnas  # 0 = todos en una fila
+        self._botones: list[QAbstractButton] = []
+        self._datos: list[object] = []
+        self._indice = -1
+        self._grupo = QButtonGroup(self)
+        self._grupo.setExclusive(True)
+        self._capa = QGridLayout(self)
+        self._capa.setContentsMargins(0, 0, 0, 0)
+        self._capa.setHorizontalSpacing(px(8, False))
+        self._capa.setVerticalSpacing(px(8, False))
+
+    def addItem(self, texto: str, dato=None) -> None:  # noqa: N802 - nombre de QComboBox
+        boton = self._fabrica(texto, dato)
+        i = len(self._botones)
+        boton.clicked.connect(lambda _=False, i=i: self.setCurrentIndex(i))
+        self._grupo.addButton(boton)
+        self._botones.append(boton)
+        self._datos.append(dato)
+        self._recolocar(self._columnas)
+        if self._indice < 0:
+            self.setCurrentIndex(0)
+
+    def _recolocar(self, columnas: int) -> None:
+        for boton in self._botones:
+            self._capa.removeWidget(boton)
+        por_fila = columnas or len(self._botones) or 1
+        for i, boton in enumerate(self._botones):
+            self._capa.addWidget(boton, i // por_fila, i % por_fila)
+
+    def poner_columnas(self, columnas: int) -> None:
+        if columnas != self._columnas:
+            self._columnas = columnas
+            self._recolocar(columnas)
+
+    def boton(self, i: int) -> QAbstractButton:
+        return self._botones[i]
+
+    def count(self) -> int:
+        return len(self._botones)
+
+    def itemText(self, i: int) -> str:  # noqa: N802
+        return self._botones[i].text() if 0 <= i < len(self._botones) else ""
+
+    def setItemText(self, i: int, texto: str) -> None:  # noqa: N802
+        if 0 <= i < len(self._botones):
+            self._botones[i].setText(texto)
+            self._botones[i].updateGeometry()
+            self._botones[i].update()
+
+    def itemData(self, i: int):  # noqa: N802
+        return self._datos[i] if 0 <= i < len(self._datos) else None
+
+    def findData(self, dato) -> int:  # noqa: N802
+        for i, d in enumerate(self._datos):
+            if d == dato or (isinstance(d, float) and isinstance(dato, (int, float)) and abs(d - dato) < 1e-6):
+                return i
+        return -1
+
+    def currentIndex(self) -> int:  # noqa: N802
+        return self._indice
+
+    def currentData(self):  # noqa: N802
+        return self.itemData(self._indice)
+
+    def currentText(self) -> str:  # noqa: N802
+        return self.itemText(self._indice)
+
+    def setCurrentIndex(self, i: int) -> None:  # noqa: N802
+        if not 0 <= i < len(self._botones):
+            return
+        self._botones[i].setChecked(True)
+        if i != self._indice:
+            self._indice = i
+            self.currentIndexChanged.emit(i)
+
+    def refrescar_estilo(self) -> None:
+        self._capa.setHorizontalSpacing(px(8, False))
+        self._capa.setVerticalSpacing(px(8, False))
+
+
+class DeslizadorC(QSlider, PiezaC):
+    """QSlider horizontal pintado en estilo C: raya fina, tramo de acento y un rombo."""
+
+    def __init__(self, parent=None):
+        super().__init__(Qt.Horizontal, parent)
+        transparente(self)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setFixedHeight(px(22, False))
+
+    def refrescar_estilo(self) -> None:
+        self.setFixedHeight(px(22, False))
+        self.update()
+
+    def paintEvent(self, _evento):  # noqa: N802
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        medio = self.height() / 2
+        lado = px(8, False)
+        ancho = self.width() - 2 * lado
+        tramo = self.maximum() - self.minimum() or 1
+        fraccion = (self.value() - self.minimum()) / tramo
+        p.fillRect(QRectF(lado, medio - 1, ancho, 2), color("borde"))
+        p.fillRect(QRectF(lado, medio - 1, ancho * fraccion, 2), color("acento"))
+        x = lado + ancho * fraccion
+        p.setBrush(color("acento"))
+        p.setPen(QPen(color("fondo"), 2))
+        p.drawPolygon(_rombo(x, medio, lado))
+        p.end()
+
+
+class MuestraColor(QPushButton, PiezaC):
+    """Cuadrado del color con la esquina cortada. `text()` es el color ("#rrggbb"), que
+    no se pinta (va en el tooltip); `personal` = cambiado por el usuario (filete de acento)."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        transparente(self)
+        self.personal = False
+        self.setCursor(Qt.PointingHandCursor)
+        self.refrescar_estilo()
+
+    def refrescar_estilo(self) -> None:
+        self.setFixedSize(px(22, False), px(22, False))
+        self.update()
+
+    def paintEvent(self, _evento):  # noqa: N802
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        r = QRectF(self.rect()).adjusted(1.5, 1.5, -1.5, -1.5)
+        camino = ruta_chaflan(r, px(5, False))
+        p.fillPath(camino, QColor(self.text() or "#000000"))
+        marcado = self.personal or self.underMouse()
+        p.setPen(QPen(color("acento" if marcado else "borde"), 2 if self.personal else 1))
+        p.drawPath(camino)
+        p.end()
+
+    def enterEvent(self, evento):  # noqa: N802
+        self.update()
+        super().enterEvent(evento)
+
+    def leaveEvent(self, evento):  # noqa: N802
+        self.update()
+        super().leaveEvent(evento)
+
+
+class _EnlaceC(QPushButton):
+    """Boton que parece un enlace (Acerca de, Salir): texto en color, sin recuadro."""
+
+    def __init__(self, tinta: str = "acento", parent=None):
+        super().__init__(parent)
+        self.tinta = tinta
+        self.setCursor(Qt.PointingHandCursor)
+        self.setFlat(True)
+
+    def hoja(self) -> str:
+        return (
+            f"QPushButton {{ background: transparent; border: none; color: {PALETA[self.tinta]};"
+            f" font-family: '{TITULAR}'; font-weight: 600; font-size: {px(13)}px; text-align: left;"
+            f" padding: {px(2, False)}px 0; }}"
+            f" QPushButton:hover {{ text-decoration: underline; }}"
+        )
+
+
+# -- vista previa ----------------------------------------------------------------------------
+
+
+def _pintar_con_paleta(widget: QWidget, pintar) -> None:
+    """Pinta una pieza C con la paleta de la vista previa (lo pendiente, sin aplicar): las
+    piezas leen `widgets.PALETA` al pintarse, asi que se cambia solo mientras se pinta."""
+    vista = widget.parentWidget()
+    while vista is not None and not isinstance(vista, VistaPrevia):
+        vista = vista.parentWidget()
+    paleta = getattr(vista, "paleta", None)
+    guardada = widgets.PALETA
+    if paleta:
+        widgets.PALETA = paleta
+    try:
+        pintar()
+    finally:
+        widgets.PALETA = guardada
+
+
+class _PanelPrevia(PanelC):
+    def paintEvent(self, evento):  # noqa: N802
+        _pintar_con_paleta(self, lambda: PanelC.paintEvent(self, evento))
+
+
+class _BotonPrevia(BotonC):
+    def paintEvent(self, evento):  # noqa: N802
+        _pintar_con_paleta(self, lambda: BotonC.paintEvent(self, evento))
+
+
+class _RomboPrevia(Rombo):
+    def paintEvent(self, evento):  # noqa: N802
+        _pintar_con_paleta(self, lambda: Rombo.paintEvent(self, evento))
+
+
+class _FiletePrevia(Filete):
+    def paintEvent(self, evento):  # noqa: N802
+        _pintar_con_paleta(self, lambda: Filete.paintEvent(self, evento))
+
+
+def _columna_junta(*piezas) -> QVBoxLayout:
+    capa = QVBoxLayout()
+    capa.setContentsMargins(0, 0, 0, 0)
+    capa.setSpacing(0)
+    for w in piezas:
+        capa.addWidget(w)
+    return capa
 
 
 class VistaPrevia(QFrame):
@@ -84,55 +526,48 @@ class VistaPrevia(QFrame):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        transparente(self)
         self.setObjectName("vistaPrevia")
-        self.setMinimumWidth(300)
-        self.cabecera = QLabel("FARMADEX")
-        self.pestanas = QTabBar()
-        self.pestanas.setDrawBase(False)
-        self.pestanas.setExpanding(False)
+        self.setMinimumWidth(px(250, False))
+        self.paleta: dict | None = None
+        self.marco = _PanelPrevia(fondo="fondo", borde="acento_tenue")
+        self.cabecera = EtiquetaC("FARMADEX", "seccion", tinta="acento", mayus=True)
+        self.menu = [EtiquetaC("", "rotulo", mayus=True) for _ in range(3)]
         self.caja = QLineEdit()
         self.caja.setReadOnly(True)
-        self.tarjeta = QFrame()
-        self.tarjeta.setObjectName("tarjetaPrevia")
-        self.nombre = QLabel()
-        self.detalle = QLabel()
-        self.detalle.setWordWrap(True)
-        self.ok = QLabel()
-        self.aviso = QLabel()
-        self.aviso.setWordWrap(True)
-        self.boton = QPushButton()
-        self.principal = QPushButton()
-        self.principal.setObjectName("principal")
+        self.caja.setFocusPolicy(Qt.NoFocus)
+        self.tarjeta = _PanelPrevia(remate=False, fondo="panel2", borde="borde")
+        self.nombre = EtiquetaC("", "fuerte")
+        self.detalle = EtiquetaC("", "pequeno", envolver=True)
+        self.ok = EtiquetaC("", "fuerte")
+        self.aviso = EtiquetaC("", "fuerte", envolver=True)
+        self.boton = _BotonPrevia(tam=10)
+        self.principal = _BotonPrevia(principal=True, icono="mas", tam=10)
         for boton in (self.boton, self.principal):
             boton.setFocusPolicy(Qt.NoFocus)
 
-        dentro_tarjeta = QVBoxLayout(self.tarjeta)
-        dentro_tarjeta.setContentsMargins(12, 8, 10, 8)
-        dentro_tarjeta.setSpacing(3)
-        dentro_tarjeta.addWidget(self.nombre)
-        dentro_tarjeta.addWidget(self.detalle)
-        dentro_tarjeta.addWidget(self.ok)
-        botones = QHBoxLayout()
-        botones.addWidget(self.boton)
-        botones.addWidget(self.principal)
-        botones.addStretch(1)
+        self.tarjeta.capa.setContentsMargins(px(10, False), px(6, False), px(10, False), px(6, False))
+        self.tarjeta.capa.setSpacing(px(2, False))
+        self.tarjeta.capa.addLayout(fila(_RomboPrevia(14, "secundario", relleno=False),
+                                         _columna_junta(self.nombre, self.detalle), espacio=px(8, False)))
+        m = self.marco.capa
+        m.setSpacing(px(6, False))
+        m.addLayout(fila(_RomboPrevia(10, "acento", relleno=False), self.cabecera, None, espacio=px(6, False)))
+        m.addWidget(_FiletePrevia())
+        m.addLayout(fila(*self.menu, None, espacio=px(14, False)))
+        m.addWidget(self.caja)
+        m.addWidget(self.tarjeta)
+        m.addLayout(fila(self.principal, self.boton, None, espacio=px(6, False)))
+        m.addWidget(self.aviso)
+        m.addWidget(self.ok)
         caja = QVBoxLayout(self)
-        caja.setContentsMargins(12, 10, 12, 12)
-        caja.setSpacing(8)
-        caja.addWidget(self.cabecera)
-        caja.addWidget(self.pestanas)
-        caja.addWidget(self.caja)
-        caja.addWidget(self.tarjeta)
-        caja.addWidget(self.aviso)
-        caja.addLayout(botones)
-        caja.addStretch(1)
+        caja.setContentsMargins(0, 0, 0, 0)
+        caja.addWidget(self.marco)
         self.retraducir()
 
     def retraducir(self) -> None:
-        while self.pestanas.count():
-            self.pestanas.removeTab(0)
-        for titulo in ("Buscar", "Objetivos", "Mundo"):
-            self.pestanas.addTab(t(titulo))
+        for etiqueta, titulo in zip(self.menu, ("Buscar", "Objetivos", "Mundo")):
+            etiqueta.setText(t(titulo))
         self.caja.setPlaceholderText(t("Busca un objeto, mision o reliquia..."))
         self.nombre.setText("Ash Prime")
         self.detalle.setText(t("Texto secundario: donde se consigue y cuanto se tarda."))
@@ -143,25 +578,24 @@ class VistaPrevia(QFrame):
 
     def pintar(self, paleta: dict, escala: tuple[float, float]) -> None:
         p = paleta
-        self.setStyleSheet(
-            hoja_estilos(p, escala)
-            + f" #vistaPrevia {{ background: {p['fondo']}; border: 1px solid {p['borde']};"
-            f" border-radius: 10px; }}"
-            f" #tarjetaPrevia {{ background: {p['panel2']}; border: 1px solid {p['borde']};"
-            f" border-radius: 8px; border-left: 4px solid {p['acento']}; }}"
-        )
-        self.cabecera.setStyleSheet(
-            f"color: {p['acento']}; font-weight: 700; font-size: {px(17, True, escala)}px; letter-spacing: 1px;"
-        )
-        self.nombre.setStyleSheet(f"color: {p['texto']}; font-weight: 600; font-size: {px(15, True, escala)}px;")
-        self.detalle.setStyleSheet(f"color: {p['suave']}; font-size: {px(12, True, escala)}px;")
-        self.ok.setStyleSheet(f"color: {p['ok']}; font-size: {px(12, True, escala)}px;")
-        self.aviso.setStyleSheet(f"color: {p['aviso']}; font-size: {px(12, True, escala)}px;")
+        self.paleta = dict(paleta)
+        # La hoja entera con la paleta pendiente: las etiquetas C (rolC/tinta) la siguen.
+        self.setStyleSheet(hoja_estilos(p, escala) + " #vistaPrevia { background: transparent; }")
+        self.menu[0].setStyleSheet(f"color: {p['acento']};")
+        for etiqueta in self.menu[1:]:
+            etiqueta.setStyleSheet(f"color: {p['suave']};")
+        self.ok.setStyleSheet(f"color: {p['ok']}; font-size: {widgets.px(13, True, escala)}px;")
+        self.aviso.setStyleSheet(f"color: {p['aviso']}; font-size: {widgets.px(13, True, escala)}px;")
         # Alto minimo segun la letra elegida: si no, con letra grande el hueco de la vista
         # previa aplasta las lineas unas encima de otras. (etiqueta, tamano, lineas)
-        for etiqueta, tamano, lineas in ((self.nombre, 15, 1), (self.detalle, 12, 2), (self.ok, 12, 1),
-                                         (self.aviso, 12, 2), (self.cabecera, 17, 1)):
-            etiqueta.setMinimumHeight(int(px(tamano, True, escala) * 1.45 * lineas))
+        for etiqueta, tamano, lineas in ((self.nombre, 14, 1), (self.detalle, 12, 2), (self.ok, 13, 1),
+                                         (self.aviso, 13, 2), (self.cabecera, 16, 1)):
+            etiqueta.setMinimumHeight(int(widgets.px(tamano, True, escala) * 1.45 * lineas))
+        for w in self.findChildren(QWidget):
+            w.update()
+
+
+# -- la pestana ----------------------------------------------------------------------------
 
 
 class PestanaAjustes(QWidget):
@@ -189,9 +623,11 @@ class PestanaAjustes(QWidget):
     ver_guia = Signal()
     estilo_recompensas_cambiado = Signal(str)
     prioridad_recompensas_cambiada = Signal(str)
+    ocr_modo_cambiado = Signal(str)  # "auto", "rapido", "ligero" o "windows" (captura/ocr.py)
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        transparente(self)
         self.config = cargar()
         # Textos fijos que hay que volver a escribir al cambiar de idioma:
         # (funcion que pone el texto, clave en castellano).
@@ -204,18 +640,15 @@ class PestanaAjustes(QWidget):
         self._modo_pantalla: str | None = None
         self._texto_parche: str | None = None
 
-        # -- columna de secciones ------------------------------------------------
-        self.secciones = QListWidget()
-        self.secciones.setObjectName("seccionesAjustes")
-        self.secciones.setFocusPolicy(Qt.NoFocus)
-        self._estilo(self.secciones, self._hoja_secciones)
+        # -- columna de secciones (con Acerca de, Salir y creditos al pie) -----------------
+        self.secciones = MenuSecciones()
         self.paginas = QStackedWidget()
+        transparente(self.paginas)
         self._claves_seccion: list[str] = []
         self._contenido: dict[str, QVBoxLayout] = {}
         for clave, titulo in SECCIONES:
-            item = QListWidgetItem()
-            self.secciones.addItem(item)
-            self._fijo(item.setText, titulo)
+            entrada = self.secciones.anadir(GLIFOS_SECCION[clave])
+            self._fijo(entrada.setText, titulo)
             self._claves_seccion.append(clave)
             self._contenido[clave] = self._pagina()
         self.secciones.currentRowChanged.connect(self.paginas.setCurrentIndex)
@@ -229,73 +662,70 @@ class PestanaAjustes(QWidget):
         for dentro in self._contenido.values():
             dentro.addStretch(1)
         self.secciones.setCurrentRow(0)
-        self._ajustar_ancho_secciones()
 
-        # -- pie ------------------------------------------------------------------
-        boton_salir = QPushButton()
-        self._fijo(lambda s: boton_salir.setText(s.format(app=NOMBRE_APP)), "Salir de {app}")
-        boton_salir.clicked.connect(self.salir.emit)
         # Que es Farmadex y que dice DE de los programas de terceros (ui/acerca_de.py).
-        self.boton_acerca = QPushButton()
+        self.boton_acerca = _EnlaceC("acento")
+        self._estilo(self.boton_acerca, self.boton_acerca.hoja)
         self._fijo(lambda s: self.boton_acerca.setText(s.format(app=NOMBRE_APP)), "Acerca de {app}")
         self.boton_acerca.clicked.connect(self._abrir_acerca)
-
-        pie = QHBoxLayout()
+        self.boton_salir = _EnlaceC("aviso")
+        self._estilo(self.boton_salir, self.boton_salir.hoja)
+        self._fijo(lambda s: self.boton_salir.setText(s.format(app=NOMBRE_APP)), "Salir de {app}")
+        self.boton_salir.clicked.connect(self.salir.emit)
         creditos = self._nota("Datos de WFCD y Digital Extremes")
-        creditos.setWordWrap(False)  # en el pie hay sitio de sobra; partido queda raro
-        pie.addWidget(creditos)
-        pie.addStretch(1)
-        self.autor = QLabel()
-        self.autor.setTextFormat(Qt.RichText)
+        creditos.poner_tinta("tenue")
+        self.autor = EtiquetaC("", "pequeno", envolver=True)
         self.autor.setOpenExternalLinks(True)
-        self._estilo(self.autor, lambda: f"color: {PALETA['suave']}; font-size: {px(12)}px;")
+        self.autor.setTextInteractionFlags(Qt.TextBrowserInteraction)
         self._fijo(lambda _s: self.autor.setText(texto_autor()), "Creado por {autor}")
-        pie.addWidget(self.autor)
-        pie.addWidget(self.boton_acerca)
-        pie.addWidget(boton_salir)
+        self.version_pie = EtiquetaC(f"{NOMBRE_APP} {VERSION}", "pequeno", tinta="tenue")
+
+        self.panel_secciones = PanelC()
+        columna_menu = self.panel_secciones.capa
+        columna_menu.setContentsMargins(px(12, False), px(16, False), px(12, False), px(14, False))
+        columna_menu.setSpacing(px(4, False))
+        columna_menu.addWidget(self.secciones)
+        columna_menu.addStretch(1)
+        columna_menu.addWidget(Linea())
+        columna_menu.addWidget(self.boton_acerca)
+        columna_menu.addWidget(self.boton_salir)
+        columna_menu.addSpacing(px(4, False))
+        columna_menu.addWidget(creditos)
+        columna_menu.addWidget(self.autor)
+        columna_menu.addWidget(self.version_pie)
+        self._ajustar_ancho_secciones()
 
         cuerpo = QHBoxLayout()
-        cuerpo.setSpacing(12)
-        cuerpo.addWidget(self.secciones)
+        cuerpo.setSpacing(px(16, False))
+        cuerpo.addWidget(self.panel_secciones)
         cuerpo.addWidget(self.paginas, 1)
         caja = QVBoxLayout(self)
-        caja.setContentsMargins(4, 8, 4, 4)
+        caja.setContentsMargins(0, px(4, False), 0, 0)
         caja.addLayout(cuerpo, 1)
-        caja.addLayout(pie)
 
         self.refrescar_estado()
 
     # -- piezas ---------------------------------------------------------------------
 
     def _pagina(self) -> QVBoxLayout:
-        contenido = QWidget()
+        contenido = transparente(QWidget())
         dentro = QVBoxLayout(contenido)
-        dentro.setContentsMargins(0, 0, 8, 0)
-        dentro.setSpacing(10)
+        dentro.setContentsMargins(0, 0, px(8, False), 0)
+        dentro.setSpacing(px(12, False))
         desplazable = QScrollArea()
         desplazable.setWidgetResizable(True)
+        desplazable.setFrameShape(QScrollArea.NoFrame)
         desplazable.setWidget(contenido)
         self.paginas.addWidget(desplazable)
         return dentro
 
-    def _hoja_secciones(self) -> str:
-        p = PALETA
-        return (
-            f"#seccionesAjustes {{ background: {p['panel']}; border: 1px solid {p['borde']};"
-            f" border-radius: 8px; padding: 4px; outline: none; }}"
-            f" #seccionesAjustes::item {{ padding: {px(10, False)}px {px(12, False)}px; border: none;"
-            f" border-left: 3px solid transparent; color: {p['suave']}; font-size: {px(15)}px; }}"
-            f" #seccionesAjustes::item:selected {{ background: {p['panel2']}; color: {p['texto']};"
-            f" border-left: 3px solid {p['acento']}; }}"
-            f" #seccionesAjustes::item:hover {{ color: {p['texto']}; background: {p['panel2']}; }}"
-        )
-
     def _ajustar_ancho_secciones(self) -> None:
         """Tan ancha como el titulo mas largo en el idioma activo, sin cortar ni sobrar."""
-        metrica = self.secciones.fontMetrics()
-        mas_largo = max(metrica.horizontalAdvance(self.secciones.item(i).text())
-                        for i in range(self.secciones.count()))
-        self.secciones.setFixedWidth(max(150, int(mas_largo * 1.1) + px(50, False)))
+        if not hasattr(self, "panel_secciones"):
+            return
+        margenes = self.panel_secciones.capa.contentsMargins()
+        ancho = self.secciones.ancho_necesario() + margenes.left() + margenes.right() + px(6, False)
+        self.panel_secciones.setFixedWidth(max(px(200, False), ancho))
 
     def _estilo(self, widget: QWidget, hoja: Callable[[], str]) -> None:
         widget.setStyleSheet(hoja())
@@ -305,39 +735,38 @@ class PestanaAjustes(QWidget):
         poner(t(clave))
         self._fijos.append((poner, clave))
 
-    def _boton(self, clave: str) -> QPushButton:
-        boton = QPushButton()
+    def _boton(self, clave: str, principal: bool = False) -> BotonC:
+        boton = BotonC(principal=principal, tam=11)
         self._fijo(boton.setText, clave)
         return boton
 
-    def _grupo(self, clave: str) -> QGroupBox:
-        grupo = QGroupBox()
-        self._fijo(grupo.setTitle, clave)
+    def _grupo(self, clave: str) -> PanelC:
+        grupo = PanelC("")
+        self._fijo(grupo.poner_titulo, clave)
         return grupo
 
-    def _nota(self, clave: str) -> QLabel:
-        nota = QLabel()
-        nota.setWordWrap(True)
-        nota.setStyleSheet(f"color: {PALETA['suave']}; font-size: {px(12)}px;")
+    def _nota(self, clave: str) -> EtiquetaC:
+        nota = EtiquetaC("", "pequeno", envolver=True)
         self._fijo(nota.setText, clave)
         self._notas.append(nota)
         return nota
 
     def _fila(self, formulario: QFormLayout, clave: str, campo: QWidget) -> None:
-        etiqueta = QLabel()
+        etiqueta = EtiquetaC("", "normal")
         self._fijo(etiqueta.setText, clave)
         formulario.addRow(etiqueta, campo)
 
     @staticmethod
     def _formulario() -> QFormLayout:
         formulario = QFormLayout()
-        formulario.setHorizontalSpacing(16)
-        formulario.setVerticalSpacing(6)
+        formulario.setHorizontalSpacing(px(16, False))
+        formulario.setVerticalSpacing(px(6, False))
         formulario.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+        formulario.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         return formulario
 
-    def _meter(self, seccion: str, grupo: QGroupBox, disposicion) -> QGroupBox:
-        grupo.setLayout(disposicion)
+    def _meter(self, seccion: str, grupo: PanelC, disposicion) -> PanelC:
+        grupo.capa.addLayout(disposicion)
         self._contenido[seccion].addWidget(grupo)
         return grupo
 
@@ -356,9 +785,7 @@ class PestanaAjustes(QWidget):
         self._fijo(self.iniciar_windows.setText, "Iniciar con Windows (escondido en la bandeja)")
         self.iniciar_windows.setChecked(bool(self.config.get("iniciar_con_windows", False)))
         self.iniciar_windows.toggled.connect(self._cambiar_arranque)
-        self.aviso_arranque = QLabel("")
-        self.aviso_arranque.setWordWrap(True)
-        self._estilo(self.aviso_arranque, lambda: f"color: {PALETA['suave']}; font-size: {px(12)}px;")
+        self.aviso_arranque = EtiquetaC("", "pequeno", envolver=True)
         self._pintar_aviso_arranque()
 
         general = self._formulario()
@@ -372,33 +799,24 @@ class PestanaAjustes(QWidget):
         self._meter("general", self._grupo("General"), general)
 
         # -- version ----------------------------------------------------------------
-        self.etiqueta_version = QLabel(f"{NOMBRE_APP} <b>{VERSION}</b>")
-        self.etiqueta_version.setTextFormat(Qt.RichText)
-        self._estilo(self.etiqueta_version, lambda: f"font-size: {px(16)}px;")
+        self.etiqueta_version = EtiquetaC(f"{NOMBRE_APP} <b>{VERSION}</b>", "seccion")
         self.aviso_version = QLabel(t("Estas en la ultima version"))
         self.aviso_version.setWordWrap(True)
         self.aviso_version.setOpenExternalLinks(True)
         self.aviso_version.setStyleSheet(f"color: {PALETA['suave']};")
         self.boton_comprobar = self._boton("Comprobar ahora")
         self.boton_comprobar.clicked.connect(self._pedir_comprobacion)
-        self.boton_instalar = self._boton("Instalar la version nueva")
-        self.boton_instalar.setObjectName("principal")
+        self.boton_instalar = self._boton("Instalar la version nueva", principal=True)
         self.boton_instalar.setVisible(False)
         # Para la actualizacion ya descargada y comprobada por la propia app.
-        self.boton_reiniciar = self._boton("Reiniciar y actualizar")
-        self.boton_reiniciar.setObjectName("principal")
+        self.boton_reiniciar = self._boton("Reiniciar y actualizar", principal=True)
         self.boton_reiniciar.setVisible(False)
         self.auto_actualizar = QCheckBox()
         self._fijo(self.auto_actualizar.setText, "Actualizar automaticamente (se instala al cerrar Farmadex)")
         self.auto_actualizar.setChecked(bool(self.config.get("actualizar_automaticamente", True)))
         self.auto_actualizar.toggled.connect(lambda v: self._guardar("actualizar_automaticamente", v))
-        botones_version = QHBoxLayout()
-        botones_version.addWidget(self.boton_comprobar)
-        botones_version.addWidget(self.boton_instalar)
-        botones_version.addWidget(self.boton_reiniciar)
-        botones_version.addStretch(1)
         version = QVBoxLayout()
-        version.setSpacing(6)
+        version.setSpacing(px(6, False))
         version.addWidget(self.etiqueta_version)
         version.addWidget(self.aviso_version)
         version.addWidget(self.auto_actualizar)
@@ -406,7 +824,8 @@ class PestanaAjustes(QWidget):
             "La version nueva se baja sola, se comprueba y se instala al cerrar Farmadex, "
             "sustituyendo a la anterior. Tus objetivos y ajustes se conservan."
         ))
-        version.addLayout(botones_version)
+        version.addLayout(fila(self.boton_comprobar, self.boton_instalar, self.boton_reiniciar, None,
+                               espacio=px(8, False)))
         self._meter("general", self._grupo("Version"), version)
 
     def _construir_atajos(self) -> None:
@@ -418,7 +837,7 @@ class PestanaAjustes(QWidget):
             "agrietado": QLineEdit(self.config.get("hotkey_agrietado", "")),
         }
         for campo in self.campos_hotkey.values():
-            campo.setMaximumWidth(260)
+            campo.setMaximumWidth(px(260, False))
         formulario = self._formulario()
         self._fila(formulario, "Abrir y cerrar el overlay", self.campos_hotkey["overlay"])
         formulario.addRow(self._nota("Abre y cierra esta ventana encima del juego."))
@@ -439,128 +858,136 @@ class PestanaAjustes(QWidget):
         self.aviso_hotkey = QLabel("")
         self.aviso_hotkey.setWordWrap(True)
         self.aviso_hotkey.setStyleSheet(f"color: {PALETA['aviso']};")
-        boton_hotkeys = self._boton("Aplicar atajos")
+        boton_hotkeys = self._boton("Aplicar atajos", principal=True)
         boton_hotkeys.clicked.connect(self._aplicar_hotkeys)
-        fila_hotkeys = QHBoxLayout()
-        fila_hotkeys.addWidget(boton_hotkeys)
-        fila_hotkeys.addWidget(self.aviso_hotkey, 1)
         formulario.addRow(self._nota("Escribelos asi: Ctrl+Alt+W. Los cambios valen al pulsar Aplicar."))
+        fila_hotkeys = fila(boton_hotkeys, espacio=px(10, False))
+        fila_hotkeys.addWidget(self.aviso_hotkey, 1)
         formulario.addRow(fila_hotkeys)
         self._meter("atajos", self._grupo("Atajos de teclado"), formulario)
 
     def _construir_aspecto(self) -> None:
-        self.tema = QComboBox()
+        # -- tema y opacidad ----------------------------------------------------------------
+        self.tema = SelectorC(lambda texto, clave: TarjetaTema(clave, texto))
         for clave, tema in TEMAS.items():
             self.tema.addItem(t(tema["titulo"]), clave)
         actual = self.config.get("tema") or TEMA_POR_DEFECTO
         self.tema.setCurrentIndex(max(0, self.tema.findData(actual)))
         self.tema.currentIndexChanged.connect(self._cambiar_tema)
-        self.opacidad = QSlider(Qt.Horizontal)
+        self.opacidad = DeslizadorC()
         self.opacidad.setRange(50, 100)
         self.opacidad.setValue(int(float(self.config["overlay_opacidad"]) * 100))
+        self.opacidad.setMinimumWidth(px(200, False))
+        self.opacidad.setMaximumWidth(px(280, False))
+        self.valor_opacidad = EtiquetaC("", "dato", tinta="acento")
+        self.valor_opacidad.setMinimumWidth(px(44, False))
+        self.valor_opacidad.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.opacidad.valueChanged.connect(self._cambiar_opacidad)
-        base = self._formulario()
-        self._fila(base, "Tema de color", self.tema)
-        self._fila(base, "Opacidad del fondo", self.opacidad)
-        base.addRow(self._nota("El tema y la opacidad se aplican al momento."))
-        self._meter("aspecto", self._grupo("Tema"), base)
+        self._pintar_opacidad()
+        etiqueta_opacidad = EtiquetaC("", "normal")
+        self._fijo(etiqueta_opacidad.setText, "Opacidad del fondo")
+        tema = QVBoxLayout()
+        tema.setSpacing(px(10, False))
+        tema.addWidget(self.tema)
+        tema.addLayout(fila(etiqueta_opacidad, None, self.opacidad, self.valor_opacidad, espacio=px(10, False)))
+        tema.addWidget(self._nota("El tema y la opacidad se aplican al momento."))
+        self.panel_tema = self._grupo("Tema")
+        self.panel_tema.capa.addLayout(tema)
 
-        # -- personalizacion con vista previa ------------------------------------------
-        self.escala_interfaz = QComboBox()
+        # -- tamanos --------------------------------------------------------------------------
+        self.escala_interfaz = SelectorC(lambda texto, _f: _OpcionTamano(texto))
         for factor, nombre in ESCALAS_INTERFAZ:
             self.escala_interfaz.addItem(t(nombre), factor)
-        self.escala_letra = QComboBox()
+        self.escala_letra = SelectorC(lambda texto, _f: _OpcionTamano(texto))
         for factor, nombre in ESCALAS_LETRA:
             self.escala_letra.addItem(t(nombre), factor)
         self.escala_interfaz.currentIndexChanged.connect(self._cambio_pendiente)
         self.escala_letra.currentIndexChanged.connect(self._cambio_pendiente)
-        tamanos = self._formulario()
-        self._fila(tamanos, "Tamano de la interfaz", self.escala_interfaz)
-        self._fila(tamanos, "Tamano de letra", self.escala_letra)
+        tamanos = QGridLayout()
+        tamanos.setHorizontalSpacing(px(16, False))
+        tamanos.setVerticalSpacing(px(10, False))
+        for i, (clave, selector) in enumerate((("Tamano de la interfaz", self.escala_interfaz),
+                                               ("Tamano de letra", self.escala_letra))):
+            etiqueta = EtiquetaC("", "normal")
+            self._fijo(etiqueta.setText, clave)
+            tamanos.addWidget(etiqueta, i, 0)
+            tamanos.addWidget(selector, i, 1, Qt.AlignLeft)
+        tamanos.setColumnStretch(1, 1)
+        self.panel_tamano = self._grupo("Tamano")
+        self.panel_tamano.capa.addLayout(tamanos)
 
-        # Una muestra por categoria: clic = elegir color; la flecha vuelve al del tema.
-        self.muestras: dict[str, QPushButton] = {}
-        self.deshacer_color: dict[str, QPushButton] = {}
-        rejilla = QGridLayout()
-        rejilla.setHorizontalSpacing(8)
-        rejilla.setVerticalSpacing(4)
-        for i, (clave, nombre, ayuda) in enumerate(CATEGORIAS_COLOR):
-            etiqueta = QLabel()
-            self._fijo(etiqueta.setText, nombre)
-            self._fijo(etiqueta.setToolTip, ayuda)
-            muestra = QPushButton()
-            muestra.setFixedWidth(92)
-            self._fijo(muestra.setToolTip, ayuda)
-            muestra.clicked.connect(lambda _=False, c=clave: self._elegir_color(c))
-            deshacer = QPushButton()
-            deshacer.setIcon(self.style().standardIcon(QStyle.SP_BrowserReload))
-            deshacer.setFixedWidth(30)
-            self._fijo(deshacer.setToolTip, "Volver al color del tema")
-            deshacer.clicked.connect(lambda _=False, c=clave: self._poner_color(c, None))
-            self.muestras[clave] = muestra
-            self.deshacer_color[clave] = deshacer
-            fila, columna = i % 6, (i // 6) * 3
-            rejilla.addWidget(etiqueta, fila, columna)
-            rejilla.addWidget(muestra, fila, columna + 1)
-            rejilla.addWidget(deshacer, fila, columna + 2)
-        rejilla.setColumnStretch(0, 1)
-        rejilla.setColumnStretch(3, 1)
-
-        self.vista_previa = VistaPrevia()
-        self.estado_aspecto = QLabel("")
-        self.estado_aspecto.setWordWrap(True)
-        self.boton_guardar_aspecto = self._boton("Guardar")
-        self.boton_guardar_aspecto.setObjectName("principal")
-        self.boton_guardar_aspecto.clicked.connect(self.guardar_aspecto)
-        self.boton_descartar_aspecto = self._boton("Descartar")
-        self.boton_descartar_aspecto.clicked.connect(self.descartar_aspecto)
+        # -- colores: una muestra por categoria; clic = elegir, la flecha vuelve al del tema -----
+        self.muestras: dict[str, MuestraColor] = {}
+        self.deshacer_color: dict[str, BotonGlifo] = {}
+        columnas = QHBoxLayout()
+        columnas.setSpacing(px(24, False))
+        mitad = (len(CATEGORIAS_COLOR) + 1) // 2
+        for trozo in (CATEGORIAS_COLOR[:mitad], CATEGORIAS_COLOR[mitad:]):
+            col = QVBoxLayout()
+            col.setSpacing(px(5, False))
+            for clave, nombre, ayuda in trozo:
+                muestra = MuestraColor()
+                self._fijo(muestra.setToolTip, ayuda)
+                muestra.clicked.connect(lambda _=False, c=clave: self._elegir_color(c))
+                etiqueta = EtiquetaC("", "normal")
+                self._fijo(etiqueta.setText, nombre)
+                self._fijo(etiqueta.setToolTip, ayuda)
+                deshacer = BotonGlifo(GLIFO_DESHACER, tinta="acento", tam=12)
+                self._fijo(deshacer.setToolTip, "Volver al color del tema")
+                deshacer.clicked.connect(lambda _=False, c=clave: self._poner_color(c, None))
+                self.muestras[clave] = muestra
+                self.deshacer_color[clave] = deshacer
+                col.addLayout(fila(muestra, etiqueta, None, deshacer, espacio=px(10, False)))
+            col.addStretch(1)
+            columnas.addLayout(col, 1)
         self.boton_fabrica = self._boton("Volver a lo de fabrica")
         self._fijo(self.boton_fabrica.setToolTip, "Quita todos los colores y tamanos personalizados, en todos los temas")
         self.boton_fabrica.clicked.connect(self.aspecto_de_fabrica)
-        # Guardar y Descartar debajo de la vista previa, a la vista sin bajar la pagina.
-        botones = QHBoxLayout()
-        botones.addWidget(self.boton_guardar_aspecto)
-        botones.addWidget(self.boton_descartar_aspecto)
-        botones.addStretch(1)
-
-        izquierda = QVBoxLayout()
-        izquierda.setSpacing(8)
-        izquierda.addLayout(tamanos)
-        izquierda.addWidget(self._nota(
+        nota_colores = self._nota(
             "Colores del tema elegido, por partes. Pulsa un color para cambiarlo; la flecha lo deja "
             "como venia."
+        )
+        self.panel_colores = self._grupo("Colores")
+        self.panel_colores.capa.addLayout(columnas)
+        pie_colores = fila(espacio=px(10, False))
+        pie_colores.addWidget(nota_colores, 1)
+        pie_colores.addWidget(self.boton_fabrica, 0, Qt.AlignBottom)
+        self.panel_colores.capa.addLayout(pie_colores)
+
+        # -- vista previa con Guardar y Descartar ----------------------------------------------
+        self.vista_previa = VistaPrevia()
+        self.estado_aspecto = EtiquetaC("", "pequeno", envolver=True)
+        self.boton_guardar_aspecto = self._boton("Guardar", principal=True)
+        self.boton_guardar_aspecto.clicked.connect(self.guardar_aspecto)
+        self.boton_descartar_aspecto = self._boton("Descartar")
+        self.boton_descartar_aspecto.clicked.connect(self.descartar_aspecto)
+        self.panel_previa = self._grupo("Vista previa")
+        self.panel_previa.capa.addWidget(self.vista_previa)
+        self.panel_previa.capa.addWidget(self.estado_aspecto)
+        # Guardar y Descartar debajo de la vista previa, a la vista sin bajar la pagina.
+        self.panel_previa.capa.addLayout(fila(self.boton_guardar_aspecto, self.boton_descartar_aspecto, None,
+                                              espacio=px(8, False)))
+        self.panel_previa.capa.addWidget(self._nota(
+            "Nada cambia hasta que pulsas Guardar. Se guarda en tu configuracion, asi que se "
+            "mantiene al actualizar Farmadex."
         ))
-        izquierda.addLayout(rejilla)
-        fabrica = QHBoxLayout()
-        fabrica.addWidget(self.boton_fabrica)
-        fabrica.addStretch(1)
-        izquierda.addLayout(fabrica)
-        izquierda.addStretch(1)
+
+        izquierda = QVBoxLayout()
+        izquierda.setSpacing(px(12, False))
+        izquierda.addWidget(self.panel_tema)
+        izquierda.addWidget(self.panel_tamano)
+        izquierda.addWidget(self.panel_colores)
         derecha = QVBoxLayout()
-        derecha.setSpacing(6)
-        titulo_previa = QLabel()
-        self._fijo(titulo_previa.setText, "Vista previa")
-        self._estilo(titulo_previa, lambda: f"color: {PALETA['suave']}; font-size: {px(12)}px;")
-        derecha.addWidget(titulo_previa)
-        derecha.addWidget(self.vista_previa)
-        derecha.addWidget(self.estado_aspecto)
-        derecha.addLayout(botones)
+        derecha.addWidget(self.panel_previa)
         derecha.addStretch(1)
         # Lado a lado si cabe; con letra grande o ventana estrecha, la vista previa baja
         # debajo de los colores (ver _ajustar_disposicion) en vez de salirse por la derecha.
         arriba = QBoxLayout(QBoxLayout.LeftToRight)
-        arriba.setSpacing(16)
+        arriba.setSpacing(px(16, False))
         arriba.addLayout(izquierda, 3)
         arriba.addLayout(derecha, 2)
         self._arriba_aspecto, self._izquierda_aspecto = arriba, izquierda
-        personal = QVBoxLayout()
-        personal.setSpacing(8)
-        personal.addLayout(arriba)
-        personal.addWidget(self._nota(
-            "Nada cambia hasta que pulsas Guardar. Se guarda en tu configuracion, asi que se "
-            "mantiene al actualizar Farmadex."
-        ))
-        self._meter("aspecto", self._grupo("Personalizar"), personal)
+        self._contenido["aspecto"].addLayout(arriba)
         self._fabrica_todos = False
         self._cargar_aspecto()
 
@@ -638,7 +1065,7 @@ class PestanaAjustes(QWidget):
         # -- diagnostico de reliquias ----------------------------------------------
         # Para el "no me sale nada al abrir una reliquia" de quien no sabe mandar el
         # registro: una lista de comprobaciones con veredicto y un .zip en el Escritorio.
-        self.boton_diagnostico = self._boton("Comprobar la lectura de reliquias")
+        self.boton_diagnostico = self._boton("Comprobar la lectura de reliquias", principal=True)
         self.boton_diagnostico.clicked.connect(self.pedir_diagnostico.emit)
         self.boton_informe = self._boton("Guardar informe para enviar")
         self.boton_informe.clicked.connect(self.guardar_informe.emit)
@@ -652,12 +1079,8 @@ class PestanaAjustes(QWidget):
         self.estado_informe.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.estado_informe.setStyleSheet(f"color: {PALETA['suave']}; font-size: {px(12)}px;")
         self.estado_informe.hide()
-        botones_diagnostico = QHBoxLayout()
-        botones_diagnostico.addWidget(self.boton_diagnostico)
-        botones_diagnostico.addWidget(self.boton_informe)
-        botones_diagnostico.addStretch(1)
         diagnostico = QVBoxLayout()
-        diagnostico.setSpacing(6)
+        diagnostico.setSpacing(px(6, False))
         diagnostico.addWidget(self._nota(
             "Si al abrir una reliquia no sale nada encima del juego, pulsa 'Comprobar': dice si "
             "EE.log se esta leyendo, en que modo de pantalla va el juego y si el lector esta listo. "
@@ -665,7 +1088,7 @@ class PestanaAjustes(QWidget):
             "enviarlo; nunca incluye EE.log ni datos de tu cuenta."
         ))
         diagnostico.addWidget(self.resultado_diagnostico)
-        diagnostico.addLayout(botones_diagnostico)
+        diagnostico.addLayout(fila(self.boton_diagnostico, self.boton_informe, None, espacio=px(8, False)))
         diagnostico.addWidget(self.estado_informe)
         self._meter("reliquias", self._grupo("Diagnostico de reliquias"), diagnostico)
 
@@ -703,12 +1126,14 @@ class PestanaAjustes(QWidget):
         self.boton_avanzado = QPushButton()
         self.boton_avanzado.setCheckable(True)
         self.boton_avanzado.setObjectName("plegable")
+        self.boton_avanzado.setCursor(Qt.PointingHandCursor)
         self._estilo(self.boton_avanzado, lambda: (
             f"QPushButton#plegable {{ background: transparent; border: none; color: {PALETA['acento']};"
-            f" font-weight: 600; text-align: left; padding: 4px 2px; font-size: {px(13)}px; }}"
+            f" font-family: '{TITULAR}'; font-weight: 600; text-align: left; padding: 4px 2px;"
+            f" font-size: {px(13)}px; letter-spacing: 1px; }}"
         ))
         self.boton_avanzado.toggled.connect(self._plegar_avanzado)
-        self.avanzado = QWidget()
+        self.avanzado = transparente(QWidget())
         boton_datos = self._boton("Reconstruir el indice")
         boton_datos.clicked.connect(self.reconstruir.emit)
         boton_carpeta = self._boton("Abrir la carpeta de datos")
@@ -718,11 +1143,14 @@ class PestanaAjustes(QWidget):
         boton_reproductor.clicked.connect(self.borrar_reproductor.emit)
         self.boton_reconstruir, self.boton_carpeta, self.boton_reproductor = (
             boton_datos, boton_carpeta, boton_reproductor)
-        avanzado = QGridLayout(self.avanzado)
-        avanzado.setContentsMargins(4, 0, 0, 0)
-        avanzado.setHorizontalSpacing(12)
-        avanzado.setVerticalSpacing(8)
-        explicaciones = (
+        # Rejilla del mantenimiento: a la izquierda el control, a la derecha su explicacion.
+        # `anadir_avanzado` mete filas nuevas aqui.
+        self.capa_avanzado = QGridLayout(self.avanzado)
+        self.capa_avanzado.setContentsMargins(px(4, False), 0, 0, 0)
+        self.capa_avanzado.setHorizontalSpacing(px(12, False))
+        self.capa_avanzado.setVerticalSpacing(px(10, False))
+        self.capa_avanzado.setColumnStretch(1, 1)
+        for boton, texto in (
             (boton_datos, "Vuelve a preparar el catalogo desde cero, descargando lo que haga falta. "
                           "Usalo solo si la busqueda sale rara o faltan objetos nuevos. Tarda un poco "
                           "y mientras tanto no se puede buscar; tus objetivos no se tocan."),
@@ -731,32 +1159,69 @@ class PestanaAjustes(QWidget):
             (boton_reproductor, "Cierra el video y borra la sesion de YouTube y la cache del reproductor "
                                 "de guias. Sirve si los videos no cargan; despues tendras que volver a "
                                 "aceptar las cookies de YouTube."),
-        )
-        for fila, (boton, texto) in enumerate(explicaciones):
-            avanzado.addWidget(boton, fila, 0, Qt.AlignTop)
-            avanzado.addWidget(self._nota(texto), fila, 1)
-        avanzado.setColumnStretch(1, 1)
+        ):
+            self.anadir_avanzado(boton, self._nota(texto))
+
+        # Lectura de pantalla (OCR): cuanta CPU puede usar el lector (captura/ocr.py).
+        self.ocr_modo = QComboBox()
+        for i, (clave, texto) in enumerate(MODOS_OCR):
+            self.ocr_modo.addItem("", clave)
+            self._fijo(lambda s, i=i: self.ocr_modo.setItemText(i, s), texto)
+        self.ocr_modo.setCurrentIndex(max(0, self.ocr_modo.findData(self.config.get("ocr_modo") or "auto")))
+
+        def cambiar_ocr_modo(_indice: int) -> None:
+            modo = self.ocr_modo.currentData() or "auto"
+            self._guardar("ocr_modo", modo)
+            self.ocr_modo_cambiado.emit(modo)
+
+        self.ocr_modo.currentIndexChanged.connect(cambiar_ocr_modo)
+        etiqueta_ocr = EtiquetaC("", "normal")
+        self._fijo(etiqueta_ocr.setText, "Lectura de pantalla (OCR)")
+        self.anadir_avanzado(self.ocr_modo, self._nota(
+            "Como lee Farmadex la pantalla del juego.\n"
+            "Automatico: lee rapido y, si el juego esta usando mucho el ordenador, lee con mas calma "
+            "para no quitarle rendimiento.\n"
+            "Rapido: siempre a tope. Para ordenadores que van sobrados.\n"
+            "Ligero: siempre con calma. Tarda un poco mas, pero el juego casi no lo nota.\n"
+            "OCR de Windows: usa el lector de texto que trae Windows. Si tu Windows no lo tiene, "
+            "Farmadex usa el suyo."
+        ), etiqueta_ocr)
+
         self.avanzado.setVisible(False)
-        caja = QVBoxLayout()
-        caja.setSpacing(4)
-        caja.addWidget(self.boton_avanzado)
-        caja.addWidget(self.avanzado)
-        contenedor = QWidget()
-        contenedor.setLayout(caja)
-        self._contenido["datos"].addWidget(contenedor)
+        self.panel_avanzado = PanelC(remate=False)
+        self.panel_avanzado.capa.setSpacing(px(8, False))
+        self.panel_avanzado.capa.addWidget(self.boton_avanzado)
+        self.panel_avanzado.capa.addWidget(self.avanzado)
+        self._contenido["datos"].addWidget(self.panel_avanzado)
         self._plegar_avanzado(False)
 
+    def anadir_avanzado(self, control: QWidget, nota: QWidget, etiqueta: QWidget | None = None) -> None:
+        """Una fila mas en Datos del juego > Avanzado: `control` a la izquierda (con su
+        `etiqueta` encima, si la lleva) y `nota` (lo que hace) a la derecha."""
+        fila_nueva = self.capa_avanzado.rowCount()
+        if etiqueta is not None:
+            izquierda = transparente(QWidget())
+            capa = QVBoxLayout(izquierda)
+            capa.setContentsMargins(0, 0, 0, 0)
+            capa.setSpacing(px(4, False))
+            capa.addWidget(etiqueta)
+            capa.addWidget(control)
+            self.capa_avanzado.addWidget(izquierda, fila_nueva, 0, Qt.AlignTop)
+        else:
+            self.capa_avanzado.addWidget(control, fila_nueva, 0, Qt.AlignTop)
+        self.capa_avanzado.addWidget(nota, fila_nueva, 1)
+
     def _construir_ayuda(self) -> None:
-        self.boton_bienvenida = self._boton("Ver la bienvenida")
+        self.boton_bienvenida = self._boton("Ver la bienvenida", principal=True)
         self.boton_bienvenida.clicked.connect(self.ver_bienvenida.emit)
         self.boton_guia = self._boton("Recorrido por la ventana")
         self.boton_guia.clicked.connect(self.ver_guia.emit)
-        self.boton_acerca_ayuda = QPushButton()
+        self.boton_acerca_ayuda = BotonC(tam=11)
         self._fijo(lambda s: self.boton_acerca_ayuda.setText(s.format(app=NOMBRE_APP)), "Acerca de {app}")
         self.boton_acerca_ayuda.clicked.connect(self._abrir_acerca)
         ayuda = QGridLayout()
-        ayuda.setHorizontalSpacing(12)
-        ayuda.setVerticalSpacing(8)
+        ayuda.setHorizontalSpacing(px(12, False))
+        ayuda.setVerticalSpacing(px(10, False))
         filas = (
             (self.boton_bienvenida, "Que es Farmadex, lo basico paso a paso, si es seguro, preguntas "
                                     "frecuentes y agradecimientos."),
@@ -764,9 +1229,9 @@ class PestanaAjustes(QWidget):
             (self.boton_acerca_ayuda, "Version, que dice Digital Extremes de los programas de terceros "
                                       "y como comprobar que tu descarga es la buena."),
         )
-        for fila, (boton, texto) in enumerate(filas):
-            ayuda.addWidget(boton, fila, 0, Qt.AlignTop)
-            ayuda.addWidget(self._nota(texto), fila, 1)
+        for fila_n, (boton, texto) in enumerate(filas):
+            ayuda.addWidget(boton, fila_n, 0, Qt.AlignTop | Qt.AlignLeft)
+            ayuda.addWidget(self._nota(texto), fila_n, 1)
         ayuda.setColumnStretch(1, 1)
         self._meter("ayuda", self._grupo("Ayuda"), ayuda)
 
@@ -775,16 +1240,23 @@ class PestanaAjustes(QWidget):
         self._ajustar_disposicion()
 
     def _ajustar_disposicion(self) -> None:
-        """Colores y vista previa en fila si caben en el ancho de la pagina; si no, en columna."""
+        """Colores y vista previa en fila si caben en el ancho de la pagina; si no, en columna.
+        Las tarjetas de tema, todas en una fila si caben; si no, de tres en tres."""
         arriba = getattr(self, "_arriba_aspecto", None)
         if arriba is None:
             return
         necesario = (self._izquierda_aspecto.minimumSize().width()
-                     + self.vista_previa.minimumSizeHint().width() + 60)
+                     + self.vista_previa.minimumSizeHint().width() + px(80, False))
         direccion = (QBoxLayout.LeftToRight if self.paginas.width() >= necesario
                      else QBoxLayout.TopToBottom)
         if arriba.direction() != direccion:
             arriba.setDirection(direccion)
+        ancho_tema = self.paginas.width() * (0.6 if direccion == QBoxLayout.LeftToRight else 1.0)
+        por_fila = self.tema.count()
+        minimo = px(118, False) + px(8, False)
+        if por_fila * minimo > ancho_tema - px(40, False):
+            por_fila = 3
+        self.tema.poner_columnas(0 if por_fila == self.tema.count() else por_fila)
 
     # -- navegacion ---------------------------------------------------------------------
 
@@ -811,10 +1283,10 @@ class PestanaAjustes(QWidget):
         colores, interfaz, letra = aspecto_guardado(self.config, self._tema_actual())
         self._pend_colores = dict(colores)
         self._fabrica_todos = False
-        for combo, valor in ((self.escala_interfaz, interfaz), (self.escala_letra, letra)):
-            combo.blockSignals(True)
-            combo.setCurrentIndex(max(0, combo.findData(valor)))
-            combo.blockSignals(False)
+        for selector, valor in ((self.escala_interfaz, interfaz), (self.escala_letra, letra)):
+            selector.blockSignals(True)
+            selector.setCurrentIndex(max(0, selector.findData(valor)))
+            selector.blockSignals(False)
         self._pintar_aspecto()
 
     def _pendiente(self) -> tuple[dict, float, float]:
@@ -832,9 +1304,9 @@ class PestanaAjustes(QWidget):
     def _elegir_color(self, clave: str) -> None:
         actual = paleta_de(self._tema_actual(), self._pend_colores)[clave]
         nombre = next(n for c, n, _a in CATEGORIAS_COLOR if c == clave)
-        color = QColorDialog.getColor(QColor(actual), self, t(nombre))
-        if color.isValid():
-            self._poner_color(clave, color.name())
+        elegido = QColorDialog.getColor(QColor(actual), self, t(nombre))
+        if elegido.isValid():
+            self._poner_color(clave, elegido.name())
 
     def _poner_color(self, clave: str, valor: str | None) -> None:
         """Cambia un color pendiente; None (o el mismo del tema) lo devuelve al del tema."""
@@ -849,14 +1321,10 @@ class PestanaAjustes(QWidget):
         colores, interfaz, letra = self._pendiente()
         paleta = paleta_de(self._tema_actual(), colores)
         for clave, muestra in self.muestras.items():
-            color = paleta[clave]
-            muestra.setText(color)
-            muestra.setStyleSheet(
-                f"QPushButton {{ background: {color}; color: {_texto_sobre(color)};"
-                f" border: 1px solid {PALETA['borde']}; border-radius: 6px; padding: 3px 6px;"
-                f" font-family: Consolas, monospace; font-size: {px(12)}px; }}"
-                f" QPushButton:hover {{ border-color: {PALETA['acento']}; }}"
-            )
+            valor = paleta[clave]
+            muestra.setText(valor)
+            muestra.personal = clave in colores
+            muestra.update()
             self.deshacer_color[clave].setEnabled(clave in colores)
         self.vista_previa.pintar(paleta, (interfaz, letra))
         cambios = self.hay_cambios_aspecto()
@@ -865,11 +1333,11 @@ class PestanaAjustes(QWidget):
         if cambios:
             texto = (t("Vista previa con lo de fabrica: pulsa Guardar para aplicarlo.")
                      if self._fabrica_todos else t("Hay cambios sin guardar."))
-            color = PALETA["aviso"]
+            tinta = "aviso"
         else:
-            texto, color = t("Es el aspecto que estas usando."), PALETA["suave"]
+            texto, tinta = t("Es el aspecto que estas usando."), "suave"
         self.estado_aspecto.setText(texto)
-        self.estado_aspecto.setStyleSheet(f"color: {color}; font-size: {px(12)}px;")
+        self.estado_aspecto.poner_tinta(tinta)
 
     def guardar_aspecto(self) -> None:
         colores, interfaz, letra = self._pendiente()
@@ -894,10 +1362,10 @@ class PestanaAjustes(QWidget):
     def aspecto_de_fabrica(self) -> None:
         self._pend_colores = {}
         self._fabrica_todos = True
-        for combo in (self.escala_interfaz, self.escala_letra):
-            combo.blockSignals(True)
-            combo.setCurrentIndex(max(0, combo.findData(1.0)))
-            combo.blockSignals(False)
+        for selector in (self.escala_interfaz, self.escala_letra):
+            selector.blockSignals(True)
+            selector.setCurrentIndex(max(0, selector.findData(1.0)))
+            selector.blockSignals(False)
         self._pintar_aspecto()
 
     # -- textos fijos, tema e idioma -----------------------------------------------------
@@ -905,8 +1373,6 @@ class PestanaAjustes(QWidget):
     def repintar(self) -> None:
         """Tras cambiar de tema o de tamano: las etiquetas llevan el color puesto a mano."""
         p = PALETA
-        for nota in self._notas:
-            nota.setStyleSheet(f"color: {p['suave']}; font-size: {px(12)}px;")
         for widget, hoja in self._estilos:
             widget.setStyleSheet(hoja())
         self.aviso_hotkey.setStyleSheet(f"color: {p['aviso']};")
@@ -918,6 +1384,8 @@ class PestanaAjustes(QWidget):
         self.autor.setText(texto_autor())  # el enlace lleva el color de acento del tema
         if self._modo_pantalla is not None:
             self.mostrar_modo_pantalla(self._modo_pantalla)
+        for i in range(self.tema.count()):
+            self.tema.boton(i).update()
         self._ajustar_ancho_secciones()
         self._ajustar_disposicion()
         if self.hay_cambios_aspecto():
@@ -932,9 +1400,9 @@ class PestanaAjustes(QWidget):
         for i, tema in enumerate(TEMAS.values()):
             self.tema.setItemText(i, t(tema["titulo"]))
         self.idioma.setItemText(0, t("Automatico (el de Windows)"))
-        for combo, pasos in ((self.escala_interfaz, ESCALAS_INTERFAZ), (self.escala_letra, ESCALAS_LETRA)):
+        for selector, pasos in ((self.escala_interfaz, ESCALAS_INTERFAZ), (self.escala_letra, ESCALAS_LETRA)):
             for i, (_factor, nombre) in enumerate(pasos):
-                combo.setItemText(i, t(nombre))
+                selector.setItemText(i, t(nombre))
         self._textos_ritmo()
         self.estilo_recompensas.setItemText(0, t("Etiquetas pequenas junto a cada tarjeta"))
         self.estilo_recompensas.setItemText(1, t("Panel con una tarjeta por recompensa"))
@@ -963,8 +1431,8 @@ class PestanaAjustes(QWidget):
         self._modo_pantalla = modo
         etiqueta = t(self.MODOS_PANTALLA.get(modo, self.MODOS_PANTALLA["desconocido"]))
         self.estado_juego.setText(t("Modo de pantalla detectado: {modo}", modo=etiqueta))
-        color = PALETA["aviso"] if modo == "exclusivo" else PALETA["suave"]
-        self.estado_juego.setStyleSheet(f"color: {color}; font-size: {px(12)}px;")
+        tinta = PALETA["aviso"] if modo == "exclusivo" else PALETA["suave"]
+        self.estado_juego.setStyleSheet(f"color: {tinta}; font-size: {px(12)}px;")
 
     # -- diagnostico de reliquias --------------------------------------------------
 
@@ -1029,7 +1497,11 @@ class PestanaAjustes(QWidget):
         self._guardar("prioridad_recompensas", clave)
         self.prioridad_recompensas_cambiada.emit(clave)
 
+    def _pintar_opacidad(self) -> None:
+        self.valor_opacidad.setText(f"{self.opacidad.value()} %")
+
     def _cambiar_opacidad(self, valor: int) -> None:
+        self._pintar_opacidad()
         self._guardar("overlay_opacidad", valor / 100)
         self.opacidad_cambiada.emit(valor / 100)
 

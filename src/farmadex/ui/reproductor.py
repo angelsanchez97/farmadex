@@ -47,15 +47,20 @@ from pathlib import Path
 
 from PySide6.QtCore import QEvent, QPoint, QProcess, QRect, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QWindow
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QStackedLayout, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QStackedLayout, QVBoxLayout, QWidget
 
 from .. import config
 from .. import video as hijo
 from ..idiomas import t
 from ..registro_log import obtener
-from .widgets import PALETA
+from .estilo_c import BotonC, EtiquetaC, PanelC, icono, px, transparente
 
 log = obtener("reproductor")
+
+# Glifos de la barra (Segoe Fluent/MDL2): modo video, atras y recargar.
+GLIFO_MODO = ""
+GLIFO_ATRAS = ""
+GLIFO_RECARGAR = ""
 
 # Cuanto se espera a que el hijo diga su HWND antes de darlo por perdido, y cada cuanto
 # se mira el fichero de estado.
@@ -109,6 +114,8 @@ class PanelVideo(QWidget):
     # Nombre del panel en sus ficheros: el de video conserva los de siempre (estado_<pid>.txt
     # y perfil/); otro panel (el web) usa estado_<pid>_web.txt y perfil_web/.
     NOMBRE = ""
+    # Glifo grande del panel vacio: video en este, globo en el de paginas web.
+    GLIFO = ""
 
     def __init__(self, parent=None, lanzar=None, incrustar=None):
         super().__init__(parent)
@@ -127,20 +134,23 @@ class PanelVideo(QWidget):
         self._sondeo.setInterval(SONDEO_MS)
         self._sondeo.timeout.connect(self._sondear)
 
-        self.boton_modo = QPushButton()
+        transparente(self)
+        # Barra del panel en estilo C: botones con esquina cortada y su glifo.
+        self.boton_modo = BotonC(icono=GLIFO_MODO, tam=11)
         self.boton_modo.clicked.connect(self.modo_video.emit)
         # Navegacion normal dentro de la pagina (de una busqueda de YouTube al video y
         # vuelta, o por las builds de Overframe).
-        self.boton_atras = QPushButton()
+        self.boton_atras = BotonC(icono=GLIFO_ATRAS, tam=11)
         self.boton_atras.clicked.connect(lambda: self.ordenar("ATRAS"))
-        self.boton_recargar = QPushButton()
+        self.boton_recargar = BotonC(icono=GLIFO_RECARGAR, tam=11)
         self.boton_recargar.clicked.connect(lambda: self.ordenar("RECARGAR"))
-        self.boton_navegador = QPushButton()
+        self.boton_navegador = BotonC(icono="mundo", tam=11)
         self.boton_navegador.clicked.connect(self.abrir_en_navegador)
-        self.boton_cerrar = QPushButton()
+        self.boton_cerrar = BotonC(icono="cerrar", tam=11)
         self.boton_cerrar.clicked.connect(self.cerrar)
         barra = QHBoxLayout()
         barra.setContentsMargins(0, 0, 0, 0)
+        barra.setSpacing(px(8, False))
         barra.addWidget(self.boton_modo)
         barra.addWidget(self.boton_atras)
         barra.addWidget(self.boton_recargar)
@@ -148,18 +158,21 @@ class PanelVideo(QWidget):
         barra.addWidget(self.boton_navegador)
         barra.addWidget(self.boton_cerrar)
 
-        self.mensaje = QLabel()
+        # Sin pagina abierta (o si no arranca): un panel C con el glifo del panel, que
+        # hacer para ver algo aqui y, si fallo, el boton para abrirlo en el navegador.
+        self.mensaje = EtiquetaC("", "normal", tinta="suave", envolver=True)
         self.mensaje.setAlignment(Qt.AlignCenter)
-        self.mensaje.setWordWrap(True)
-        self.boton_fallo = QPushButton()
+        self.boton_fallo = BotonC(principal=True, icono="mundo", tam=11)
         self.boton_fallo.clicked.connect(self.abrir_en_navegador)
         self.boton_fallo.hide()
-        aviso = QWidget()
-        caja_aviso = QVBoxLayout(aviso)
-        caja_aviso.addStretch(1)
-        caja_aviso.addWidget(self.mensaje)
-        caja_aviso.addWidget(self.boton_fallo, 0, Qt.AlignHCenter)
-        caja_aviso.addStretch(1)
+        aviso = PanelC()
+        self.icono_aviso = icono(self.GLIFO, 40, "acento_tenue")
+        aviso.capa.addStretch(1)
+        aviso.capa.addWidget(self.icono_aviso, 0, Qt.AlignHCenter)
+        aviso.capa.addWidget(self.mensaje)
+        aviso.capa.addWidget(self.boton_fallo, 0, Qt.AlignHCenter)
+        aviso.capa.addStretch(1)
+        self.aviso = aviso
         # El hueco del video dentro del overlay: negro, y encima se coloca la anfitriona.
         self.area = QWidget()
         self.area.setAttribute(Qt.WA_StyledBackground, True)
@@ -170,8 +183,8 @@ class PanelVideo(QWidget):
         self.pila.addWidget(self.area)
 
         caja = QVBoxLayout(self)
-        caja.setContentsMargins(0, 0, 0, 0)
-        caja.setSpacing(4)
+        caja.setContentsMargins(0, px(4, False), 0, 0)
+        caja.setSpacing(px(8, False))
         caja.addLayout(barra)
         caja.addLayout(self.pila, 1)
         self._texto = "vacio"
@@ -182,7 +195,7 @@ class PanelVideo(QWidget):
     def retraducir(self) -> None:
         self.boton_modo.setText(t("Modo video"))
         self.boton_modo.setToolTip(t("Deja Farmadex reducido a solo el video, encima del juego"))
-        self.boton_atras.setText(t("‹ Atras"))
+        self.boton_atras.setText(t("Atras"))
         self.boton_atras.setToolTip(t("Vuelve a la pagina anterior"))
         self.boton_recargar.setText(t("Recargar"))
         self.boton_recargar.setToolTip(t("Vuelve a cargar la pagina"))
@@ -211,7 +224,10 @@ class PanelVideo(QWidget):
         return t("No se puede reproducir aqui: usa \"Abrir en el navegador\".")
 
     def repintar(self) -> None:
-        self.mensaje.setStyleSheet(f"color: {PALETA['suave']};")
+        """Tras cambiar de tema: el glifo del aviso lleva su color puesto a mano."""
+        nuevo = icono(self.GLIFO, 40, "acento_tenue")
+        self.icono_aviso.setStyleSheet(nuevo.styleSheet())
+        nuevo.deleteLater()
 
     def _pintar_mensaje(self) -> None:
         self.mensaje.setText(self._textos_mensaje().get(self._texto, ""))
@@ -442,6 +458,7 @@ class PanelWeb(PanelVideo):
     """
 
     NOMBRE = "web"
+    GLIFO = ""
 
     def retraducir(self) -> None:
         super().retraducir()

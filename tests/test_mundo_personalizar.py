@@ -1,7 +1,8 @@
-"""Pestana Mundo: personalizar (bloques, facciones, disposicion), texto copiable,
-recompensas que abren su ficha y avisos de Windows que no se repiten."""
+"""Pestana Mundo: personalizar (bloques, facciones), texto copiable, recompensas que abren
+su ficha y avisos de Windows que no se repiten."""
 
 import os
+import re
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -57,92 +58,112 @@ def _mundo():
     )
 
 
-def _textos(seccion) -> list[str]:
-    return [seccion.caja.itemAt(i).widget().text() for i in range(seccion.caja.count())
-            if isinstance(seccion.caja.itemAt(i).widget(), QLabel)]
-
-
 def _pestana(**kw):
     pestana = pestana_mundo.PestanaMundo(**kw)
     pestana.actualizar(_mundo())
     return pestana
 
 
+def _tarjetas(pestana):
+    return [c for c in pestana.fisuras_todo.findChildren(pestana_mundo.TarjetaFisura) if c.parent() is not None]
+
+
 def test_el_texto_se_puede_seleccionar_y_copiar(app, config):
     pestana = _pestana()
-    etiqueta = pestana.tarjetas["fisuras"].caja.itemAt(0).widget()
-    assert etiqueta.textInteractionFlags() & Qt.TextSelectableByMouse
-    assert etiqueta.textInteractionFlags() & Qt.LinksAccessibleByMouse
-
-
-def test_duviri_va_en_su_linea_alineada_a_la_izquierda(app, config):
-    pestana = _pestana(diseno="lista")
-    lineas = _textos(pestana.tarjetas["ahora"])
-    assert any(texto.startswith("<b>Duviri</b>") for texto in lineas)
-    etiqueta = next(pestana.tarjetas["ahora"].caja.itemAt(i).widget()
-                    for i in range(pestana.tarjetas["ahora"].caja.count())
-                    if isinstance(pestana.tarjetas["ahora"].caja.itemAt(i).widget(), QLabel))
-    assert etiqueta.alignment() & Qt.AlignLeft
+    etiquetas = [e for bloque in (pestana.fisuras_todo, pestana.invasiones_todo, pestana.ciclos, pestana.hoy)
+                 for e in bloque.findChildren(QLabel) if e.parent() is not None and e.text()]
+    assert etiquetas
+    tarjeta = _tarjetas(pestana)[0]
+    for etiqueta in (tarjeta.nombre, tarjeta.detalle, tarjeta.abajo):
+        assert etiqueta.textInteractionFlags() & Qt.TextSelectableByMouse
+        assert etiqueta.textInteractionFlags() & Qt.LinksAccessibleByMouse
+    premios = next(e for e in pestana.invasiones_todo.findChildren(QLabel) if "href='item:77'" in e.text())
+    assert premios.textInteractionFlags() & Qt.TextSelectableByMouse
 
 
 def test_facciones_color_y_filtro_que_se_recuerda(app, config):
     pestana = _pestana()
-    texto = " ".join(_textos(pestana.tarjetas["fisuras"]))
-    assert pestana_mundo.COLORES_FACCION["grineer"] in texto
-    assert pestana_mundo.COLORES_FACCION["corpus"] in texto
+    colores = {c.color_barra for c in _tarjetas(pestana)}
+    assert pestana_mundo.COLORES_FACCION["grineer"] in colores
+    assert pestana_mundo.COLORES_FACCION["corpus"] in colores
     pestana.acciones_faccion["corpus"].setChecked(True)
-    textos = _textos(pestana.tarjetas["fisuras"])
-    assert len(textos) == 1 and "Ose, Europa" in textos[0]
+    assert [c.fisura.nodo for c in _tarjetas(pestana)] == ["Ose, Europa"]
     assert pestana.filtro_faccion.text() == "Facciones: 1"
+    assert pestana.fisuras_completo.boton_facciones.text() == "Facciones: 1"
     assert config.cargar()["mundo_facciones"] == ["corpus"]
     # Otra pestana (otra sesion) sale con el mismo filtro.
     otra = _pestana()
-    assert len(_textos(otra.tarjetas["fisuras"])) == 1
+    assert len(_tarjetas(otra)) == 1
     otra._todas_las_facciones()
-    assert len(_textos(otra.tarjetas["fisuras"])) == 3
+    assert len(_tarjetas(otra)) == 3
+
+
+def test_lo_elegido_sobrevive_a_cerrar_farmadex(app, config):
+    """Las claves de Mundo tienen que estar en config.POR_DEFECTO: si no, `cargar` las tira."""
+    pestana = _pestana()
+    pestana.acciones_faccion["corpus"].setChecked(True)
+    pestana.botones_modo["acero"].setChecked(True)
+    pestana.boton_personalizar.setChecked(True)
+    pestana.pagina_ajustes.casillas_secciones["ciclos"].setChecked(False)
+    pestana.pagina_ajustes.casillas["baro"].setChecked(True)
+    releida = config.cargar(recargar=True)
+    assert releida["mundo_facciones"] == ["corpus"]
+    assert releida["mundo_modos_fisura"] == ["normal", "acero"]
+    assert releida["mundo_secciones_ocultas"] == ["ciclos"]
+    assert releida[avisos_mundo.CLAVE_CONFIG]["baro"] is True
 
 
 def test_esconder_bloques_desde_personalizar(app, config):
     pestana = _pestana()
-    assert not pestana.tarjetas["sortie"].isHidden()
+    assert not pestana.sortie.isHidden()
     pestana.boton_personalizar.setChecked(True)
     assert pestana.paginas.currentWidget() is pestana.pagina_ajustes
+    assert pestana.boton_personalizar.isHidden()  # dentro, el boton es "Volver a Mundo"
     pestana.pagina_ajustes.casillas_secciones["sortie"].setChecked(False)
-    assert pestana.tarjetas["sortie"].isHidden()
+    assert pestana.sortie.isHidden()
     assert config.cargar()["mundo_secciones_ocultas"] == ["sortie"]
+    # En HOY desaparecen la incursion y los arcontes, pero no el resto.
+    textos = " ".join(e.text() for e in pestana.hoy.findChildren(QLabel) if e.parent() is not None).upper()
+    assert "INCURSION" not in textos and "ARCONTES" not in textos
+    assert "ARBITRAJE" in textos and "ONDA NOCTURNA" in textos
     # Sigue escondido despues de repintar con datos nuevos.
     pestana.actualizar(_mundo())
-    assert pestana.tarjetas["sortie"].isHidden()
+    assert pestana.sortie.isHidden()
     pestana.pagina_ajustes.casillas_secciones["sortie"].setChecked(True)
-    assert not pestana.tarjetas["sortie"].isHidden()
+    assert not pestana.sortie.isHidden()
     pestana.pagina_ajustes.volver.emit()
-    assert pestana.paginas.currentWidget() is pestana.desplazable
+    assert pestana.paginas.currentWidget() is pestana.vistas
+    assert not pestana.boton_personalizar.isHidden()
 
 
-def test_lista_o_tablero_se_elige_en_la_pestana(app, config):
-    pestana = _pestana(diseno="lista")
-    cambios = []
-    pestana.diseno_cambiado.connect(cambios.append)
-    pestana.selector_diseno.setCurrentIndex(pestana.selector_diseno.findData("tablero"))
-    assert pestana.diseno == "tablero" and cambios == ["tablero"]
-    assert config.cargar()["diseno_mundo"] == "tablero"
-    assert pestana.tarjetas["ahora"].isHidden() and not pestana.tarjetas["ciclos"].isHidden()
-    assert len(_textos(pestana.tarjetas["fisuras"])) >= 3  # se repinta con los mismos datos
-    # Sin decirle nada, la siguiente sale como se dejo.
-    assert pestana_mundo.PestanaMundo().diseno == "tablero"
+def test_esconder_un_tipo_de_fisura_quita_su_boton(app, config):
+    pestana = _pestana()
+    pestana.pagina_ajustes.casillas_secciones["tormentas"].setChecked(False)
+    assert pestana.botones_modo["tormenta"].isHidden()
+    assert not pestana.botones_modo["acero"].isHidden()
+    for clave in ("fisuras", "acero"):
+        pestana.pagina_ajustes.casillas_secciones[clave].setChecked(False)
+    assert pestana.fisuras_todo.isHidden() and pestana.fisuras_completo.isHidden()
+
+
+def test_una_sub_pestana_saca_de_personalizar(app, config):
+    pestana = _pestana()
+    pestana.boton_personalizar.setChecked(True)
+    pestana.subpestanas.cambiada.emit("eventos")
+    assert pestana.paginas.currentWidget() is pestana.vistas and pestana.diseno == "eventos"
 
 
 def test_las_recompensas_abren_su_ficha_o_se_buscan(app, config):
     pestana = _pestana()
-    pestana._plegadas["invasiones"] = False
-    (linea,) = _textos(pestana.tarjetas["invasiones"])
+    (linea,) = [e.text() for e in pestana.invasiones_todo.findChildren(QLabel)
+                if e.parent() is not None and "href=" in e.text()]
     assert "href='item:77'" in linea and "Plano de Catalizador Orokin" in linea
     assert "href='buscar:Wraith%20Twin%20Vipers%20Receiver'" in linea
     abiertos, buscados = [], []
     pestana.abrir_item.connect(abiertos.append)
     pestana.buscar_texto.connect(buscados.append)
-    pestana.tarjetas["invasiones"]._activar("item:77")
-    pestana.tarjetas["invasiones"]._activar("buscar:Wraith%20Twin%20Vipers%20Receiver")
+    pestana.invasiones_todo._activar("item:77")
+    pestana.invasiones_todo._activar("buscar:Wraith%20Twin%20Vipers%20Receiver")
     assert abiertos == [77] and buscados == ["Wraith Twin Vipers Receiver"]
 
 
@@ -188,8 +209,10 @@ def test_personalizar_guarda_los_avisos_y_prueba(app, config):
     assert panel.caja_fisuras.isEnabled()
     panel.tipos_fisura["Void Cascade"].setChecked(True)
     panel.eras["Meso"].setChecked(True)
+    panel.dificultad.botones["normal"].setChecked(True)
     prefs = config.cargar()[avisos_mundo.CLAVE_CONFIG]
     assert prefs["fisuras"] and prefs["fisuras_tipos"] == ["Void Cascade"] and prefs["fisuras_eras"] == ["Meso"]
+    assert prefs["fisuras_dificultad"] == "normal"
     avisos = []
     pestana.aviso_windows.connect(avisos.append)
     panel.boton_probar.click()
@@ -198,6 +221,15 @@ def test_personalizar_guarda_los_avisos_y_prueba(app, config):
     pestana.boton_personalizar.setChecked(True)
     pestana.boton_personalizar.setChecked(False)
     assert len(avisos) == 2 and "Cascada" in avisos[1]
+
+
+def test_las_palabras_de_las_invasiones_salen_en_su_aviso(app, config):
+    panel = _pestana().pagina_ajustes
+    assert panel.filas_aviso["invasiones"].texto.texto_completo() == "Invasiones con: Orokin, Forma, Exilus"
+    panel.palabras.setText("Nitain;  Forma")
+    panel.palabras.editingFinished.emit()
+    assert panel.filas_aviso["invasiones"].texto.texto_completo() == "Invasiones con: Nitain, Forma"
+    assert config.cargar()[avisos_mundo.CLAVE_CONFIG]["invasiones_palabras"] == "Nitain;  Forma"
 
 
 def test_baro_marca_lo_que_esta_en_objetivos(app, config, tmp_path):
@@ -215,3 +247,6 @@ def test_baro_marca_lo_que_esta_en_objetivos(app, config, tmp_path):
     ])
     pestana.actualizar(mundo)
     assert [o.nombre for o in mundo.baro_detalle.objetivos()] == ["Primed Flow"]
+    textos = " ".join(re.sub(r"<[^>]+>", "", e.text()) for e in pestana.baro_todo.findChildren(QLabel)
+                      if e.parent() is not None)
+    assert "Flujo Prime" in textos and "Otra cosa" not in textos

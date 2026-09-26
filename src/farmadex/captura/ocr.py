@@ -1,8 +1,9 @@
 """OCR de la pantalla y casado de lo leido con el catalogo.
 
 Motor por defecto: RapidOCR (ONNX Runtime, CPU). Va empaquetado con sus modelos,
-asi que no descarga nada en tiempo de ejecucion. Motor alternativo: el OCR de
-Windows (`winocr`), seleccionable en Ajustes.
+asi que no descarga nada en tiempo de ejecucion. En modo automatico usa menos
+hilos cuando la CPU va cargada (el juego apretando). Motor alternativo: el OCR de
+Windows (`winocr`), seleccionable en Ajustes; si no esta, se usa el local.
 
 Solo se procesan pixeles ya capturados: este modulo no toca el juego.
 """
@@ -20,6 +21,7 @@ from rapidfuzz.distance import Levenshtein
 
 from ..datos.items import normalizar
 from ..registro_log import obtener
+from . import carga
 
 log = obtener("ocr")
 
@@ -70,6 +72,39 @@ def _hilos_por_defecto() -> int:
 
 
 HILOS_OCR = _hilos_por_defecto()
+
+
+def _hilos_ligero() -> int:
+    import os
+
+    return 1 if (os.cpu_count() or 4) < 8 else 2
+
+
+# Motor ligero: el que usa el modo automatico con la CPU cargada (el juego apretando)
+# y el modo "ligero" siempre. Medido en un 9800X3D (8 nucleos/16 hilos) con la CPU
+# saturada por otros procesos: con 2 hilos la fila de nombres tarda 118 ms y con 4
+# 161 ms (con 16, 302): cuando no sobra CPU, mas hilos solo se estorban entre si y
+# con el juego. Con la CPU libre, 4 hilos son lo mas rapido (41 ms frente a 51).
+HILOS_LIGERO = _hilos_ligero()
+
+# Modos de Ajustes > Datos del juego > Avanzado > "Lectura de pantalla (OCR)".
+MODOS_OCR = ("auto", "rapido", "ligero", "windows")
+_ALIAS_MOTOR = {"rapido": "rapidocr", "windows": "winocr"}
+CLAVE_NORMAL = "rapidocr"
+CLAVE_LIGERO = "rapidocr_ligero"
+
+# Modo automatico: fraccion de CPU (0-1) ocupada por OTROS programas a partir de la
+# cual se pasa al motor ligero, y por debajo de la cual se vuelve al normal. Medido
+# en el PC de referencia: hasta ~0.40 los 4 hilos siguen siendo lo mas rapido; por
+# encima, 2 hilos leen igual o mejor y ademas le dejan la CPU al juego.
+CARGA_ALTA = 0.40
+CARGA_BAJA = 0.30
+
+
+def modo_de_config(config) -> str:
+    """El modo de OCR guardado en la configuracion ("auto" si falta o no se conoce)."""
+    modo = (config or {}).get("ocr_modo", "auto")
+    return modo if modo in MODOS_OCR else "auto"
 
 CATEGORIAS_PLAUSIBLES = (
     "Warframes",
@@ -146,60 +181,142 @@ class MotorOCR:
 
     Los modelos se comparten entre todas las instancias del mismo motor: el
     lector de recompensas y el del cursor cargan una sola copia.
+
+    `motor` es el modo de Ajustes > Lectura de pantalla (ver `MODOS_OCR`) o uno de
+    los nombres de siempre: "rapidocr" (hilos normales, igual que "rapido") y
+    "winocr" (igual que "windows"). En "auto" hay dos motores cargados, el normal
+    y el ligero, y cada lectura usa uno u otro segun lo cargada que vaya la CPU
+    (`captura/carga.py`). Las sesiones de ONNX Runtime no dejan cambiar los hilos
+    una vez creadas, y rehacerlas cuesta ~130 ms mas ~700 ms de primera inferencia
+    (medido): por eso se tienen las dos a mano (unos 25 MB mas de memoria).
     """
 
     _compartidos: dict[str, object] = {}
     _fallidos: dict[str, str] = {}  # motor -> motivo; no se reintenta en bucle
     _precalentados: set[str] = set()  # motores que ya hicieron su primera inferencia
     _cerrojo = threading.Lock()
+    _aligerado = False  # modo automatico: si ahora se lee con el motor ligero
+    _winocr: bool | None = None  # si el paquete winocr esta instalado (se mira una vez)
 
     def __init__(self, motor: str = "rapidocr", hilos: int = HILOS_OCR):
+        motor = _ALIAS_MOTOR.get(motor, motor)
+        if motor not in (CLAVE_NORMAL, "ligero", "auto", "winocr"):
+            log.warning("Modo de OCR desconocido %r; se usa el normal", motor)
+            motor = CLAVE_NORMAL
         self.motor = motor
         self.hilos = hilos
-        self._ocr = None
+        self._forzada: str | None = None  # precalentado: que motor usar sin mirar la carga
+        self.ultima_clave: str | None = None  # con que motor se hizo la ultima lectura
+
+    # -- que motor toca -----------------------------------------------------------
+
+    def _adaptativo(self) -> bool:
+        """Automatico y con un motor ligero que de verdad use menos hilos que el normal."""
+        return self.motor == "auto" and HILOS_LIGERO < self.hilos
+
+    def _clave_fija(self) -> str:
+        return CLAVE_LIGERO if self.motor == "ligero" else CLAVE_NORMAL
+
+    def _decidir_auto(self) -> str:
+        """Motor normal o ligero segun la media reciente de CPU ocupada por otros programas.
+
+        Con histeresis (entra en ligero con `CARGA_ALTA`, vuelve por debajo de
+        `CARGA_BAJA`) para no ir cambiando en cada lectura. Sin medida (fuera de
+        Windows, o recien arrancado) se queda como estaba: al principio, normal.
+        """
+        if CLAVE_LIGERO in MotorOCR._fallidos:
+            return CLAVE_NORMAL
+        uso = carga.uso_ajeno()
+        antes = MotorOCR._aligerado
+        if uso is not None:
+            aligerar = uso >= (CARGA_BAJA if antes else CARGA_ALTA)
+            if aligerar != antes:
+                MotorOCR._aligerado = aligerar
+                log.info("OCR automatico: otros programas usan el %.0f %% de la CPU; se lee con %d hilos",
+                         uso * 100, HILOS_LIGERO if aligerar else self.hilos)
+        return CLAVE_LIGERO if MotorOCR._aligerado else CLAVE_NORMAL
+
+    def _clave_para_leer(self) -> str:
+        if self._forzada:
+            return self._forzada
+        return self._decidir_auto() if self._adaptativo() else self._clave_fija()
+
+    # -- estado para la interfaz y el diagnostico -----------------------------------
 
     @property
     def fallo(self) -> str | None:
-        """Motivo por el que este motor no se pudo cargar, o None si va bien."""
-        return MotorOCR._fallidos.get(self.motor)
+        """Motivo por el que este motor no se pudo cargar, o None si va bien.
+
+        El OCR de Windows no cuenta: si falta o falla se cae al lector local.
+        """
+        if self.motor == "winocr":
+            return None
+        return MotorOCR._fallidos.get(self._clave_fija())
 
     @property
     def cargado(self) -> bool:
         """True si el motor (propio o compartido) ya esta en memoria; para el diagnostico."""
-        return self._ocr is not None or self.motor in MotorOCR._compartidos
+        claves = ("winocr",) if self.motor == "winocr" else (CLAVE_NORMAL, CLAVE_LIGERO)
+        return any(c in MotorOCR._compartidos for c in claves)
 
-    def _cargar(self):
-        """Carga (o recupera) el motor. Lanza `ErrorMotorOCR` si no se puede."""
-        if self._ocr is not None:
-            return self._ocr
+    # -- carga ----------------------------------------------------------------------
+
+    def _motor_de(self, clave: str):
+        """Carga (o recupera) uno de los motores compartidos. Lanza `ErrorMotorOCR`."""
         with MotorOCR._cerrojo:
-            motivo = MotorOCR._fallidos.get(self.motor)
+            motivo = MotorOCR._fallidos.get(clave)
             if motivo:
                 raise ErrorMotorOCR(motivo)
-            if self.motor == "winocr":
-                try:
-                    import winocr  # noqa: F401 - solo para comprobar que esta
-                except ImportError:
-                    log.warning("winocr no esta disponible; se usa RapidOCR")
-                    self.motor = "rapidocr"
-            compartido = MotorOCR._compartidos.get(self.motor)
+            compartido = MotorOCR._compartidos.get(clave)
             if compartido is not None:
-                self._ocr = compartido
-                return self._ocr
+                return compartido
             inicio = time.monotonic()
             try:
-                if self.motor == "winocr":
-                    self._ocr = "winocr"
+                if clave == "winocr":
+                    nuevo = "winocr"
                 else:
-                    self._ocr = _crear_rapidocr(self.hilos)
+                    nuevo = _crear_rapidocr(HILOS_LIGERO if clave == CLAVE_LIGERO else self.hilos)
             except Exception as e:  # noqa: BLE001 - lo que sea, no puede tumbar la app
                 motivo = f"{type(e).__name__}: {e}"
-                MotorOCR._fallidos[self.motor] = motivo
-                log.exception("No se pudo cargar el motor OCR '%s'", self.motor)
+                MotorOCR._fallidos[clave] = motivo
+                log.exception("No se pudo cargar el motor OCR '%s'", clave)
                 raise ErrorMotorOCR(motivo) from e
-            MotorOCR._compartidos[self.motor] = self._ocr
-            log.info("Motor OCR '%s' cargado en %.1f s", self.motor, time.monotonic() - inicio)
-        return self._ocr
+            MotorOCR._compartidos[clave] = nuevo
+            log.info("Motor OCR '%s' cargado en %.1f s", clave, time.monotonic() - inicio)
+            return nuevo
+
+    def _pasar_a_local(self, motivo: str) -> None:
+        """El OCR de Windows no esta o no funciona: se lee con el local (automatico)."""
+        log.warning("OCR de Windows no disponible (%s); se usa el lector local", motivo)
+        self.motor = "auto"
+
+    def _cargar(self):
+        """El motor con el que hacer esta lectura. Lanza `ErrorMotorOCR` si no se puede."""
+        if self.motor == "winocr":
+            if MotorOCR._winocr is None:
+                try:
+                    import winocr  # noqa: F401 - solo para comprobar que esta
+
+                    MotorOCR._winocr = True
+                except ImportError:
+                    MotorOCR._winocr = False
+            if not MotorOCR._winocr:
+                self._pasar_a_local("el paquete winocr no esta instalado")
+            elif "winocr" in MotorOCR._fallidos:
+                self._pasar_a_local(MotorOCR._fallidos["winocr"])
+            else:
+                self.ultima_clave = "winocr"
+                return self._motor_de("winocr")
+        clave = self._clave_para_leer()
+        try:
+            motor = self._motor_de(clave)
+        except ErrorMotorOCR:
+            if clave != CLAVE_LIGERO or self.motor != "auto" or self._forzada:
+                raise
+            clave = CLAVE_NORMAL  # el ligero no carga: mejor el normal que nada
+            motor = self._motor_de(clave)
+        self.ultima_clave = clave
+        return motor
 
     def precalentar(self) -> None:
         """Carga el motor y hace una lectura de prueba, para que la primera reliquia no la pague.
@@ -211,23 +328,44 @@ class MotorOCR:
         de texto que no ha visto; solo repetir la misma pantalla baja a ~180 ms).
         Se hace una sola vez por motor compartido, con una imagen del tamano de la
         franja de recompensas y nombres pintados para que pasen por el detector y
-        por el reconocedor. Lanza `ErrorMotorOCR` si el motor no carga; un fallo
-        de la lectura de prueba solo se registra.
+        por el reconocedor. En automatico se calientan los dos (normal y ligero):
+        el ligero entra justo cuando el juego aprieta, y no es momento de pagar su
+        carga. Lanza `ErrorMotorOCR` si el motor no carga; un fallo de la lectura de
+        prueba solo se registra.
         """
         motor = self._cargar()
-        with MotorOCR._cerrojo:
-            if self.motor in MotorOCR._precalentados:
-                return
-            MotorOCR._precalentados.add(self.motor)
         if motor == "winocr":  # pragma: no cover - el OCR de Windows no calienta nada
             return
-        inicio = time.monotonic()
-        try:
-            self.leer(_imagen_de_prueba())
-        except Exception as e:  # noqa: BLE001 - es solo un calentamiento
-            log.warning("El precalentado del OCR fallo: %s", e)
-            return
-        log.info("Motor OCR '%s' precalentado en %.0f ms", self.motor, (time.monotonic() - inicio) * 1000)
+        adaptativo = self._adaptativo()
+        claves = (CLAVE_NORMAL, CLAVE_LIGERO) if adaptativo else (self._clave_fija(),)
+        if adaptativo:
+            carga.medidor()  # que haya media de carga para cuando llegue la primera lectura
+        for clave in claves:
+            with MotorOCR._cerrojo:
+                if clave in MotorOCR._precalentados:
+                    continue
+                MotorOCR._precalentados.add(clave)
+            inicio = time.monotonic()
+            self._forzada = clave
+            try:
+                self.leer(_imagen_de_prueba())
+                if clave == CLAVE_LIGERO:
+                    # La fila de nombres la calienta recompensas_rapidas con el motor
+                    # que toque al arrancar (el normal); la del ligero, aqui.
+                    from .recompensas_rapidas import tira_de_prueba
+
+                    self.leer_tira(tira_de_prueba())
+            except ErrorMotorOCR as e:
+                if clave != CLAVE_LIGERO:
+                    raise
+                log.warning("El motor OCR ligero no se pudo cargar; se usara el normal: %s", e)
+                continue
+            except Exception as e:  # noqa: BLE001 - es solo un calentamiento
+                log.warning("El precalentado del OCR fallo: %s", e)
+                continue
+            finally:
+                self._forzada = None
+            log.info("Motor OCR '%s' precalentado en %.0f ms", clave, (time.monotonic() - inicio) * 1000)
 
     @classmethod
     def descargar(cls) -> None:
@@ -236,12 +374,19 @@ class MotorOCR:
             cls._compartidos.clear()
             cls._fallidos.clear()
             cls._precalentados.clear()
+            cls._aligerado = False
+            cls._winocr = None
 
     @classmethod
     def olvidar_fallo(cls, motor: str) -> None:
         """Permite volver a intentar cargar `motor` (el usuario lo cambio en Ajustes)."""
+        motor = _ALIAS_MOTOR.get(motor, motor)
+        claves = ("winocr",) if motor == "winocr" else (CLAVE_NORMAL, CLAVE_LIGERO)
         with cls._cerrojo:
-            cls._fallidos.pop(motor, None)
+            for clave in claves:
+                cls._fallidos.pop(clave, None)
+
+    # -- lectura --------------------------------------------------------------------
 
     def leer(self, imagen) -> list[Leido]:
         """Devuelve los trozos de texto encontrados, con su caja y su confianza.
@@ -255,8 +400,8 @@ class MotorOCR:
         if imagen is None:
             return []
         motor = self._cargar()
-        if motor == "winocr":  # pragma: no cover - depende del paquete de idioma
-            return self._leer_windows(imagen)
+        if motor == "winocr":
+            return self._leer_windows(imagen, self.leer)
         try:
             resultado, _ = motor(imagen)
         except Exception as e:  # noqa: BLE001 - onnxruntime lanza de todo
@@ -297,31 +442,43 @@ class MotorOCR:
         if imagen is None:
             return []
         motor = self._cargar()
-        if motor == "winocr":  # pragma: no cover - el OCR de Windows no reescala
-            return self._leer_windows(imagen)
+        if motor == "winocr":  # el OCR de Windows no reescala
+            return self._leer_windows(imagen, self.leer_tira)
         try:
             return _leer_tira_rapidocr(motor, imagen)
         except Exception as e:  # noqa: BLE001 - onnxruntime lanza de todo
             log.warning("El OCR fallo sobre una tira de %sx%s: %s", imagen.shape[1], imagen.shape[0], e)
             return []
 
-    def _leer_windows(self, imagen) -> list[Leido]:  # pragma: no cover
-        import winocr
-        from PIL import Image
+    def _leer_windows(self, imagen, repetir) -> list[Leido]:
+        """OCR de Windows; si falla (sin paquete de idioma...), se apunta y se repite en local."""
+        try:
+            return _leer_winocr(imagen)
+        except Exception as e:  # noqa: BLE001 - WinRT lanza de todo
+            motivo = f"{type(e).__name__}: {e}"
+            with MotorOCR._cerrojo:
+                MotorOCR._fallidos["winocr"] = motivo
+            self._pasar_a_local(motivo)
+            return repetir(imagen)
 
-        pil = Image.fromarray(imagen[:, :, ::-1])
-        resultado = winocr.recognize_pil_sync(pil, lang="es")
-        return [
-            Leido(
-                texto=linea["text"],
-                x=int(linea["bounding_rect"]["x"]),
-                y=int(linea["bounding_rect"]["y"]),
-                ancho=int(linea["bounding_rect"]["width"]),
-                alto=int(linea["bounding_rect"]["height"]),
-                confianza=1.0,
-            )
-            for linea in resultado.get("lines", [])
-        ]
+
+def _leer_winocr(imagen) -> list[Leido]:  # pragma: no cover - depende del paquete de idioma
+    import winocr
+    from PIL import Image
+
+    pil = Image.fromarray(imagen[:, :, ::-1])
+    resultado = winocr.recognize_pil_sync(pil, lang="es")
+    return [
+        Leido(
+            texto=linea["text"],
+            x=int(linea["bounding_rect"]["x"]),
+            y=int(linea["bounding_rect"]["y"]),
+            ancho=int(linea["bounding_rect"]["width"]),
+            alto=int(linea["bounding_rect"]["height"]),
+            confianza=1.0,
+        )
+        for linea in resultado.get("lines", [])
+    ]
 
 
 def _leer_tira_rapidocr(motor, imagen) -> list[Leido]:

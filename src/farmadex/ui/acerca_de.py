@@ -18,10 +18,11 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
-from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QPushButton, QScrollArea, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QDialog, QLabel, QScrollArea, QVBoxLayout, QWidget
 
 from .. import NOMBRE_APP, VERSION
 from ..idiomas import t
+from .estilo_c import BotonC, EtiquetaC, Filete, PanelC, Rombo, fila, px
 from .widgets import PALETA, hoja_estilos
 
 URL_POLITICA_DE = "https://support.warframe.com/hc/en-us/articles/360030014351-Third-Party-Software-and-You"
@@ -193,38 +194,43 @@ def html_secciones(secciones: list[tuple[str, str]], nivel: str = "h3") -> str:
 
 
 def _parrafo(texto: str, color: str | None = None) -> QLabel:
-    etiqueta = QLabel(texto)
-    etiqueta.setWordWrap(True)
-    etiqueta.setTextFormat(Qt.RichText)
+    """Parrafo de texto rico (enlaces que se abren al pulsarlos). `color` = clave de la
+    paleta ("suave") o un "#rrggbb"."""
+    etiqueta = EtiquetaC("", "normal", envolver=True)
+    # Siempre como HTML: los textos llegan ya escapados (&quot;...) y sin etiquetas
+    # EtiquetaC los tomaria por texto plano.
+    etiqueta.setText(texto if texto.lstrip().startswith("<") else f"<span>{texto}</span>")
     etiqueta.setOpenExternalLinks(True)
     etiqueta.setTextInteractionFlags(Qt.TextBrowserInteraction)
     if color:
-        etiqueta.setStyleSheet(f"color: {color};")
+        etiqueta.setStyleSheet(f"color: {PALETA.get(color, color)};")
     return etiqueta
 
 
 class DialogoAcercaDe(QDialog):
-    """Ventana aparte, hija de la del overlay para quedar encima de ella."""
+    """Ventana aparte, hija de la del overlay para quedar encima de ella.
+
+    Estilo C: cabecera con rombo y version en grande, un filete, y el contenido en dos
+    paneles con esquinas cortadas (la politica de DE con su captura, y que hace y que no
+    hace Farmadex); al pie, lo de no estar afiliado y el enlace al codigo."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle(t("Acerca de {app}", app=NOMBRE_APP))
         self.setStyleSheet(hoja_estilos())
-        self.resize(640, 680)
+        self.resize(px(680, False), px(720, False))
         p = PALETA
 
-        titulo = QLabel(f"{NOMBRE_APP} <b>{VERSION}</b>")
-        titulo.setStyleSheet(f"font-size: 20px; color: {p['acento']};")
-        self.autor = _parrafo(texto_autor())
+        titulo = EtiquetaC(f"{NOMBRE_APP.upper()} <span style='color: {p['texto']};'>{VERSION}</span>",
+                           "titulo", tinta="acento")
+        self.autor = _parrafo(texto_autor(), "suave")
 
         no_afiliado = _parrafo(html.escape(t(
             "No esta afiliado a Digital Extremes ni tiene su respaldo. Warframe y todo su "
             "contenido son propiedad de Digital Extremes."
-        )), p["suave"])
+        )), "suave")
 
-        seccion = QLabel(t("Farmadex y la politica de Digital Extremes"))
-        seccion.setStyleSheet(f"font-weight: bold; color: {p['acento']}; margin-top: 8px;")
-
+        politica = PanelC(t("Farmadex y la politica de Digital Extremes"))
         que_hace = _parrafo(html.escape(t(
             "Farmadex no hace nada de lo que la politica de DE persigue: no lee ni escribe la "
             "memoria del juego, no modifica sus ficheros, no inyecta nada, no pulsa teclas ni "
@@ -243,7 +249,7 @@ class DialogoAcercaDe(QDialog):
         pie_imagen = _parrafo(html.escape(t(
             "Respuesta del soporte de Digital Extremes cuando se les pregunto por programas de "
             "terceros:"
-        )), p["suave"])
+        )), "suave")
         self.imagen = QLabel()
         self.imagen.setAlignment(Qt.AlignLeft | Qt.AlignTop)
         mapa = QPixmap(str(ruta_imagen_soporte()))
@@ -253,43 +259,47 @@ class DialogoAcercaDe(QDialog):
             self.imagen.setStyleSheet(f"border: 1px solid {p['borde']};")
         else:  # la receta no la llevo: se dice en vez de dejar un hueco
             self.imagen.setText(t("(no se ha encontrado la imagen)"))
+        for widget in (que_hace, decision, self.enlace_politica, pie_imagen, self.imagen):
+            politica.capa.addWidget(widget)
 
-        seguridad_titulo = QLabel(t("Es seguro? Lo que hace y lo que no"))
-        seguridad_titulo.setStyleSheet(f"font-weight: bold; color: {p['acento']}; margin-top: 8px;")
+        seguridad = PanelC(t("Es seguro? Lo que hace y lo que no"))
         self.seguridad = _parrafo(html_secciones(secciones_seguridad(incluir_de=False), nivel="h4"))
+        seguridad.capa.addWidget(self.seguridad)
 
         codigo = _parrafo(
             html.escape(t("Codigo, cambios y descargas:")) + " " + _enlace(URL_REPOSITORIO, URL_REPOSITORIO),
-            p["suave"],
+            "suave",
         )
 
         contenido = QWidget()
         dentro = QVBoxLayout(contenido)
         dentro.setContentsMargins(4, 4, 12, 4)
-        dentro.setSpacing(10)
-        for widget in (titulo, self.autor, no_afiliado, seccion, que_hace, decision, self.enlace_politica,
-                       pie_imagen, self.imagen, seguridad_titulo, self.seguridad, codigo):
+        dentro.setSpacing(px(12, False))
+        for widget in (politica, seguridad, no_afiliado, codigo):
             dentro.addWidget(widget)
         dentro.addStretch(1)
         desplazable = QScrollArea()
         desplazable.setWidgetResizable(True)
+        desplazable.setFrameShape(QScrollArea.NoFrame)
         desplazable.setWidget(contenido)
 
-        cerrar = QPushButton(t("Cerrar"))
+        cerrar = BotonC(t("Cerrar"), principal=True, tam=11)
         cerrar.clicked.connect(self.accept)
         # La bienvenida vive en la ventana del overlay (una capa encima): solo si el padre la tiene.
-        self.boton_bienvenida = QPushButton(t("Ver la bienvenida"))
+        self.boton_bienvenida = BotonC(t("Ver la bienvenida"), tam=11)
         self.boton_bienvenida.setToolTip(t("Que es Farmadex, lo basico, preguntas frecuentes y agradecimientos"))
         self.boton_bienvenida.setVisible(hasattr(parent, "mostrar_bienvenida"))
         self.boton_bienvenida.clicked.connect(self._ver_bienvenida)
-        botones = QHBoxLayout()
-        botones.addWidget(self.boton_bienvenida)
-        botones.addStretch(1)
-        botones.addWidget(cerrar)
 
         caja = QVBoxLayout(self)
+        caja.setContentsMargins(px(24, False), px(18, False), px(24, False), px(16, False))
+        caja.setSpacing(px(10, False))
+        caja.addLayout(fila(Rombo(14, "acento", relleno=False), titulo, None, espacio=px(10, False)))
+        caja.addWidget(self.autor)
+        caja.addWidget(Filete())
         caja.addWidget(desplazable, 1)
-        caja.addLayout(botones)
+        caja.addWidget(Filete())
+        caja.addLayout(fila(self.boton_bienvenida, None, cerrar, espacio=px(8, False)))
 
     def _ver_bienvenida(self) -> None:
         ventana = self.parent()

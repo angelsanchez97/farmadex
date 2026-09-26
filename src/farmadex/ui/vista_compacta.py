@@ -1,33 +1,95 @@
-"""Vista compacta para el directo: una caja de busqueda y lo esencial del resultado.
+"""Modo juego: tarjetas tipo HUD y un buscador rapido, para consultar sin salir de la partida.
 
-Pensada para consultar en cinco segundos sin tapar la partida ni ensenarle al
-espectador una ventana entera: nombre, donde cae lo mejor, precio si lo hay y
-si esta en boveda. Nada de tablas. Arriba y abajo se cambia de resultado y con
-Enter se abre la ficha completa.
+Pensado para mirarse de reojo sin tapar la partida ni ensenarle al espectador una
+ventana entera (rediseno C, maqueta `propuesta_C_compacto.png`):
+
+- Arriba, dos tarjetas pequenas que flotan sobre el juego: "Siguiente pieza" (de tus
+  metas, la que antes se consigue, con su reliquia, la mision y el tiempo) y, si hay
+  una abierta, la fisura que te sirve para ella. Son los mismos calculos que el Tablero
+  (`pestana_tablero.pasos_pendientes` y `fisuras_utiles`) y comparten su cache de rutas.
+  Se pueden quitar con el boton "Tarjetas" y queda solo el buscador, como antes.
+- Debajo, la barra de busqueda. Al escribir, las tarjetas dejan sitio a los resultados:
+  arriba y abajo se cambia de resultado, al pulsar uno se despliegan sus detalles y
+  con Enter se abre la ficha completa. Al borrar lo escrito vuelven las tarjetas.
+
+La ventana es la de siempre (la chincheta "Fijar", el arrastre, Ctrl+M y la tecla
+global viven en `overlay.py`); en este modo su fondo es transparente para que las
+tarjetas floten sobre la partida.
 """
 
 from __future__ import annotations
 
 import html
+import sqlite3
 
 from PySide6.QtCore import QEvent, Qt, QTimer, Signal
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QSizePolicy, QVBoxLayout, QWidget
 
 from ..datos import indice, items, relaciones
 from ..idiomas import es_castellano, glosa, nombre as nombre_idioma, t
+from ..registro_log import obtener
 from . import ficha_detalles, glosario
-from .resultados_desplegables import ResultadosDesplegables
+from .estilo_c import BotonC, EtiquetaC, PanelC, Rombo, Tecla, fila, icono, px, transparente
 from .pestana_buscador import PestanaBuscador, _con_padre, _etiqueta, categoria_es, era_de
+from .resultados_desplegables import ResultadosDesplegables
 from .widgets import COLOR_BOVEDA, COLOR_DISPONIBLE, PALETA, color_rareza
 
-# Tamano por defecto: en 2560x1440 ocupa un 4 % de la pantalla (la completa, un 21 %).
-ANCHO = 560
-ALTO = 250
+log = obtener("modo_juego")
 
-# Minimo antes de que el resumen se corte o se solape con el pie: comprobado con
-# una captura (herramientas/capturas). Mas pequeno que el minimo de la vista completa.
+# Tamano por defecto: la cabecera, las dos tarjetas y la barra de busqueda caben sin recortar.
+ANCHO = 540
+ALTO = 340
+
+# Minimo antes de que se corte: cabecera, la tarjeta de la siguiente pieza y la barra
+# (la de la fisura se esconde sola si no cabe). Mas pequeno que el de la vista completa.
 ANCHO_MINIMO = 420
-ALTO_MINIMO = 190
+ALTO_MINIMO = 250
+
+# Cada cuanto se repintan las tarjetas con la ventana a la vista (tiempos de las fisuras).
+REFRESCO_HUD_MS = 30_000
+CLAVE_TARJETAS = "modo_juego_tarjetas"
+ATAJO_POR_DEFECTO = "Ctrl+Alt+W"
+
+
+class TarjetaHUD(PanelC):
+    """Tarjeta pequena del HUD: rotulo con rombo y un dato a la derecha, un nombre grande
+    y una linea de detalle. Con `clicable`, un clic emite `pulsado` (y no arrastra)."""
+
+    def __init__(self, tinta: str, remate: bool, clicable: bool = False, parent=None):
+        super().__init__(remate=remate, fondo="panel", borde="acento_tenue" if remate else "borde",
+                         clicable=clicable, parent=parent)
+        self.tinta = tinta
+        self.capa.setContentsMargins(px(16, False), px(9, False), px(16, False), px(11, False))
+        self.capa.setSpacing(px(2, False))
+        self.rombo = Rombo(8, tinta)
+        self.rotulo = EtiquetaC("", "rotulo", tinta=tinta, mayus=True)
+        self.dato = EtiquetaC("", "seccion", tinta=tinta, mayus=True)
+        self.capa.addLayout(fila(self.rombo, self.rotulo, None, self.dato, espacio=px(6, False)))
+        self.nombre = EtiquetaC("", "destacado", recortar=True)
+        self.detalle = EtiquetaC("", "pequeno", tinta="suave")
+        self.capa.addWidget(self.nombre)
+        self.capa.addWidget(self.detalle)
+
+    def poner(self, rotulo: str, dato: str, nombre: str, detalle: str) -> None:
+        self.rotulo.setText(rotulo)
+        self.dato.setText(dato)
+        self.dato.setVisible(bool(dato))
+        self.nombre.setText(nombre)
+        self.detalle.setText(detalle)
+        self.detalle.setVisible(bool(detalle))
+
+    def poner_dato_suave(self, suave: bool) -> None:
+        """El tiempo de la fisura, en pequeno y apagado como en la maqueta."""
+        self.dato.setProperty("rolC", "normal" if suave else "seccion")
+        self.dato.poner_tinta("suave" if suave else self.tinta)
+
+    def mousePressEvent(self, evento):  # noqa: N802 - firma de Qt
+        # Si no se acepta, el clic sube a la ventana, que empieza a arrastrarse y se come
+        # la suelta: la tarjeta no llegaria a enterarse del clic.
+        if self._clicable and evento.button() == Qt.LeftButton:
+            evento.accept()
+            return
+        super().mousePressEvent(evento)
 
 
 class VistaCompacta(QWidget):
@@ -37,6 +99,7 @@ class VistaCompacta(QWidget):
 
     def __init__(self, buscador: PestanaBuscador, parent=None):
         super().__init__(parent)
+        transparente(self)
         # El indice y el perfil se comparten con la pestana Buscar (misma conexion).
         self.buscador = buscador
         self._resultados: list[dict] = []
@@ -45,13 +108,43 @@ class VistaCompacta(QWidget):
         self._slug_actual = ""
         self._precio_html = ""
         self._sin_resultados: str | None = None
+        # Datos del HUD: el Tablero (metas, rutas en cache y estado del mundo) y la config.
+        self.tablero = None
+        self.config: dict = {}
+        self._item_pieza: int | None = None
+        self._hay_fisura = False
         p = PALETA
 
+        # -- tarjetas del HUD --
+        self.tarjeta_pieza = TarjetaHUD("acento", remate=True, clicable=True)
+        self.tarjeta_pieza.pulsado.connect(self._abrir_pieza)
+        self.tarjeta_fisura = TarjetaHUD("secundario", remate=False)
+        self.tarjeta_fisura.poner_dato_suave(True)
+        self.tarjeta_fisura.hide()
+        self.hud = transparente(QWidget())
+        capa_hud = QVBoxLayout(self.hud)
+        capa_hud.setContentsMargins(0, 0, 0, 0)
+        capa_hud.setSpacing(px(8, False))
+        capa_hud.addWidget(self.tarjeta_pieza)
+        capa_hud.addWidget(self.tarjeta_fisura)
+
+        # -- barra de busqueda --
         self.caja = QLineEdit()
         self.caja.setClearButtonEnabled(True)
         self.caja.setMinimumHeight(36)
         self.caja.installEventFilter(self)
+        self.boton_tarjetas = BotonC(t("Tarjetas"), tam=11)
+        self.boton_tarjetas.setCheckable(True)
+        self.boton_tarjetas.setChecked(True)
+        self.boton_tarjetas.toggled.connect(self._tarjetas_cambiadas)
+        self.tecla = Tecla(ATAJO_POR_DEFECTO)
+        self.tecla.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.barra = PanelC(remate=False, fondo="panel", borde="borde", chaflan=10)
+        self.barra.capa.setContentsMargins(px(12, False), px(2, False), px(10, False), px(2, False))
+        self.barra.capa.addLayout(fila(icono("buscar", 14, "acento"), self.caja, self.boton_tarjetas, self.tecla,
+                                       espacio=px(8, False)))
 
+        # -- resultados (se ven al buscar) --
         self.resumen = QLabel()
         self.resumen.setTextFormat(Qt.RichText)
         self.resumen.setWordWrap(True)
@@ -75,13 +168,21 @@ class VistaCompacta(QWidget):
         pie.addWidget(self.pie, 1)
         pie.addWidget(self.posicion, 0, Qt.AlignRight)
 
+        self.panel_resultados = PanelC(remate=False, fondo="fondo", borde="borde", chaflan=10)
+        self.panel_resultados.capa.setContentsMargins(px(10, False), px(8, False), px(10, False), px(6, False))
+        self.panel_resultados.capa.setSpacing(px(6, False))
+        self.panel_resultados.capa.addWidget(self.resumen, 1)
+        self.panel_resultados.capa.addWidget(self.lista, 1)
+        self.panel_resultados.capa.addLayout(pie)
+
         caja = QVBoxLayout(self)
-        caja.setContentsMargins(4, 4, 4, 2)
-        caja.setSpacing(6)
-        caja.addWidget(self.caja)
-        caja.addWidget(self.resumen, 1)
-        caja.addWidget(self.lista, 1)
-        caja.addLayout(pie)
+        caja.setContentsMargins(0, 2, 0, 0)
+        caja.setSpacing(px(8, False))
+        caja.addWidget(self.hud)
+        caja.addWidget(self.barra)
+        caja.addWidget(self.panel_resultados, 1)
+        caja.addStretch(0)
+        self._capa = caja
 
         # Misma espera que la pestana Buscar: sin ella cada tecla buscaba y pedia precio al
         # mercado, y "ash prime systems" escrito a mano encolaba 13 consultas de red seguidas
@@ -91,19 +192,166 @@ class VistaCompacta(QWidget):
         self._temporizador.setInterval(180)
         self._temporizador.timeout.connect(lambda: self._buscar(self.caja.text()))
         self.caja.textChanged.connect(lambda _: self._temporizador.start())
+        # Al escribir, las tarjetas dejan sitio en el acto (sin esperar a la busqueda).
+        self.caja.textChanged.connect(lambda _: self._colocar())
+        self._reloj_hud = QTimer(self)
+        self._reloj_hud.setInterval(REFRESCO_HUD_MS)
+        self._reloj_hud.timeout.connect(self.refrescar_hud)
         self.retraducir()
+
+    # -- HUD ------------------------------------------------------------------
+
+    def usar_tablero(self, tablero, config: dict | None = None) -> None:
+        """De donde salen las tarjetas: el Tablero (metas, rutas y mundo) y la config
+        compartida de la ventana (ahi se guarda si se ensenan o no las tarjetas)."""
+        self.tablero = tablero
+        if config is not None:
+            self.config = config
+            self.boton_tarjetas.blockSignals(True)
+            self.boton_tarjetas.setChecked(bool(config.get(CLAVE_TARJETAS, True)))
+            self.boton_tarjetas.blockSignals(False)
+        self._poner_tecla()
+        self.marcar_sucio()
+
+    def _poner_tecla(self) -> None:
+        self.tecla.setText(str(self.config.get("hotkey_overlay") or ATAJO_POR_DEFECTO).upper())
+
+    def tarjetas_activas(self) -> bool:
+        return self.boton_tarjetas.isChecked()
+
+    def _tarjetas_cambiadas(self, activas: bool) -> None:
+        if self.config:
+            self.config[CLAVE_TARJETAS] = bool(activas)
+            try:
+                from ..config import guardar
+
+                guardar(self.config)
+            except OSError:
+                log.warning("No se pudo guardar la eleccion de las tarjetas", exc_info=True)
+        log.info("Modo juego: tarjetas %s", "a la vista" if activas else "escondidas")
+        if activas:
+            self.refrescar_hud()
+        self._colocar()
+
+    def marcar_sucio(self) -> None:
+        """Han cambiado las metas, el mundo o el indice: se recalcula si esta a la vista
+        (si no, al ensenarse)."""
+        if self.isVisible():
+            QTimer.singleShot(0, self.refrescar_hud)
+
+    def showEvent(self, evento):  # noqa: N802 - firma de Qt
+        super().showEvent(evento)
+        self._reloj_hud.start()
+        self.refrescar_hud()
+
+    def hideEvent(self, evento):  # noqa: N802
+        super().hideEvent(evento)
+        self._reloj_hud.stop()
+
+    def resizeEvent(self, evento):  # noqa: N802
+        super().resizeEvent(evento)
+        self._colocar()
+
+    def _en_busqueda(self) -> bool:
+        """Hay algo escrito o abierto: los resultados mandan sobre las tarjetas."""
+        return bool(self.caja.text().strip()) or self._datos is not None or self._sin_resultados is not None
+
+    def hud_visible(self) -> bool:
+        return self.tarjetas_activas() and not self._en_busqueda()
+
+    def _colocar(self) -> None:
+        """Tarjetas o resultados; la de la fisura solo si hay una y si cabe."""
+        con_hud = self.hud_visible()
+        self.hud.setVisible(con_hud)
+        # Sin tarjetas y sin busqueda, se ve la ayuda de siempre ("Escribe el nombre...").
+        self.panel_resultados.setVisible(not con_hud)
+        if con_hud:
+            hueco = px(8, False)
+            disponible = self.height() - self.barra.sizeHint().height() - hueco - 2
+            cabe = self.tarjeta_pieza.sizeHint().height() + hueco + self.tarjeta_fisura.sizeHint().height()
+            self.tarjeta_fisura.setVisible(self._hay_fisura and cabe <= disponible)
+        # Con las tarjetas, todo arriba y el hueco de abajo transparente.
+        self._capa.setStretch(self._capa.count() - 1, 1 if con_hud else 0)
+
+    def refrescar_hud(self) -> None:
+        """Recalcula la siguiente pieza y la fisura que sirve (mismos calculos que el Tablero)."""
+        from .pestana_tablero import fisuras_utiles, pasos_pendientes, restante, texto_tiempo
+
+        pasos = []
+        tablero = self.tablero
+        indice_vivo = tablero._indice_vivo() if tablero is not None else None
+        if tablero is not None and tablero.usuario is not None and indice_vivo is not None:
+            try:
+                pasos = pasos_pendientes(indice_vivo, tablero.usuario, tablero._rutas)
+            except sqlite3.Error:
+                log.warning("No se pudieron calcular las metas del modo juego", exc_info=True)
+        self._item_pieza = None
+        if pasos:
+            paso = pasos[0]
+            self._item_pieza = paso.item["id"] if paso.item else None
+            self.tarjeta_pieza.poner(t("Siguiente pieza"), texto_tiempo(paso.minutos), paso.nombre,
+                                     self._detalle_paso(paso))
+        elif indice_vivo is None:
+            self.tarjeta_pieza.poner(t("Siguiente pieza"), "", t("Preparando los datos..."), "")
+        else:
+            self.tarjeta_pieza.poner(t("Siguiente pieza"), "", t("Sin metas todavia"),
+                                     t("Anade objetivos en Mis metas y aqui veras tu siguiente pieza."))
+        self.tarjeta_pieza.setToolTip(t("Abrir su ficha") if self._item_pieza else "")
+        self.tarjeta_pieza.setCursor(Qt.PointingHandCursor if self._item_pieza else Qt.ArrowCursor)
+
+        utiles = fisuras_utiles(getattr(tablero, "mundo", None), pasos) if tablero is not None else []
+        self._hay_fisura = bool(utiles)
+        if utiles:
+            f, paso = utiles[0]
+            lugar = " · ".join(x for x in (f.nodo, f.mision) if x)
+            self.tarjeta_fisura.poner(t("Fisura {era} abierta", era=t(f.era)), restante(f.expira), lugar,
+                                      t("Te sirve para {nombre}", nombre=paso.nombre))
+        self._colocar()
+
+    def _detalle_paso(self, paso) -> str:
+        """'Reliquia Lith S19 · Captura en Hepit, Vacio' (o donde se consigue si no es de reliquia)."""
+        p = PALETA
+        trozos = []
+        if paso.es_reliquia:
+            trozos.append(t("Reliquia {reliquia}", reliquia=f"<b style='color:{p['secundario']}'>"
+                            f"{html.escape(paso.reliquia)}</b>"))
+        if paso.boveda:
+            trozos.append(html.escape(t("Solo en boveda: hay que comprarla a otro jugador")))
+        else:
+            mision = paso.mision
+            if mision.get("donde"):
+                lugar = html.escape(mision["donde"])
+                trozos.append(t("{mision} en {lugar}", mision=html.escape(mision["mision"]), lugar=lugar)
+                              if mision.get("mision") else lugar)
+        return " · ".join(trozos)
+
+    def _abrir_pieza(self) -> None:
+        if self._item_pieza is not None:
+            self.abrir_completo.emit(self._item_pieza)
 
     # -- idioma y tema --------------------------------------------------------
 
     def retraducir(self) -> None:
         self.caja.setPlaceholderText(t("Busca algo (Enter: ficha completa)"))
         self.pie.setText(t("↑↓ otro resultado · Enter ficha completa · Ctrl+M vista completa"))
+        self.boton_tarjetas.setText(t("Tarjetas"))
+        self.boton_tarjetas.setToolTip(
+            t("Ensena u oculta las tarjetas de tu siguiente pieza y de la fisura que te sirve"))
+        self._poner_tecla()
+        self.tecla.setToolTip(t("Con esta tecla se abre y se esconde Farmadex desde el juego"))
+        # Los nombres vienen del indice en el idioma de la interfaz: se recalcula despues de
+        # que el Tablero olvide sus rutas, y solo si el modo juego esta a la vista.
+        self.marcar_sucio()
         self.repintar()
 
     def repintar(self) -> None:
         p = PALETA
         self.pie.setStyleSheet(f"color: {p['suave']}; font-size: 12px;")
         self.posicion.setStyleSheet(f"color: {p['suave']}; font-size: 12px;")
+        self.caja.setStyleSheet(
+            f"QLineEdit {{ background: transparent; border: none; color: {p['texto']}; font-size: {px(14)}px; }}"
+        )
+        self.tecla.refrescar_estilo()
         en_lista = self._en_lista()
         self.lista.setVisible(en_lista)
         self.resumen.setVisible(not en_lista)
@@ -126,6 +374,7 @@ class VistaCompacta(QWidget):
                 + html.escape(t("Escribe el nombre de un objeto, una pieza, un mod o una reliquia."))
                 + "</span>"
             )
+        self._colocar()
 
     def _en_lista(self) -> bool:
         """Si lo abierto es uno de los resultados de la lista (y no algo abierto desde fuera)."""

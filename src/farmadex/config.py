@@ -49,7 +49,16 @@ POR_DEFECTO = {
     # Las instalaciones nuevas estrenan el tema del rediseno C; quien ya tenia
     # config.json conserva el tema que ya estaba guardado en ella.
     "tema": "lua",
-    "diseno_mundo": "lista",
+    # Sub-pestana de Mundo que se vio la ultima vez ("todo", "fisuras", "tienda",
+    # "eventos"). Los valores de antes del rediseno C ("lista", "tablero") abren "todo".
+    "diseno_mundo": "todo",
+    # Pestana Mundo. Sin estas claves aqui, `cargar` las tiraba al abrir Farmadex y se
+    # perdian las facciones, los bloques escondidos y los avisos elegidos.
+    "mundo_facciones": [],
+    "mundo_modos_fisura": ["normal"],
+    "mundo_secciones_ocultas": [],
+    "avisos_mundo": {},
+    "avisos_mundo_enviados": {},
     "overlay_geometria": None,
     # Vista compacta para el directo: cual se usaba y su propia posicion y tamano.
     "overlay_modo": "completo",
@@ -69,7 +78,11 @@ POR_DEFECTO = {
     "botin_eelog_auto": True,
     # Arranque con Windows (HKCU\...\Run), escondido en la bandeja. Apagado por defecto.
     "iniciar_con_windows": False,
-    "motor_ocr": "rapidocr",
+    "motor_ocr": "rapidocr",  # historico; lo que manda es "ocr_modo"
+    # Lectura de pantalla (Ajustes > Datos del juego > Avanzado): "auto" (menos hilos
+    # si la CPU va cargada), "rapido" (siempre los hilos normales), "ligero" (siempre
+    # pocos hilos) o "windows" (OCR de Windows; si no esta, el local). captura/ocr.py.
+    "ocr_modo": "auto",
     "plataforma": PLATAFORMA,
     # Guia de uso guiada dentro de la ventana: si ya se vio (o se salto), no vuelve a
     # lanzarse sola. El boton "Guia" siempre la relanza aunque esto sea True.

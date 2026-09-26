@@ -85,8 +85,11 @@ def test_se_pinta_sin_reventar_con_sin_identificar_y_sin_imagenes(tmp_path):
     panel.render(pintor, QPoint(0, 0))
     pintor.end()
     rect = panel.rectangulo_panel()
-    # Hay algo pintado dentro del panel y nada fuera de el (por encima de las tarjetas).
-    assert lienzo.pixelColor(rect.center()).alpha() > 0
+    # Hay algo pintado en cada tarjeta y en el pie, y nada fuera (por encima de las tarjetas).
+    # Entre tarjeta y tarjeta se ve el juego: el panel ya no tiene un fondo de lado a lado.
+    for tarjeta in panel.rectangulos_tarjetas(rect):
+        assert lienzo.pixelColor(tarjeta.center()).alpha() > 0
+    assert lienzo.pixelColor(panel.rectangulo_pie(rect).center()).alpha() > 0
     assert lienzo.pixelColor(rect.x() + 5, rect.y() - 40).alpha() == 0
     panel.hide()
 
@@ -217,6 +220,6 @@ def test_las_tres_variantes_del_panel_se_pintan_con_el_motivo_del_preajuste():
             panel.render(pintor, QPoint(0, 0))
             pintor.end()
             rect = panel.rectangulo_panel()
-            assert rect.height() == modulo.ALTOS[variante] + 2 * modulo.HUECO + 24
-            assert lienzo.pixelColor(rect.center()).alpha() > 0
+            assert rect.height() == modulo.ALTOS[variante] + 2 * modulo.HUECO + modulo.ALTO_PIE
+            assert lienzo.pixelColor(panel.rectangulos_tarjetas(rect)[0].center()).alpha() > 0
             panel.hide()

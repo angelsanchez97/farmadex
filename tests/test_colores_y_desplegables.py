@@ -111,10 +111,16 @@ def test_ficha_de_mod_con_efecto_por_rango(buscador):
 
 
 def test_ficha_de_arma_con_disposicion_de_riven(buscador):
+    from farmadex.ui.estilo_c import RombosDisposicion
+
     buscador.abrir(902)
     texto = buscador.ficha.toPlainText()
-    assert "12% ×2" in texto and "●●●●○" in texto and "×1.25" in texto
+    # Diseno C: critico y multiplicador en filas propias, la disposicion con rombos pintados.
+    assert "Probabilidad crítica" in texto and "12%" in texto and "×2" in texto and "×1.25" in texto
+    assert [r.n for r in buscador.ficha.findChildren(RombosDisposicion)] == [4]
     assert "100" in texto  # el cargador de 100 no se queda en "1"
+    # La tabla de siempre sigue en el HTML entero de la ficha.
+    assert "12% ×2" in buscador._html(buscador._datos_actuales)
 
 
 def test_el_codigo_del_glifo_se_copia(buscador):

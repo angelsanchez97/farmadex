@@ -4,6 +4,12 @@ Una capa encima de la ventana del overlay (como la guia) con una tarjeta en el
 centro y cinco apartados a la izquierda: que es Farmadex, lo basico paso a paso,
 si es seguro, preguntas frecuentes y agradecimientos con los enlaces del autor.
 
+Estilo C (maqueta C_bienvenida.png): tarjeta con esquinas cortadas y filete de acento,
+titulo grande con su rombo, filetes con rombo arriba y abajo, apartados en una columna
+(rombo lleno en el activo y en los ya vistos) y al pie "Atras · 2 DE 5 · Siguiente".
+Lo basico va en pasos numerados; el cuadro de "como empezar" sale en ese apartado (solo
+el aviso) y en el ultimo (con los dos botones).
+
 La primera vez es obligatoria: sin boton de cerrar y sin Escape; se sale con
 "Empezar" desde el ultimo apartado. Sale tambien una vez a quien actualiza desde
 una version que no la tenia (la marca `bienvenida_vista` no existia en su
@@ -19,16 +25,16 @@ from __future__ import annotations
 import html
 import os
 
-from PySide6.QtCore import QEvent, QObject, Qt, Signal
-from PySide6.QtGui import QColor, QPainter
+from PySide6.QtCore import QEvent, QObject, QPointF, QRectF, QSize, Qt, Signal
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPen, QPolygonF
 from PySide6.QtWidgets import (
+    QAbstractButton,
     QApplication,
-    QFrame,
+    QButtonGroup,
     QHBoxLayout,
     QLabel,
-    QListWidget,
-    QPushButton,
     QScrollArea,
+    QSizePolicy,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -46,12 +52,28 @@ from .acerca_de import (
     secciones_seguridad,
     texto_autor,
 )
-from .widgets import PALETA, px
+from .estilo_c import (
+    BotonC,
+    BotonGlifo,
+    EtiquetaC,
+    Filete,
+    PanelC,
+    PiezaC,
+    Rombo,
+    color,
+    fila,
+    fuente,
+    px,
+    transparente,
+)
+from .widgets import PALETA
 
 CLAVE_VISTA = "bienvenida_vista"
-ANCHO_MAXIMO = 860
-ALTO_MAXIMO = 620
+ANCHO_MAXIMO = 940
+ALTO_MAXIMO = 600
 MARGEN = 16
+GLIFO_ATRAS = ""
+APARTADO_BASICO = 1  # "Lo basico, paso a paso": el que lleva el aviso de como empezar
 
 
 def toca_bienvenida(config: dict) -> bool:
@@ -64,12 +86,18 @@ def toca_bienvenida(config: dict) -> bool:
     return not (app is not None and app.platformName() == "offscreen")
 
 
-def _apartados(atajo: str) -> list[tuple[str, str]]:
-    """(titulo del apartado, HTML del contenido), en el idioma activo."""
+def _tecla_html(texto: str) -> str:
+    """Un atajo como tecla de acento dentro de un texto (Ctrl+Alt+W)."""
     p = PALETA
-    pasos = [
+    return (f"<span style='background: {p['acento']}; color: {p['acento_texto']}; font-weight: 700;"
+            f" font-family: Bahnschrift;'>&nbsp;{html.escape(texto.upper())}&nbsp;</span>")
+
+
+def pasos_basicos(atajo: str) -> list[str]:
+    """Los ocho pasos de "Lo basico", en HTML y en el idioma activo."""
+    return [
         frase("Abrelo encima del juego con {atajo}, y escondelo con Escape. Cuando no lo ves, sigue "
-              "esperando en los iconos junto al reloj de Windows.", atajo=f"<b>{html.escape(atajo)}</b>"),
+              "esperando en los iconos junto al reloj de Windows.", atajo=_tecla_html(atajo)),
         frase("Pon Warframe en Ventana sin bordes (Opciones > Pantalla). En pantalla completa "
               "exclusiva no se puede ver nada encima del juego."),
         frase("En Buscar escribe cualquier cosa, aunque sea con faltas: te dice donde se consigue, con "
@@ -85,10 +113,12 @@ def _apartados(atajo: str) -> list[tuple[str, str]]:
         frase("En Ajustes, con las secciones a la izquierda, cambias atajos, colores, tamano de letra "
               "e idioma."),
     ]
-    lista = "<ol style='margin-left: -16px;'>" + "".join(
-        f"<li style='margin-bottom: 6px;'>{paso}</li>" for paso in pasos
-    ) + "</ol>"
 
+
+def _apartados(atajo: str) -> list[tuple[str, str]]:
+    """(titulo del apartado, HTML del contenido), en el idioma activo. El de "Lo basico"
+    lleva solo la entradilla: los pasos se pintan aparte, numerados (`pasos_basicos`)."""
+    p = PALETA
     que_es = (
         f"<p>{frase('Farmadex es un ayudante para Warframe que se abre encima del juego. Sirve para no '
                     'tener que salir a la wiki: te dice donde conseguir cada cosa y cuanto se tarda, '
@@ -99,11 +129,7 @@ def _apartados(atajo: str) -> list[tuple[str, str]]:
         f"<p style='color: {p['suave']};'>{frase('Esta bienvenida sale sola solo esta vez. Puedes volver a '
                                                  'verla cuando quieras en Ajustes > Ayuda.')}</p>"
     )
-    basico = (
-        f"<p>{frase('Lo que necesitas para empezar, en ocho pasos:')}</p>{lista}"
-        f"<p style='color: {p['suave']};'>{frase('Al terminar puedes hacer un recorrido por la ventana que '
-                                                 'te ensena cada parte en su sitio.')}</p>"
-    )
+    basico = f"<p style='color: {p['suave']};'>{frase('Lo que necesitas para empezar, en ocho pasos:')}</p>"
     seguro = html_secciones(secciones_seguridad(), nivel="h4")
     faq = html_secciones(preguntas_frecuentes(atajo), nivel="h4")
     gracias = (
@@ -130,6 +156,92 @@ def _apartados(atajo: str) -> list[tuple[str, str]]:
     ]
 
 
+def _rombo(cx: float, cy: float, medio: float) -> QPolygonF:
+    return QPolygonF([QPointF(cx, cy - medio), QPointF(cx + medio, cy), QPointF(cx, cy + medio),
+                      QPointF(cx - medio, cy)])
+
+
+class _EntradaApartado(QAbstractButton, PiezaC):
+    """Un apartado de la columna: rombo (lleno si es el activo o ya se vio) y su nombre en
+    mayusculas; el activo con fondo tenue y barra de acento."""
+
+    def __init__(self, texto: str, parent=None):
+        super().__init__(parent)
+        transparente(self)
+        self.visto = False
+        self.setText(texto)
+        self.setCheckable(True)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setFocusPolicy(Qt.NoFocus)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+
+    def _fuente(self) -> QFont:
+        f = fuente("dato", 12, 600)
+        f.setLetterSpacing(QFont.AbsoluteSpacing, 1.2)
+        return f
+
+    def sizeHint(self) -> QSize:  # noqa: N802
+        fm = QFontMetrics(self._fuente())
+        return QSize(px(34, False) + fm.horizontalAdvance(self.text().upper()) + px(10, False),
+                     fm.height() + px(18, False))
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        return QSize(px(120, False), self.sizeHint().height())
+
+    def paintEvent(self, _evento):  # noqa: N802
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        activo = self.isChecked()
+        if activo:
+            fondo = QColor(color("acento"))
+            fondo.setAlpha(30)
+            p.fillRect(self.rect(), fondo)
+            p.fillRect(0, 0, px(3, False), self.height(), color("acento"))
+        lleno = activo or self.visto
+        tinta_rombo = color("acento") if lleno else color("tenue")
+        p.setPen(QPen(tinta_rombo, 1.2))
+        p.setBrush(tinta_rombo if lleno else Qt.NoBrush)
+        medio = px(4, False)
+        p.drawPolygon(_rombo(px(16, False), self.height() / 2, medio))
+        tinta = color("acento") if activo else color("texto" if (self.visto or self.underMouse()) else "suave")
+        f = self._fuente()
+        p.setFont(f)
+        p.setPen(tinta)
+        x = px(30, False)
+        texto = QFontMetrics(f).elidedText(self.text().upper(), Qt.ElideRight, max(10, self.width() - x - 4))
+        p.drawText(QRectF(x, 0, self.width() - x, self.height()), Qt.AlignVCenter | Qt.AlignLeft, texto)
+        p.end()
+
+    def enterEvent(self, evento):  # noqa: N802
+        self.update()
+        super().enterEvent(evento)
+
+    def leaveEvent(self, evento):  # noqa: N802
+        self.update()
+        super().leaveEvent(evento)
+
+
+def _titulo_apartado(texto: str) -> EtiquetaC:
+    """Titulo de un apartado en mayusculas de pantalla, sin cambiar su texto (se busca tal cual)."""
+    etiqueta = EtiquetaC(texto, "seccion")
+    f = etiqueta.font()
+    f.setCapitalization(QFont.AllUppercase)
+    f.setLetterSpacing(QFont.AbsoluteSpacing, 2.0)
+    etiqueta.setFont(f)
+    return etiqueta
+
+
+def _texto_rico(contenido: str) -> QLabel:
+    etiqueta = EtiquetaC("", "normal", envolver=True)
+    # Siempre como HTML (frase() ya escapa): sin etiquetas, EtiquetaC lo tomaria por texto
+    # plano y ensenaria los &quot; tal cual.
+    etiqueta.setText(contenido if contenido.lstrip().startswith("<") else f"<span>{contenido}</span>")
+    etiqueta.setOpenExternalLinks(True)
+    etiqueta.setTextInteractionFlags(Qt.TextBrowserInteraction)
+    etiqueta.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+    return etiqueta
+
+
 class CapaBienvenida(QWidget):
     """Capa oscura sobre toda la ventana con la tarjeta de bienvenida en el centro."""
 
@@ -142,117 +254,142 @@ class CapaBienvenida(QWidget):
         self.obligatoria = obligatoria
         config = getattr(ventana, "config", {}) or {}
         self._ofrecer_guia = not config.get("guia_vista")
-        self._apartados = _apartados(config.get("hotkey_overlay", "Ctrl+Alt+W"))
-        p = PALETA
+        atajo = config.get("hotkey_overlay", "Ctrl+Alt+W")
+        self._apartados = _apartados(atajo)
 
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setFocusPolicy(Qt.StrongFocus)
 
-        self.tarjeta = QFrame(self)
-        self.tarjeta.setObjectName("tarjetaBienvenida")
-        self.tarjeta.setStyleSheet(
-            f"#tarjetaBienvenida {{ background: {p['fondo']}; border: 1px solid {p['acento']};"
-            " border-radius: 12px; }"
-        )
+        self.tarjeta = PanelC(fondo="fondo", borde="acento", chaflan=18)
+        self.tarjeta.setParent(self)
+        self.tarjeta.poner_marcado(True)
+        m = self.tarjeta.capa
+        m.setContentsMargins(px(34, False), px(22, False), px(34, False), px(20, False))
+        m.setSpacing(px(10, False))
 
-        self.titulo = QLabel(t("Bienvenido a {app}", app=NOMBRE_APP))
-        self.titulo.setStyleSheet(f"color: {p['acento']}; font-weight: 700; font-size: {px(20)}px;")
-        self.subtitulo = QLabel(t("Un momento antes de empezar: esto es lo que conviene saber."))
-        self.subtitulo.setWordWrap(True)
-        self.subtitulo.setStyleSheet(f"color: {p['suave']}; font-size: {px(13)}px;")
-
-        # Apartados a la izquierda, como el menu de opciones del juego.
-        self.lista = QListWidget()
-        self.lista.setObjectName("apartadosBienvenida")
-        self.lista.setFixedWidth(px(190, letra=False))
-        self.lista.setStyleSheet(
-            f"#apartadosBienvenida {{ background: {p['panel']}; border: 1px solid {p['borde']};"
-            f" border-radius: 8px; padding: 4px; }}"
-            f" #apartadosBienvenida::item {{ padding: {px(9, False)}px {px(10, False)}px; border: none;"
-            f" border-left: 3px solid transparent; color: {p['suave']}; }}"
-            f" #apartadosBienvenida::item:selected {{ background: {p['panel2']}; color: {p['texto']};"
-            f" border-left: 3px solid {p['acento']}; }}"
-            f" #apartadosBienvenida::item:hover {{ color: {p['texto']}; }}"
-        )
-        self.paginas = QStackedWidget()
-        self.textos: list[QLabel] = []
-        for titulo, contenido in self._apartados:
-            self.lista.addItem(titulo)
-            texto = QLabel(
-                f"<h2 style='color: {p['acento']}; margin-top: 0;'>{html.escape(titulo)}</h2>{contenido}"
-            )
-            texto.setWordWrap(True)
-            texto.setTextFormat(Qt.RichText)
-            texto.setOpenExternalLinks(True)
-            texto.setTextInteractionFlags(Qt.TextBrowserInteraction)
-            texto.setAlignment(Qt.AlignTop | Qt.AlignLeft)
-            texto.setStyleSheet(f"color: {p['texto']}; font-size: {px(14)}px;")
-            desplazable = QScrollArea()
-            desplazable.setWidgetResizable(True)
-            dentro = QWidget()
-            caja = QVBoxLayout(dentro)
-            caja.setContentsMargins(6, 0, 10, 0)
-            caja.addWidget(texto)
-            caja.addStretch(1)
-            desplazable.setWidget(dentro)
-            self.paginas.addWidget(desplazable)
-            self.textos.append(texto)
-        self.lista.currentRowChanged.connect(self._ir_a)
-
-        self.contador = QLabel()
-        self.contador.setStyleSheet(f"color: {p['suave']}; font-size: {px(12)}px;")
-        self.boton_cerrar = QPushButton(t("Cerrar"))
+        # -- cabecera -------------------------------------------------------------------
+        self.titulo = EtiquetaC(t("Bienvenido a {app}", app=NOMBRE_APP), "titulo", tinta="acento", mayus=True)
+        f = self.titulo.font()
+        f.setLetterSpacing(QFont.AbsoluteSpacing, 4.0)
+        self.titulo.setFont(f)
+        self.subtitulo = EtiquetaC(t("Un momento antes de empezar: esto es lo que conviene saber."), "normal",
+                                   tinta="suave", envolver=True)
+        self.boton_cerrar = BotonGlifo("cerrar", t("Cerrar"), tam=14)
+        self.boton_cerrar.setToolTip(t("Cerrar"))
         self.boton_cerrar.clicked.connect(lambda: self.terminar(False))
         self.boton_cerrar.setVisible(not obligatoria)
-        self.boton_atras = QPushButton(t("Atras"))
-        self.boton_atras.clicked.connect(lambda: self._ir_a(self.paginas.currentIndex() - 1))
-        self.boton_siguiente = QPushButton(t("Siguiente"))
-        self.boton_siguiente.setObjectName("principal")
-        self.boton_siguiente.clicked.connect(lambda: self._ir_a(self.paginas.currentIndex() + 1))
+        m.addLayout(fila(Rombo(16, "acento", relleno=False), self.titulo, None, self.boton_cerrar,
+                         espacio=px(12, False)))
+        m.addWidget(self.subtitulo)
+        m.addWidget(Filete())
+
+        # -- apartados a la izquierda, como el menu de opciones del juego -------------------
+        self.lista = transparente(QWidget())
+        capa_lista = QVBoxLayout(self.lista)
+        capa_lista.setContentsMargins(0, px(6, False), 0, 0)
+        capa_lista.setSpacing(px(4, False))
+        self._grupo = QButtonGroup(self)
+        self._grupo.setExclusive(True)
+        self.entradas: list[_EntradaApartado] = []
+        self.paginas = QStackedWidget()
+        transparente(self.paginas)
+        self.textos: list[QLabel] = []
+        for i, (titulo, contenido) in enumerate(self._apartados):
+            entrada = _EntradaApartado(titulo)
+            entrada.clicked.connect(lambda _=False, i=i: self._ir_a(i))
+            self._grupo.addButton(entrada)
+            self.entradas.append(entrada)
+            capa_lista.addWidget(entrada)
+            self.paginas.addWidget(self._pagina(i, titulo, contenido, atajo))
+        capa_lista.addStretch(1)
+        self.lista.setFixedWidth(px(240, False))
+
+        # -- como empezar (aviso en "Lo basico"; con los botones en el ultimo) ----------------
+        self.caja_empezar = PanelC(remate=False, fondo="panel2", chaflan=12)
+        self.nota_empezar = EtiquetaC("", "pequeno", envolver=True)
         # En el ultimo apartado: empezar, con o sin recorrido por la ventana.
-        self.boton_guia = QPushButton(t("Empezar con el recorrido por la ventana"))
-        self.boton_guia.setObjectName("principal")
+        self.boton_guia = BotonC(t("Empezar con el recorrido por la ventana"), principal=True, icono="derecha", tam=10)
         self.boton_guia.clicked.connect(lambda: self.terminar(True))
-        self.boton_empezar = QPushButton(t("Empezar"))
+        self.boton_empezar = BotonC(t("Empezar"), tam=10)
         self.boton_empezar.clicked.connect(lambda: self.terminar(False))
+        self.caja_empezar.capa.setContentsMargins(px(16, False), px(10, False), px(16, False), px(10, False))
+        self.caja_empezar.capa.setSpacing(px(6, False))
+        self.caja_empezar.capa.addWidget(self.nota_empezar)
+        self.caja_empezar.capa.addLayout(fila(self.boton_guia, self.boton_empezar, None, espacio=px(8, False)))
 
-        botones = QHBoxLayout()
-        botones.addWidget(self.contador)
-        botones.addStretch(1)
-        for boton in (self.boton_cerrar, self.boton_atras, self.boton_siguiente, self.boton_empezar,
-                      self.boton_guia):
-            botones.addWidget(boton)
-
+        derecha = QVBoxLayout()
+        derecha.setSpacing(px(10, False))
+        derecha.addWidget(self.paginas, 1)
+        derecha.addWidget(self.caja_empezar)
         cuerpo = QHBoxLayout()
-        cuerpo.setSpacing(14)
+        cuerpo.setSpacing(px(24, False))
         cuerpo.addWidget(self.lista)
-        cuerpo.addWidget(self.paginas, 1)
+        cuerpo.addLayout(derecha, 1)
+        m.addLayout(cuerpo, 1)
+        m.addWidget(Filete())
 
-        caja = QVBoxLayout(self.tarjeta)
-        caja.setContentsMargins(20, 16, 20, 14)
-        caja.setSpacing(8)
-        caja.addWidget(self.titulo)
-        caja.addWidget(self.subtitulo)
-        caja.addLayout(cuerpo, 1)
-        caja.addLayout(botones)
+        # -- pie: Atras · n DE 5 · Siguiente ---------------------------------------------------
+        self.nota_pie = EtiquetaC(t("Puedes volver a verla en Ajustes > Ayuda."), "pequeno", recortar=True)
+        self.contador = EtiquetaC("", "dato", tinta="suave", mayus=True)
+        self.boton_atras = BotonC(t("Atras"), icono=GLIFO_ATRAS, tam=11)
+        self.boton_atras.clicked.connect(lambda: self._ir_a(self.paginas.currentIndex() - 1))
+        self.boton_siguiente = BotonC(t("Siguiente"), principal=True, icono="derecha", tam=11)
+        self.boton_siguiente.clicked.connect(lambda: self._ir_a(self.paginas.currentIndex() + 1))
+        pie = fila(espacio=px(12, False))
+        pie.addWidget(self.nota_pie, 1)
+        for w in (self.boton_atras, self.contador, self.boton_siguiente):
+            pie.addWidget(w)
+        m.addLayout(pie)
 
         ventana.installEventFilter(self)
         self.reposicionar()
-        self.lista.setCurrentRow(0)
         self._ir_a(0)
         self.show()
         self.raise_()
         self.setFocus()
+
+    def _pagina(self, indice: int, titulo: str, contenido: str, atajo: str) -> QScrollArea:
+        """Un apartado: su titulo y su texto; "Lo basico" con los pasos numerados."""
+        dentro = transparente(QWidget())
+        caja = QVBoxLayout(dentro)
+        caja.setContentsMargins(0, 0, px(10, False), 0)
+        caja.setSpacing(px(8, False))
+        cabeza = _titulo_apartado(titulo)
+        caja.addWidget(cabeza)
+        self.textos.append(cabeza)
+        texto = _texto_rico(contenido)
+        caja.addWidget(texto)
+        self.textos.append(texto)
+        if indice == APARTADO_BASICO:
+            for n, paso in enumerate(pasos_basicos(atajo), 1):
+                numero = EtiquetaC(str(n), "dato", tinta="acento")
+                numero.setFixedWidth(px(22, False))
+                numero.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+                linea = _texto_rico(paso)
+                fila_paso = QHBoxLayout()
+                fila_paso.setSpacing(px(8, False))
+                fila_paso.addWidget(numero, 0, Qt.AlignTop)
+                fila_paso.addWidget(linea, 1)
+                caja.addLayout(fila_paso)
+                self.textos.append(linea)
+        caja.addStretch(1)
+        desplazable = QScrollArea()
+        desplazable.setWidgetResizable(True)
+        desplazable.setFrameShape(QScrollArea.NoFrame)
+        desplazable.setWidget(dentro)
+        return desplazable
 
     # -- navegacion -----------------------------------------------------------
 
     def _ir_a(self, indice: int) -> None:
         total = self.paginas.count()
         indice = max(0, min(indice, total - 1))
-        if self.lista.currentRow() != indice:
-            self.lista.setCurrentRow(indice)  # vuelve a entrar aqui por la senal
-            return
         self.paginas.setCurrentIndex(indice)
+        for i, entrada in enumerate(self.entradas):
+            if i == indice:
+                entrada.visto = True
+                entrada.setChecked(True)
+            entrada.update()
         ultimo = indice == total - 1
         self.contador.setText(t("{n} de {total}", n=indice + 1, total=total))
         self.boton_atras.setEnabled(indice > 0)
@@ -260,10 +397,17 @@ class CapaBienvenida(QWidget):
         # Empezar solo desde el final la primera vez; luego, siempre a mano con Cerrar.
         self.boton_empezar.setVisible(ultimo)
         self.boton_empezar.setText(t("Empezar sin recorrido") if self._ofrecer_guia else t("Empezar"))
+        self.boton_empezar.principal = not self._ofrecer_guia
+        self.boton_empezar.update()
         self.boton_guia.setVisible(ultimo and self._ofrecer_guia)
-        self.boton_empezar.setObjectName("" if self._ofrecer_guia else "principal")
-        self.boton_empezar.style().unpolish(self.boton_empezar)
-        self.boton_empezar.style().polish(self.boton_empezar)
+        if ultimo:
+            aviso = (t("Elige como empezar. El recorrido senala cada parte de la ventana, paso a paso.")
+                     if self._ofrecer_guia else "")
+        else:
+            aviso = t("Al final eliges como empezar. El recorrido senala cada parte de la ventana, paso a paso.")
+        self.nota_empezar.setText(aviso)
+        self.nota_empezar.setVisible(bool(aviso))
+        self.caja_empezar.setVisible(ultimo or (indice == APARTADO_BASICO and self._ofrecer_guia))
 
     def terminar(self, con_guia: bool) -> None:
         """Guarda la marca (no vuelve a salir sola) y quita la capa."""
