@@ -40,12 +40,12 @@ def test_texto_del_aviso_en_los_dos_casos():
     # (a) hay algo publicado que no tenemos: es cosa nuestra, en tono de aviso siempre.
     texto, aviso = indice.texto_desfase(ATRASADAS, ATRASADAS, "2026.08.19.11.06", build, reciente=False)
     assert aviso is True
-    assert "van por detras" in texto and "2026-06-25" in texto
+    assert "van por detrás" in texto and "2026-06-25" in texto
     # (b) tenemos lo ultimo publicado: no suena a fallo, y pasado el parche va en tono neutro.
     texto, aviso = indice.texto_desfase(ATRASADAS, [], "2026.08.19.11.06", build, reciente=False)
     assert aviso is False
-    assert "van por detras" not in texto
-    assert "lo mas reciente" in texto and "2026-06-25" in texto and "2026-08-19" in texto
+    assert "van por detrás" not in texto
+    assert "lo más reciente" in texto and "2026-06-25" in texto and "2026-08-19" in texto
     # (b) los dias siguientes al parche si se avisa: puede faltar contenido de verdad.
     _, aviso = indice.texto_desfase(ATRASADAS, [], "2026.08.19.11.06", build, reciente=True)
     assert aviso is True
@@ -76,7 +76,7 @@ def test_comprobar_la_version_publicada_la_deja_apuntada_sin_otra_peticion(tmp_p
     # Ajustes lo lee del fichero: las tablas de drops estan al dia, el catalogo no.
     estado = EstadoDatos.cargar()
     assert estado.al_dia_con_lo_publicado("tablas de drops") is True
-    assert estado.al_dia_con_lo_publicado("catalogo de objetos") is False
+    assert estado.al_dia_con_lo_publicado("catálogo de objetos") is False
     assert len(peticiones) == 2
 
 
@@ -106,9 +106,9 @@ def test_las_claves_nuevas_estan_en_los_cuatro_catalogos():
     from farmadex.idiomas import dir_catalogos
 
     texto, _ = indice.texto_desfase(ATRASADAS, [], "x", date(2026, 8, 19), reciente=False)
-    clave = ("Tienes lo mas reciente que han publicado WFCD y DE ({detalle}). El juego se actualizo "
-             "despues ({fecha_build}); si ese parche cambio algo, aparecera cuando publiquen sus tablas.")
-    assert texto.startswith("Tienes lo mas reciente")
+    clave = ("Tienes lo más reciente que han publicado WFCD y DE ({detalle}). El juego se actualizó "
+             "después ({fecha_build}); si ese parche cambió algo, aparecerá cuando publiquen sus tablas.")
+    assert texto.startswith("Tienes lo más reciente")
     for codigo in ("en", "fr", "de", "pt"):
         catalogo = json.loads((dir_catalogos() / f"{codigo}.json").read_text(encoding="utf-8"))
         assert clave in catalogo, codigo

@@ -261,8 +261,8 @@ class EtiquetaC(QLabel):
             f = self.font()
             f.setLetterSpacing(QFont.AbsoluteSpacing, espaciado)
             self.setFont(f)
-        if rol in ("titulo", "portada", "seccion", "rotulo") and mayus:
-            # Sin este margen, la tilde de las mayusculas (CÓMO) se corta en Bahnschrift.
+        if mayus and ROLES.get(rol, ROLES["normal"])[0] == TITULAR:
+            # Sin este margen, la tilde de las mayusculas (CÓMO, AÑADIR) se corta en Bahnschrift.
             self.setContentsMargins(0, 2, 0, 0)
         self.setWordWrap(envolver)
         self.setText(texto)

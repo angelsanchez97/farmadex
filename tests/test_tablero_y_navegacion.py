@@ -282,8 +282,8 @@ def _textos(widget):
 
 def test_sin_metas_invita_a_anadir_una(tablero):
     tablero.refrescar()
-    assert "AUN NO TIENES METAS" in _textos(tablero.heroe)
-    assert "Todavia no tienes metas" in _textos(tablero.panel_metas)
+    assert "AÚN NO TIENES METAS" in _textos(tablero.heroe)
+    assert "Todavía no tienes metas" in _textos(tablero.panel_metas)
     assert "Cargando el estado del mundo" in _textos(tablero.panel_fisuras)
     assert "Cargando el estado del mundo" in _textos(tablero.panel_ciclos)
 
@@ -311,7 +311,7 @@ def test_siguiente_paso_de_reliquia_dice_en_que_fisura_abrirla(tablero, usuario,
     tablero.actualizar_mundo(Mundo(fisuras=[_fisura("Lith", "Afrodita, Venus", "Defensa movil", 111)]))
     tablero.refrescar()
     heroe = _textos(tablero.heroe)
-    assert "ABRELA EN UNA FISURA LITH" in heroe and "1 abierta ahora" in heroe
+    assert "ÁBRELA EN UNA FISURA LITH" in heroe and "1 abierta ahora" in heroe
     assert "Lith S19" in heroe and "Te faltan 2 piezas de Citrine Prime para el set" in heroe
 
 
@@ -320,7 +320,7 @@ def test_sin_datos_del_mundo_lo_dice(tablero, usuario, rutas):
     tablero.marcar_desactualizado("sin red")
     tablero.refrescar()
     assert "No se pudo leer el estado del mundo" in _textos(tablero.panel_fisuras)
-    assert "Sin datos del mundo todavia" in _textos(tablero.heroe) or "CELULA" in _textos(tablero.heroe)
+    assert "Sin datos del mundo todavía" in _textos(tablero.heroe) or "CELULA" in _textos(tablero.heroe)
 
 
 def test_solo_recalcula_a_la_vista(tablero, usuario, rutas, monkeypatch):
@@ -362,4 +362,4 @@ def test_con_metas_pero_sin_indice_todavia_espera_a_los_datos(app, usuario, ruta
     t.conectar(None, usuario)
     t.refrescar()
     assert "Comprobando datos..." in _textos(t.heroe)
-    assert "AUN NO TIENES METAS" not in _textos(t.heroe)
+    assert "AÚN NO TIENES METAS" not in _textos(t.heroe)

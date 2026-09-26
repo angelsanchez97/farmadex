@@ -44,13 +44,13 @@ CLAVE_OCULTAS = "mundo_secciones_ocultas"
 # Los bloques que se pueden esconder, con una frase que diga que son. La clave "ahora"
 # era la franja de un vistazo de la disposicion en lista; en el diseno C es el panel HOY.
 SECCIONES = (
-    ("ahora", "Hoy de un vistazo: incursion, arcontes, onda nocturna y arbitraje"),
+    ("ahora", "Hoy de un vistazo: incursión, arcontes, onda nocturna y arbitraje"),
     ("ciclos", "Ciclos"),
     ("objetivos", "Fisuras para tus metas"),
-    ("fisuras", "Fisuras del Vacio"),
+    ("fisuras", "Fisuras del Vacío"),
     ("acero", "Fisuras del Camino de Acero"),
-    ("tormentas", "Tormentas del Vacio"),
-    ("sortie", "Incursion y arcontes"),
+    ("tormentas", "Tormentas del Vacío"),
+    ("sortie", "Incursión y arcontes"),
     ("baro", "Baro Ki'Teer"),
     ("teshin", "Teshin · Camino de Acero"),
     ("invasiones", "Invasiones y alertas"),
@@ -72,7 +72,7 @@ AVISOS_VENDEDORES = (
 )
 AVISOS_OTROS = (
     ("alertas", "Alertas nuevas", _INFO),
-    ("incursion", "Incursion nueva (cada dia)", _INFO),
+    ("incursion", "Incursión nueva (cada día)", _INFO),
     ("arcontes", "Caza de arcontes nueva (cada semana)", _INFO),
     ("noche_cetus", "Se haga de noche en Cetus", _LUNA),
 )
@@ -248,7 +248,7 @@ class PanelPersonalizar(QWidget):
         arriba = fila(self.titulo, px(16, False), self.subtitulo, None, self.boton_volver, espacio=0)
 
         # -- 1. bloques visibles
-        self.panel_bloques = PanelC(t("Que bloques ensenar"))
+        self.panel_bloques = PanelC(t("Qué bloques enseñar"))
         for clave, texto in SECCIONES:
             casilla = Interruptor(clave not in escondidas)
             etiqueta = EtiquetaC(t(texto), "normal", envolver=True)
@@ -258,7 +258,7 @@ class PanelPersonalizar(QWidget):
             self.panel_bloques.capa.addLayout(fila(etiqueta, None, casilla, espacio=px(8, False)))
         self.panel_bloques.capa.addStretch(1)
         self.panel_bloques.capa.addWidget(
-            EtiquetaC(t("Lo que apagues desaparece de la pestana Mundo."), "pequeno", envolver=True))
+            EtiquetaC(t("Lo que apagues desaparece de la pestaña Mundo."), "pequeno", envolver=True))
         self._pintar_secciones()
 
         # -- 2. avisos
@@ -274,12 +274,12 @@ class PanelPersonalizar(QWidget):
         self.panel_avisos.capa.addStretch(1)
 
         # -- 3. detalles
-        self.panel_detalles = PanelC(t("Fisuras: de que tipo"))
+        self.panel_detalles = PanelC(t("Fisuras: de qué tipo"))
         self.panel_detalles.capa.setSpacing(px(7, False))
         self.caja_fisuras = transparente(QWidget())
         detalle = columna(espacio=px(7, False))
         self.caja_fisuras.setLayout(detalle)
-        detalle.addWidget(self._rotulo(t("Tipo de mision")))
+        detalle.addWidget(self._rotulo(t("Tipo de misión")))
         flujo = Flujo(espacio=px(5, False))
         for clave, texto in avisos_mundo.TIPOS_FISURA:
             ficha = _ficha(glosa(texto, clave))
@@ -341,7 +341,7 @@ class PanelPersonalizar(QWidget):
         self.panel_detalles.capa.addWidget(self.caja_arbitraje)
         self.panel_detalles.capa.addStretch(1)
         self.boton_probar = BotonC(t("Probar un aviso"), icono="reloj", tam=11)
-        self.boton_probar.setToolTip(t("Manda un aviso de prueba para ver como se ve en tu Windows"))
+        self.boton_probar.setToolTip(t("Manda un aviso de prueba para ver cómo se ve en tu Windows"))
         self.boton_probar.clicked.connect(self.probar_aviso.emit)
         self.panel_detalles.capa.addWidget(self.boton_probar)
 

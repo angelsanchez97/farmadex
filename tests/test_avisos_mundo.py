@@ -111,7 +111,7 @@ def test_invasiones_por_palabras_en_los_dos_idiomas():
     assert _claves({"invasiones": True, "invasiones_palabras": "fieldron, catalyst"}) == ["invasion", "invasion"]
     assert _claves({"invasiones": True, "invasiones_palabras": ""}) == []
     texto = am.calcular(_mundo(), {"invasiones": True, "invasiones_palabras": "fieldron"}, AHORA)[0].texto
-    assert texto == "Invasion en Marid, Sedna: 3x Fieldron"
+    assert texto == "Invasión en Marid, Sedna: 3x Fieldron"
 
 
 def test_arbitraje_por_tipo():
@@ -141,7 +141,7 @@ def test_juntar_resume_si_hay_muchos():
     avisos = [am.Aviso(str(i), f"aviso {i}", AHORA) for i in range(6)]
     texto = am.juntar(avisos)
     assert texto.splitlines()[:4] == ["aviso 0", "aviso 1", "aviso 2", "aviso 3"]
-    assert "2 avisos mas" in texto
+    assert "2 avisos más" in texto
 
 
 def test_normalizar_aguanta_una_configuracion_rota():

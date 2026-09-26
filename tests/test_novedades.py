@@ -88,7 +88,7 @@ def test_la_ultima_actualizacion_junta_sus_hotfixes(indice):
     nombres = [f["nombre_en"] for f in datos["items"]]
     # Warframes delante, luego armas; dentro, los primes detras.
     assert nombres == ["Narin", "Citrine Prime", "Corufell", "Steflos Prime"]
-    assert novedades.titulo(datos) == "Actualizacion 44.0"
+    assert novedades.titulo(datos) == "Actualización 44.0"
     assert novedades.fecha_legible(datos["fecha"]) == "23/09/2026"
     idiomas.cargar("en")
     assert novedades.titulo(datos) == "Update 44.0" and novedades.fecha_legible("2026-09-23") == "2026-09-23"
@@ -132,7 +132,7 @@ def test_el_ultimo_warframe_abre_narin_y_menciona_los_demas(buscador):
     citrine = buscador.con.execute("SELECT id FROM items WHERE nombre_en = 'Citrine Prime'").fetchone()[0]
     assert buscador._actual == narin
     texto = buscador.ficha.toPlainText()
-    assert "Lo mas nuevo: Actualizacion 44.0 (23/09/2026)." in texto and "Tambien salio: Citrine Prime" in texto
+    assert "Lo más nuevo: Actualización 44.0 (23/09/2026)." in texto and "También salió: Citrine Prime" in texto
     assert f"item:{citrine}" in unquote(buscador.ficha.toHtml())
 
 
@@ -140,10 +140,10 @@ def test_novedades_abre_la_ficha_de_la_actualizacion(buscador):
     _buscar(buscador, "novedades")
     assert buscador._mision_actual == "novedades:todo"
     texto = buscador.ficha.toPlainText()
-    assert "Lo nuevo de la Actualizacion 44.0 (23/09/2026)" in texto
+    assert "Lo nuevo de la Actualización 44.0 (23/09/2026)" in texto
     for nombre in ("Narin", "Citrine Prime", "Corufell", "Steflos Prime"):
         assert nombre in texto
-    assert "Como conseguirlo" in texto
+    assert "Cómo conseguirlo" in texto
     # El ultimo prime: varios, asi que la ficha de novedades (no un objeto suelto).
     _buscar(buscador, "ultimo prime")
     assert buscador._mision_actual == "novedades:prime"
@@ -152,7 +152,7 @@ def test_novedades_abre_la_ficha_de_la_actualizacion(buscador):
 def test_con_el_buscador_vacio_una_linea_de_novedades(buscador):
     _buscar(buscador, "")
     texto = buscador.ficha.toPlainText()
-    assert texto.startswith("Novedades (Actualizacion 44.0): Narin, Citrine Prime")
+    assert texto.startswith("Novedades (Actualización 44.0): Narin, Citrine Prime")
 
 
 def test_sin_datos_de_fecha_un_aviso_claro(app, con, tmp_path, monkeypatch):

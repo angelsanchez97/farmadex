@@ -82,9 +82,9 @@ CLAVE_ORDEN = "primes_orden"
 ORDENES = (
     ("nombre", "Por nombre"),
     ("marcados", "Marcados primero"),
-    ("buscadas", "Mas piezas en busqueda"),
-    ("recientes", "Mas recientes"),
-    ("conseguidos", "Recien conseguidos"),
+    ("buscadas", "Más piezas en búsqueda"),
+    ("recientes", "Más recientes"),
+    ("conseguidos", "Recién conseguidos"),
 )
 # Ancho de las tarjetas: el del texto mas largo, pero dentro de estos limites, para que
 # la rejilla sea como una hoja de calculo y no cada caja de un tamano.
@@ -149,7 +149,7 @@ def _rotacion(mision: dict, color: str) -> str:
     """'rotacion C' con su explicacion para el modo de la mision al pasar el raton."""
     if mision.get("rotacion"):
         return glosario.enlace_rotacion(
-            mision.get("modo"), mision["rotacion"], t("rotacion {rot}", rot=mision["rotacion"]), color
+            mision.get("modo"), mision["rotacion"], t("rotación {rot}", rot=mision["rotacion"]), color
         )
     return html.escape(mision.get("etapa") or "")
 
@@ -204,7 +204,7 @@ def bloque_ficha(con: sqlite3.Connection | None, item_id: int) -> str | None:
     p = PALETA
     cabecera = (
         f"<div style='color:{p['acento']};font-size:12px;font-weight:bold'>"
-        f"{html.escape(t('Por donde empezar')).upper()}</div>"
+        f"{html.escape(t('Por dónde empezar')).upper()}</div>"
     )
     if ruta is not None:
         return _tarjeta(cabecera + _cuerpo_ruta(ruta), COLOR_BOVEDA if ruta["solo_en_boveda"] else p["acento"])
@@ -233,15 +233,15 @@ def bloque_ficha(con: sqlite3.Connection | None, item_id: int) -> str | None:
                 ) if x
             )
         elif ruta["solo_en_boveda"]:
-            detalle = glosario.enlace("boveda", t("en boveda"), COLOR_BOVEDA)
+            detalle = glosario.enlace("boveda", t("en bóveda"), COLOR_BOVEDA)
         else:
-            detalle = html.escape(t("sin mision que se pueda estimar"))
+            detalle = html.escape(t("sin misión que se pueda estimar"))
         lineas.append(f"<div style='margin-top:3px;color:{p['suave']}'>{enlace}: {detalle}</div>")
     if not lineas:
         return None
     pie = (
         f"<div style='color:{p['suave']};font-size:12px;margin-top:4px'>"
-        + html.escape(t("Tiempo medio hasta cada pieza ({modo}). Todas juntas, en la pestana Primes.",
+        + html.escape(t("Tiempo medio hasta cada pieza ({modo}). Todas juntas, en la pestaña Primes.",
                         modo=texto_modo(refinamiento, escuadra)))
         + "</div>"
     )
@@ -258,14 +258,14 @@ def _cuerpo_ruta(ruta: dict) -> str:
     if ruta["solo_en_boveda"]:
         cuerpo.append(
             "<div style='margin-top:2px'>"
-            + glosario.enlace("boveda", t("En boveda: solo por intercambio, Baro Ki'Teer o Prime Resurgence"), COLOR_BOVEDA)
+            + glosario.enlace("boveda", t("En bóveda: solo por intercambio, Baro Ki'Teer o Prime Resurgence"), COLOR_BOVEDA)
             + "</div>"
         )
         return "".join(cuerpo)
     if not mision:
         cuerpo.append(
             f"<div style='color:{p['suave']};margin-top:2px'>"
-            + html.escape(t("Ninguna de sus reliquias cae en una mision que se pueda estimar."))
+            + html.escape(t("Ninguna de sus reliquias cae en una misión que se pueda estimar."))
             + "</div>"
         )
         return "".join(cuerpo)
@@ -450,7 +450,7 @@ class CajaPrime(PanelC):
         textos = columna(self.titulo, espacio=px(3, False))
         if objeto is not None:
             en_boveda = bool(objeto.get("en_boveda"))
-            self.insignia = Insignia(t("Boveda") if en_boveda else t("Se farmea"),
+            self.insignia = Insignia(t("Bóveda") if en_boveda else t("Se farmea"),
                                      COLOR_BOVEDA if en_boveda else "ok", tam=10)
             glosario.aplicar(self.insignia, "boveda")
             textos.addLayout(fila(self.insignia, self.maestria, None, espacio=px(6, False)))
@@ -510,7 +510,7 @@ class CajaPrime(PanelC):
             casilla.poner(texto, extra, tinta)
             ayuda = [pista] if pista else []
             if pieza["en_boveda"]:
-                ayuda.append(t("En boveda: solo por intercambio, Baro Ki'Teer o Prime Resurgence"))
+                ayuda.append(t("En bóveda: solo por intercambio, Baro Ki'Teer o Prime Resurgence"))
             casilla.setToolTip("\n".join(ayuda))
         if maestria:
             self.maestria.poner("✓ " + maestria)
@@ -686,12 +686,12 @@ class PestanaPrimes(QWidget):
     def retraducir(self) -> None:
         self.filtro.setPlaceholderText(t("Filtra por nombre (p. ej. caliban, forma)"))
         if not self._cargando_boveda:
-            self.incluir_boveda.setText(t("Incluir lo que esta en boveda"))
+            self.incluir_boveda.setText(t("Incluir lo que está en bóveda"))
         self.limpiar.setText(t("Desmarcar todo"))
         self.etiqueta_refinamiento.setText(t("Reliquias:"))
         self.etiqueta_escuadra.setText(t("Jugando:"))
         self.etiqueta_orden.setText(t("Ordenar:"))
-        self.panel_resultado.poner_titulo(t("Donde farmear"))
+        self.panel_resultado.poner_titulo(t("Dónde farmear"))
         self._rellenar_orden()
         self._rellenar_combos()
         self._construir_rejilla()
@@ -859,7 +859,7 @@ class PestanaPrimes(QWidget):
     def _pintar_cabeceras(self) -> None:
         textos = {
             "sets": t("Sets Prime ({n})", n=len(getattr(self, "_cajas_sets", []))),
-            "genericos": t("Objetos genericos: no son de ningun set"),
+            "genericos": t("Objetos genéricos: no son de ningún set"),
         }
         for clave, cabecera in self._cabeceras.items():
             cabecera.rotulo.setText(textos[clave])
@@ -906,7 +906,7 @@ class PestanaPrimes(QWidget):
         for clave, texto in ORDENES:
             self.orden.addItem(t(texto), clave)
         self.orden.setCurrentIndex(max(0, self.orden.findData(actual)))
-        self.orden.setToolTip(t("Como ordenar los sets. Los objetos genericos van siempre al final."))
+        self.orden.setToolTip(t("Cómo ordenar los sets. Los objetos genéricos van siempre al final."))
         self.orden.blockSignals(False)
 
     def _cambiar_orden(self, *_):
@@ -1025,7 +1025,7 @@ class PestanaPrimes(QWidget):
     def _boveda_lista(self) -> None:
         if self._cargando_boveda:
             return
-        self.incluir_boveda.setText(t("Incluir lo que esta en boveda"))
+        self.incluir_boveda.setText(t("Incluir lo que está en bóveda"))
         self.incluir_boveda.setEnabled(True)
 
     def _cambiar_modo(self, *_):
@@ -1110,7 +1110,7 @@ class PestanaPrimes(QWidget):
             caja.pintar(estados, maestria)
         self._n_marcadas = sum(1 for u in objetivos if u in self._piezas)
         self.boton_rejilla.setText(t("Volver a las piezas ({n})", n=self._n_marcadas))
-        self.boton_resultado.setText(t("Ver que farmear"))
+        self.boton_resultado.setText(t("Ver qué farmear"))
         self._temporizador.start()
 
     def _estado_pieza(self, pieza: dict, objetivo) -> tuple[str | None, str]:
@@ -1158,8 +1158,8 @@ class PestanaPrimes(QWidget):
         if not datos["marcadas"]:
             return (
                 f"<p style='color:{p['suave']}'>"
-                + html.escape(t("Marca en la rejilla las piezas que quieres: aqui saldran las reliquias "
-                                "que las contienen y las misiones donde farmearlas, de menos a mas tiempo."))
+                + html.escape(t("Marca en la rejilla las piezas que quieres: aquí saldrán las reliquias "
+                                "que las contienen y las misiones donde farmearlas, de menos a más tiempo."))
                 + "</p>"
             )
         nombres = {p_["id"]: self.nombre_pieza(p_) for p_ in datos["marcadas"]}
@@ -1182,7 +1182,7 @@ class PestanaPrimes(QWidget):
             return "".join(partes)
         if datos["solo_boveda"]:
             partes.append(_tarjeta(
-                glosario.enlace("boveda", t("En boveda: solo por intercambio, Baro Ki'Teer o Prime Resurgence"),
+                glosario.enlace("boveda", t("En bóveda: solo por intercambio, Baro Ki'Teer o Prime Resurgence"),
                                 COLOR_BOVEDA)
                 + f"<div style='color:{p['texto']};margin-top:2px'>"
                 + html.escape(", ".join(nombres[x["id"]] for x in datos["solo_boveda"])) + "</div>",
@@ -1194,10 +1194,10 @@ class PestanaPrimes(QWidget):
             f"<div style='color:{p['suave']};font-size:12px;margin:6px 0 4px 4px'>"
             + html.escape(t(
                 "Tiempo medio hasta la siguiente pieza de las marcadas: lo que tarda en caer una reliquia "
-                "util en esa mision, mas una fisura de ~{fisura} min para abrirla, por las reliquias que hay "
+                "útil en esa misión, más una fisura de ~{fisura} min para abrirla, por las reliquias que hay "
                 "que abrir de media. En escuadra de 4 compartiendo reliquia cada fisura gasta una reliquia "
-                "tuya y da cuatro tiradas. No cuenta refinar (Trazas del Vacio). Las duraciones son una "
-                "estimacion para un jugador medio.", fisura=f"{round(eficiencia.minutos_fisura(), 1):g}"))
+                "tuya y da cuatro tiradas. No cuenta refinar (Trazas del Vacío). Las duraciones son una "
+                "estimación para un jugador medio.", fisura=f"{round(eficiencia.minutos_fisura(), 1):g}"))
             + "</div>"
         )
         return "".join(partes)
@@ -1206,9 +1206,9 @@ class PestanaPrimes(QWidget):
         p = PALETA
         misiones = datos["misiones"]
         if not misiones:
-            return _seccion(t("Donde farmear")) + (
+            return _seccion(t("Dónde farmear")) + (
                 f"<p style='color:{p['suave']}'>"
-                + html.escape(t("Ninguna reliquia fuera de boveda cae en una mision que se pueda estimar."))
+                + html.escape(t("Ninguna reliquia fuera de bóveda cae en una misión que se pueda estimar."))
                 + "</p>"
             )
         visibles = misiones[:MAX_MISIONES]
@@ -1241,7 +1241,7 @@ class PestanaPrimes(QWidget):
         if len(misiones) > MAX_MISIONES:
             filas.append(
                 f"<tr><td colspan='5' style='color:{p['suave']}'>"
-                + html.escape(t("y {n} sitios mas, con mas tiempo", n=len(misiones) - MAX_MISIONES))
+                + html.escape(t("y {n} sitios más, con más tiempo", n=len(misiones) - MAX_MISIONES))
                 + "</td></tr>"
             )
         cabecera = (
@@ -1249,7 +1249,7 @@ class PestanaPrimes(QWidget):
             f"<td>{html.escape(t('Reliquias'))}</td><td align='right'>{html.escape(t('Alguna'))}</td>"
             f"<td align='right'>{html.escape(t('Hasta la pieza'))}</td></tr>"
         )
-        return _seccion(t("Donde farmear")) + (
+        return _seccion(t("Dónde farmear")) + (
             f"<table width='100%' cellspacing='0' cellpadding='5' style='background:{p['panel2']}'>"
             + cabecera + "".join(filas) + "</table>"
         ) + enlaces_wiki.linea(visibles, p["suave"], p["acento"])
@@ -1280,7 +1280,7 @@ class PestanaPrimes(QWidget):
         if len(disponibles) > MAX_RELIQUIAS:
             filas.append(
                 f"<tr><td colspan='4' style='color:{p['suave']}'>"
-                + html.escape(t("y {n} reliquias mas", n=len(disponibles) - MAX_RELIQUIAS))
+                + html.escape(t("y {n} reliquias más", n=len(disponibles) - MAX_RELIQUIAS))
                 + "</td></tr>"
             )
         if boveda:
@@ -1291,7 +1291,7 @@ class PestanaPrimes(QWidget):
             filas.append(
                 f"<tr><td width='4' style='background:{COLOR_BOVEDA}'></td><td colspan='3' "
                 f"style='font-size:12px'>"
-                + glosario.enlace("boveda", t("En boveda ({n}), no entran en el orden:", n=len(boveda)), COLOR_BOVEDA)
+                + glosario.enlace("boveda", t("En bóveda ({n}), no entran en el orden:", n=len(boveda)), COLOR_BOVEDA)
                 + f" {nombres_boveda}</td></tr>"
             )
         titulo = t("Reliquias ({refinamiento})", refinamiento=refinamiento)

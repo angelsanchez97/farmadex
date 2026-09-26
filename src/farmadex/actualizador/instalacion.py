@@ -204,7 +204,7 @@ def _comillas(texto: str) -> str:
 # Lo que el setup escribe en instalador.log (Log() en PrepareToInstall, instalador.iss)
 # cuando se rinde porque otro Farmadex sigue abierto. Se busca literalmente.
 MARCA_OTRA_INSTANCIA = "Farmadex sigue abierto"
-MOTIVO_SIN_RASTRO = "el instalador no llego a arrancar (instalador.log no tiene nada de esa hora)"
+MOTIVO_SIN_RASTRO = "el instalador no llegó a arrancar (instalador.log no tiene nada de esa hora)"
 MOTIVO_DETENIDO = "el instalador se detuvo: {detalle}"
 RE_LINEA_INSTALADOR = re.compile(r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)\.\d+\s+(.*)$")
 

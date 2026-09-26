@@ -193,35 +193,35 @@ class PanelVideo(QWidget):
     # -- textos ---------------------------------------------------------------
 
     def retraducir(self) -> None:
-        self.boton_modo.setText(t("Modo video"))
-        self.boton_modo.setToolTip(t("Deja Farmadex reducido a solo el video, encima del juego"))
-        self.boton_atras.setText(t("Atras"))
-        self.boton_atras.setToolTip(t("Vuelve a la pagina anterior"))
+        self.boton_modo.setText(t("Modo vídeo"))
+        self.boton_modo.setToolTip(t("Deja Farmadex reducido a solo el vídeo, encima del juego"))
+        self.boton_atras.setText(t("Atrás"))
+        self.boton_atras.setToolTip(t("Vuelve a la página anterior"))
         self.boton_recargar.setText(t("Recargar"))
-        self.boton_recargar.setToolTip(t("Vuelve a cargar la pagina"))
+        self.boton_recargar.setToolTip(t("Vuelve a cargar la página"))
         self.boton_navegador.setText(t("Abrir en el navegador"))
-        self.boton_navegador.setToolTip(t("Abre lo que se esta viendo en tu navegador de siempre"))
+        self.boton_navegador.setToolTip(t("Abre lo que se está viendo en tu navegador de siempre"))
         self.boton_cerrar.setText(self._texto_cerrar())
         self.boton_fallo.setText(t("Abrir en el navegador"))
         self._pintar_mensaje()
         self._pintar_botones()
 
     def _texto_cerrar(self) -> str:
-        return t("Cerrar video")
+        return t("Cerrar vídeo")
 
     def _textos_mensaje(self) -> dict[str, str]:
         return {
-            "vacio": t("Pulsa \"Guias en YouTube\" en la ficha de una mision o de un objeto y el video "
-                       "se vera aqui."),
+            "vacio": t("Pulsa \"Guías en YouTube\" en la ficha de una misión o de un objeto y el vídeo "
+                       "se verá aquí."),
             "cargando": t("Abriendo el reproductor..."),
-            "fallo": t("No se puede reproducir aqui. Puedes abrir la guia en el navegador."),
+            "fallo": t("No se puede reproducir aquí. Puedes abrir la guía en el navegador."),
         }
 
     def _texto_abierto(self) -> str:
-        return t("Guia abierta en el panel Video.")
+        return t("Guía abierta en el panel Vídeo.")
 
     def _texto_fallo(self) -> str:
-        return t("No se puede reproducir aqui: usa \"Abrir en el navegador\".")
+        return t("No se puede reproducir aquí: usa \"Abrir en el navegador\".")
 
     def repintar(self) -> None:
         """Tras cambiar de tema: el glifo del aviso lleva su color puesto a mano."""
@@ -465,18 +465,18 @@ class PanelWeb(PanelVideo):
         self.boton_modo.hide()
 
     def _texto_cerrar(self) -> str:
-        return t("Cerrar pagina")
+        return t("Cerrar página")
 
     def _textos_mensaje(self) -> dict[str, str]:
         return {
             "vacio": t("Pulsa \"Builds en Overframe\" en la ficha de un warframe o de un arma, o en la "
-                       "pestana Build, y la pagina se vera aqui."),
-            "cargando": t("Abriendo la pagina..."),
-            "fallo": t("No se puede abrir aqui. Puedes abrir la pagina en el navegador."),
+                       "pestaña Build, y la página se verá aquí."),
+            "cargando": t("Abriendo la página..."),
+            "fallo": t("No se puede abrir aquí. Puedes abrir la página en el navegador."),
         }
 
     def _texto_abierto(self) -> str:
-        return t("Pagina abierta en la pestana Web.")
+        return t("Página abierta en la pestaña Web.")
 
     def _texto_fallo(self) -> str:
-        return t("No se puede abrir aqui: usa \"Abrir en el navegador\".")
+        return t("No se puede abrir aquí: usa \"Abrir en el navegador\".")

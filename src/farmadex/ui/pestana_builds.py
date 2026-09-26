@@ -52,7 +52,7 @@ CATEGORIA_ES = {
     "Archwing": "Archwing",
     "Sentinels": "Centinela",
     "SentinelWeapons": "Arma de centinela",
-    "Pets": "Companero",
+    "Pets": "Compañero",
     "Mods": "Mod",
     "Arcanes": "Arcano",
 }
@@ -118,7 +118,7 @@ class PestanaBuilds(QWidget):
         self.panel_equipo.capa.addWidget(self.estado)
         self.panel_equipo.capa.addLayout(fila(None, self.boton_overframe, self.boton_ficha, None, espacio=px(8, False)))
 
-        self.panel_como = PanelC(t("Como se usa"), remate=False)
+        self.panel_como = PanelC(t("Cómo se usa"), remate=False)
         self.nota = EtiquetaC("", "pequeno", envolver=True)
         self.panel_como.capa.addWidget(self.nota)
 
@@ -129,8 +129,8 @@ class PestanaBuilds(QWidget):
         self.rejilla_mods.setVerticalSpacing(px(10, False))
         self.panel_mods.capa.addLayout(self.rejilla_mods)
         self.panel_arcanos = PanelC(t("Arcanos"), remate=False)
-        self.panel_coleccion = PanelC(t("En la coleccion (abajo)"), remate=False)
-        self.panel_sueltos = PanelC(t("Se leyo pero no se reconocio"), remate=False)
+        self.panel_coleccion = PanelC(t("En la colección (abajo)"), remate=False)
+        self.panel_sueltos = PanelC(t("Se leyó pero no se reconoció"), remate=False)
         self.capa_arcanos = columna(espacio=px(6, False))
         self.capa_coleccion = columna(espacio=px(6, False))
         self.capa_sueltos = columna(espacio=px(6, False))
@@ -187,25 +187,25 @@ class PestanaBuilds(QWidget):
         self.tecla_atajo.setText(atajo.upper())
         self.tecla_atajo.setVisible(bool(atajo))
         self.nota.setText(t(
-            "En el juego, abre Arsenal > Mejorar de la warframe o el arma que quieras y pulsa el boton "
+            "En el juego, abre Arsenal > Mejorar de la warframe o el arma que quieras y pulsa el botón "
             "o el atajo. Farmadex lee los nombres de los mods de la pantalla y te deja pulsar cada uno "
-            "para ver de donde sale. Lo que no reconozca con seguridad lo deja aparte."
+            "para ver de dónde sale. Lo que no reconozca con seguridad lo deja aparte."
         ))
-        for panel, titulo in ((self.panel_equipo, "Equipo"), (self.panel_como, "Como se usa"),
+        for panel, titulo in ((self.panel_equipo, "Equipo"), (self.panel_como, "Cómo se usa"),
                               (self.panel_mods, "Mods equipados"), (self.panel_arcanos, "Arcanos"),
-                              (self.panel_coleccion, "En la coleccion (abajo)"),
-                              (self.panel_sueltos, "Se leyo pero no se reconocio")):
+                              (self.panel_coleccion, "En la colección (abajo)"),
+                              (self.panel_sueltos, "Se leyó pero no se reconoció")):
             panel.poner_titulo(t(titulo))
         self.boton_overframe.setText(t("Builds en Overframe"))
         self.boton_overframe.setToolTip(t("Abre Overframe, la web de builds de la comunidad, con este "
-                                          "warframe o arma, dentro de Farmadex (pestana Web)."))
+                                          "warframe o arma, dentro de Farmadex (pestaña Web)."))
         self.boton_ficha.setText(t("Abrir ficha"))
         self.boton_ficha.setToolTip(t("Abrir la ficha en Buscar"))
         if self.build is not None:
             self.mostrar_build(self.build)
         else:
-            self.estado.setText(t("Todavia no has leido ninguna build. Abre la pantalla de mejoras en el "
-                                  "juego y pulsa el boton de arriba."))
+            self.estado.setText(t("Todavía no has leído ninguna build. Abre la pantalla de mejoras en el "
+                                  "juego y pulsa el botón de arriba."))
 
     def repintar(self) -> None:
         if self.build is not None:
@@ -264,7 +264,7 @@ class PestanaBuilds(QWidget):
 
         if build.vacia:
             self.estado.setText(t(
-                "No se ha reconocido nada. Comprueba que la pantalla de mejoras esta abierta y a la vista."
+                "No se ha reconocido nada. Comprueba que la pantalla de mejoras está abierta y a la vista."
             ))
             self._pintar_sueltos(build.sin_identificar)
             return
@@ -274,7 +274,7 @@ class PestanaBuilds(QWidget):
         partes.append(t("{n} mods", n=len(build.equipados) + len(build.coleccion)))
         if build.arcanos:
             partes.append(t("{n} arcanos", n=len(build.arcanos)))
-        self.estado.setText(t("Leido: {resumen}. Pulsa cualquiera para ver de donde sale.", resumen=", ".join(partes)))
+        self.estado.setText(t("Leído: {resumen}. Pulsa cualquiera para ver de dónde sale.", resumen=", ".join(partes)))
 
         for i, r in enumerate(build.equipados):
             casilla = self._casilla_mod(r.item_id, r.nombre, r.puntuacion)

@@ -39,6 +39,7 @@ from .estilo_c import (
     EtiquetaC,
     Insignia,
     PiezaC,
+    TEXTO,
     Rombo,
     color,
     columna,
@@ -88,7 +89,10 @@ class InsigniaGlosa(Insignia):
             return
         visible = (texto or "").upper().replace("&", "&amp;").replace("<", "&lt;")
         c = color(getattr(self, "tinta", "acento")).name()
-        QLabel.setText(self, f"<a href='{glosario.PREFIJO}{self.clave}' style='color:{c};"
+        # El espacio de anchura cero en Segoe UI sube la linea: en texto enriquecido la tilde
+        # de las mayusculas de Bahnschrift (EN BÓVEDA) se cortaba por arriba.
+        QLabel.setText(self, f"<span style=\"font-family:'{TEXTO}'\">&#8203;</span>"
+                             f"<a href='{glosario.PREFIJO}{self.clave}' style='color:{c};"
                              f"text-decoration:none'>{visible}</a>")
 
     def refrescar_estilo(self) -> None:

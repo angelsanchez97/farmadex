@@ -146,7 +146,7 @@ class Baro:
         if tiempo and tiempo != "terminado":
             texto = t("{personaje} llega en {tiempo}", personaje=self.personaje, tiempo=tiempo)
             return f"{texto} ({self.lugar})" if self.lugar else texto
-        return t("{personaje} todavia no ha llegado", personaje=self.personaje)
+        return t("{personaje} todavía no ha llegado", personaje=self.personaje)
 
     def objetivos(self) -> list[ObjetoBaro]:
         return [o for o in self.inventario if o.objetivo]
@@ -391,7 +391,7 @@ def _premio(recompensa) -> str:
         for c in _dicts(recompensa.get("countedItems"))
     ]
     if recompensa.get("credits"):
-        partes.append(t("{n} creditos", n=recompensa["credits"]))
+        partes.append(t("{n} créditos", n=recompensa["credits"]))
     return " + ".join(p for p in partes if p)
 
 
@@ -465,15 +465,15 @@ CICLOS = {
     "duviriCycle": "Duviri",
 }
 ESTADOS_CICLO = {
-    "day": "dia",
+    "day": "día",
     "night": "noche",
     "warm": "calor",
-    "cold": "frio",
+    "cold": "frío",
     "fass": "Fass",
     "vome": "Vome",
     "grineer": "Grineer",
     "corpus": "Corpus",
-    "joy": "alegria",
+    "joy": "alegría",
     "anger": "ira",
     "envy": "envidia",
     "sorrow": "tristeza",
@@ -666,7 +666,7 @@ def analizar(datos: dict, traductor: Traductor) -> Mundo:
                 Recompensa(
                     texto=f"[{etiqueta}] {r.get('title') or r.get('desc') or ''}",
                     expira=_momento(r.get("expiry")),
-                    detalle=t("{standing} de reputacion", standing=r.get("reputation") or 0),
+                    detalle=t("{standing} de reputación", standing=r.get("reputation") or 0),
                 )
             )
         return sorted(salida, key=lambda r: (r.expira or datetime.max.replace(tzinfo=timezone.utc)))
@@ -682,7 +682,7 @@ def analizar(datos: dict, traductor: Traductor) -> Mundo:
                     x
                     for x in (
                         t("{n} ducados", n=o.ducados) if o.ducados else "",
-                        t("{n} creditos", n=o.creditos) if o.creditos else "",
+                        t("{n} créditos", n=o.creditos) if o.creditos else "",
                     )
                     if x
                 ),

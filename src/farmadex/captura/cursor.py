@@ -77,7 +77,7 @@ class LectorCursor(LectorBase):
             self.candidatos.emit([])
             return
         if not encontrados:
-            self.estado.emit(t("No se reconocio nada bajo el cursor"))
+            self.estado.emit(t("No se reconoció nada bajo el cursor"))
             self.candidatos.emit([])
             return
 

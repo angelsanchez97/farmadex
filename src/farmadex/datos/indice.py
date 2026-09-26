@@ -307,7 +307,7 @@ def desfase_con_el_juego(meta: dict, fecha_build) -> list[tuple[str, str]]:
     if not fecha_build or not meta:
         return []
     atrasadas = []
-    for clave, fuente in (("items_fecha", "catalogo de objetos"), ("drops_modified", "tablas de drops")):
+    for clave, fuente in (("items_fecha", "catálogo de objetos"), ("drops_modified", "tablas de drops")):
         fecha = fecha_de_meta(meta.get(clave))
         if clave == "drops_modified":
             # Si el indice uso la tabla oficial de DE, las tablas son de esa fecha.
@@ -332,15 +332,15 @@ def texto_desfase(atrasadas, pendientes, build: str, fecha_build, reciente: bool
     if pendientes:
         detalle = ", ".join(t("{fuente} del {fecha}", fuente=t(f), fecha=fecha) for f, fecha in pendientes)
         return t(
-            "Warframe se ha actualizado (build {build}) y los datos van por detras: {detalle}. "
-            "Puede faltar lo nuevo del parche; se volveran a descargar cuando WFCD y DE los publiquen.",
+            "Warframe se ha actualizado (build {build}) y los datos van por detrás: {detalle}. "
+            "Puede faltar lo nuevo del parche; se volverán a descargar cuando WFCD y DE los publiquen.",
             build=build or "?",
             detalle=detalle,
         ), True
     detalle = ", ".join(t("{fuente} del {fecha}", fuente=t(f), fecha=fecha) for f, fecha in atrasadas)
     return t(
-        "Tienes lo mas reciente que han publicado WFCD y DE ({detalle}). El juego se actualizo "
-        "despues ({fecha_build}); si ese parche cambio algo, aparecera cuando publiquen sus tablas.",
+        "Tienes lo más reciente que han publicado WFCD y DE ({detalle}). El juego se actualizó "
+        "después ({fecha_build}); si ese parche cambió algo, aparecerá cuando publiquen sus tablas.",
         detalle=detalle,
         fecha_build=fecha_build.isoformat() if fecha_build else "?",
     ), reciente
@@ -549,7 +549,7 @@ def construir(progreso=None, forzar: bool = False) -> dict:
 
     if not cambios and indice_al_dia() and not forzar:
         log.info("Datos al dia y el indice ya existe; no se reconstruye")
-        avisar("Datos al dia", 1, 1)
+        avisar("Datos al día", 1, 1)
         return {"reconstruido": False}
 
     faltan = [c for c in CATEGORIAS_ESENCIALES if not (DIR_DATOS / f"{c}.json").exists()]

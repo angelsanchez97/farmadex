@@ -161,7 +161,7 @@ def test_el_panel_web_tiene_sus_ficheros_y_sus_textos(app, carpeta):
     web, guia = _panel(reproductor.PanelWeb), _panel(reproductor.PanelVideo)
     try:
         assert "Builds en Overframe" in web.mensaje.text() and web.boton_modo.isHidden()
-        assert web.boton_cerrar.text() == "Cerrar pagina"
+        assert web.boton_cerrar.text() == "Cerrar página"
         web.abrir(URL)
         guia.abrir("https://www.youtube.com/results?search_query=warframe")
         args_web, args_guia = web.lanzados[0][0], guia.lanzados[0][0]
@@ -170,7 +170,7 @@ def test_el_panel_web_tiene_sus_ficheros_y_sus_textos(app, carpeta):
         assert str(carpeta / "perfil_web") in args_web and str(carpeta / "perfil") in args_guia
         assert not guia.lanzados[0][1].matado
         _incrustar(web)
-        assert web.reproduciendo and "Pagina abierta" in web._texto_abierto()
+        assert web.reproduciendo and "Página abierta" in web._texto_abierto()
     finally:
         web.cerrar()
         guia.cerrar()
@@ -216,7 +216,7 @@ def test_si_falla_lo_dice_y_ofrece_el_navegador(app, abiertas):
         argumentos = web.lanzados[0][0]
         Path(argumentos[argumentos.index("--estado") + 1]).write_text("ERROR sin_webview2", encoding="utf-8")
         web._sondear()
-        assert "No se puede abrir aqui" in web.mensaje.text() and abiertas == []
+        assert "No se puede abrir aquí" in web.mensaje.text() and abiertas == []
         web.boton_fallo.click()
         assert abiertas == [URL]
     finally:

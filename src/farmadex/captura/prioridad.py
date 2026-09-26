@@ -45,11 +45,11 @@ PRIORIDAD_POR_DEFECTO = ME_FALTA
 # (clave, texto del desplegable, tooltip de una linea). El orden es el del desplegable.
 PREAJUSTES: tuple[tuple[str, str, str], ...] = (
     (ME_FALTA, "Lo que me falta",
-     "Primero las piezas de tus objetivos y marcas, luego las que completan un set y lo que aun no tienes; despues el platino."),
-    (PLATINO, "Mas platino",
-     "La que mas platino vale; si dos cuestan casi lo mismo, la que te falta."),
-    (DUCADOS, "Mas ducados",
-     "La que mas ducados da para Baro Ki'Teer; a igualdad, la de mas platino."),
+     "Primero las piezas de tus objetivos y marcas, luego las que completan un set y lo que aún no tienes; después el platino."),
+    (PLATINO, "Más platino",
+     "La que más platino vale; si dos cuestan casi lo mismo, la que te falta."),
+    (DUCADOS, "Más ducados",
+     "La que más ducados da para Baro Ki'Teer; a igualdad, la de más platino."),
     (EQUILIBRADO, "Equilibrado",
      "Tus objetivos y luego el mayor valor entre platino y ducados, como hasta ahora."),
 )
@@ -217,7 +217,7 @@ def motivo_principal(r, prioridad: str | None) -> Motivo:
         if cumple(criterio, r):
             return Motivo(criterio, texto_criterio(criterio, r))
     if getattr(r, "vaulted", False):
-        return Motivo("boveda", t("En boveda"))
+        return Motivo("boveda", t("En bóveda"))
     if not getattr(r, "comerciable", True) and not getattr(r, "ducados", None):
         return Motivo("sin_valor", t("Sin valor"))
     return Motivo("sin_precio", t("Sin precio"))

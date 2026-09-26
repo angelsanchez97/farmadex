@@ -159,5 +159,5 @@ def test_la_casilla_de_boveda_no_se_lanza_dos_veces(entorno, monkeypatch):
     assert pestana.incluir_boveda.text() == "Cargando, espera..."
     pestana._boveda_lista()
     assert pestana.incluir_boveda.isEnabled()
-    assert pestana.incluir_boveda.text() == "Incluir lo que esta en boveda"
+    assert pestana.incluir_boveda.text() == "Incluir lo que está en bóveda"
     assert any(c.objeto and c.objeto["nombre_en"] == "Ash Prime" for c in pestana._cajas)

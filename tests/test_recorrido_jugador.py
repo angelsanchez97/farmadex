@@ -144,7 +144,7 @@ def test_la_ficha_de_una_reliquia_en_boveda_no_dice_que_venga_de_una_mision_de_h
     pestana.habilitar(True)
     html_ficha = pestana._html(items.ficha(con, rid))
     assert "Sin fuentes registradas" not in html_ficha
-    assert "No cae en ninguna mision activa" in html_ficha
+    assert "No cae en ninguna misión activa" in html_ficha
     assert "Hay que comprarla a otro jugador" in html_ficha
     # Y el contenido lleva la rareza buena: la pieza al 10 % es la rara.
     assert html_ficha.index("Zhuge Prime Barrel") < html_ficha.index("Lex Prime Barrel")

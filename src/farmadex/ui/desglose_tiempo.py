@@ -37,31 +37,31 @@ def _linea_intento(d: dict) -> tuple[str, bool]:
             n=d["tandas"], tanda=_num(d["min_tanda"]), min=partida,
         ), False
     if clase == "tramos" and rotacion:
-        return t("~{min} min por partida (hasta la rotacion {rot}).", min=partida, rot=rotacion), True
+        return t("~{min} min por partida (hasta la rotación {rot}).", min=partida, rot=rotacion), True
     if clase == "sin_fin":
         if d.get("unidad") == "ronda" and d["premios"] > 1 and rotacion:
             # Disrupcion: la letra no va por turno sino por ronda y conductos salvados,
             # y "2 rotaciones A" no diria nada; se cuenta en rondas.
             return t(
-                "~{min} min por partida ({n} rondas de ~{rmin} min mas llegar, extraer y la carga), que dan "
-                "{premios} premios de la rotacion {rot}: ~{intento} min por intento.",
+                "~{min} min por partida ({n} rondas de ~{rmin} min más llegar, extraer y la carga), que dan "
+                "{premios} premios de la rotación {rot}: ~{intento} min por intento.",
                 min=partida, n=d["rotaciones"], rmin=_num(d["min_rotacion"]),
                 premios=d["premios"], rot=rotacion, intento=_num(d["intento"]),
             ), False
         if d["premios"] > 1:
             return t(
-                "~{min} min por partida ({n} rotaciones {rot} de ~{rmin} min mas llegar, extraer y la carga), que dan "
+                "~{min} min por partida ({n} rotaciones {rot} de ~{rmin} min más llegar, extraer y la carga), que dan "
                 "{premios} intentos: ~{intento} min por intento.",
                 min=partida, n=d["rotaciones"], rot=rotacion, rmin=_num(d["min_rotacion"]),
                 premios=d["premios"], intento=_num(d["intento"]),
             ), False
         if rotacion:
             return t(
-                "~{min} min por partida (hasta la rotacion {rot}: {n} rotaciones de ~{rmin} min mas llegar, extraer y la carga).",
+                "~{min} min por partida (hasta la rotación {rot}: {n} rotaciones de ~{rmin} min más llegar, extraer y la carga).",
                 min=partida, rot=rotacion, n=d["rotaciones"], rmin=_num(d["min_rotacion"]),
             ), True
         return t(
-            "~{min} min por partida ({n} rotaciones de ~{rmin} min mas llegar, extraer y la carga).",
+            "~{min} min por partida ({n} rotaciones de ~{rmin} min más llegar, extraer y la carga).",
             min=partida, n=d["rotaciones"], rmin=_num(d["min_rotacion"]),
         ), True
     return t("~{min} min por partida, contando la carga.", min=partida), True
@@ -85,7 +85,7 @@ def texto(fila: dict | None) -> str:
         if por_partida
         else t("x ~{veces} intentos de media ({prob}% cada uno) = {total}.", **valores)
     )
-    return "\n".join((primera, segunda, t("Es una media: puede caer antes o tardar mas.")))
+    return "\n".join((primera, segunda, t("Es una media: puede caer antes o tardar más.")))
 
 
 def texto_prime(sitio: dict | None, escuadra: int, modo: str) -> str:
@@ -120,12 +120,12 @@ def texto_prime(sitio: dict | None, escuadra: int, modo: str) -> str:
     primera, _por_partida = _linea_intento(d)
     return "\n".join((
         primera,
-        t("{prob}% de que caiga alguna reliquia util -> ~{min} min por reliquia.",
+        t("{prob}% de que caiga alguna reliquia útil -> ~{min} min por reliquia.",
           prob=f"{cae:.1f}", min=_num(reliquia)),
         t("+ ~{min} min por fisura para abrirla.", min=_num(fisura)),
         t("{modo}: {prob}% de sacar la pieza en cada fisura -> ~{n} fisuras de media.",
           modo=modo, prob=f"{min(por_fisura, 1.0) * 100:.0f}", n=_num(fisuras)),
         t("(~{reliquia} + ~{fisura} min) x ~{n} = {total}.", reliquia=_num(reliquia),
           fisura=_num(fisura), n=_num(fisuras), total=eficiencia.texto_minutos(sitio["minutos"])),
-        t("Es una media: puede caer antes o tardar mas."),
+        t("Es una media: puede caer antes o tardar más."),
     ))

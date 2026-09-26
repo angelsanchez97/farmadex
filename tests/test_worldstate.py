@@ -129,7 +129,7 @@ def test_cuenta_atras_de_baro():
     assert futuro.cabecera(ahora) == "Baro Ki'Teer llega en 5d 2h"
 
     sin_fecha = worldstate.Baro("Baro Ki'Teer", "", False, None, None, [])
-    assert sin_fecha.cabecera(ahora) == "Baro Ki'Teer todavia no ha llegado"
+    assert sin_fecha.cabecera(ahora) == "Baro Ki'Teer todavía no ha llegado"
 
 
 def test_baro_ausente_deduce_el_estado(traductor):

@@ -85,3 +85,47 @@ def test_el_primer_paso_de_la_guia_menciona_el_aviso():
     assert "DE" in primero.cuerpo
     assert "Acerca de Farmadex" in primero.cuerpo
     assert "Ajustes" in primero.cuerpo
+
+
+# -- Discord de Farmadex --------------------------------------------------------------
+
+def test_el_discord_sale_en_acerca_de_con_el_enlace_que_se_abre_al_pulsar():
+    _app()
+    assert acerca_de.URL_DISCORD == "https://discord.gg/7ezAmfqesS"
+    dialogo = acerca_de.DialogoAcercaDe()
+    assert acerca_de.URL_DISCORD in dialogo.discord.text()
+    assert "Discord de Farmadex" in dialogo.discord.text()
+    assert dialogo.discord.openExternalLinks()  # solo se abre al pulsarlo
+    # Tambien en la pregunta "Tengo un problema o una idea", con el foro de ayuda.
+    faq = dict(acerca_de.preguntas_frecuentes())
+    problema = next(v for k, v in faq.items() if "problema" in k)
+    assert acerca_de.URL_DISCORD in problema and "foro de ayuda del Discord" in problema
+    dialogo.close()
+
+
+def test_el_discord_sale_en_el_pie_de_ajustes_y_al_guardar_el_informe(monkeypatch, tmp_path):
+    from farmadex.ui import pestana_ajustes
+
+    monkeypatch.setenv("FARMADEX_DATOS", str(tmp_path))
+    _app()
+    monkeypatch.setattr(pestana_ajustes, "guardar", lambda cfg: None)
+    ajustes = pestana_ajustes.PestanaAjustes()
+    assert acerca_de.URL_DISCORD in ajustes.discord.text()
+    assert ajustes.discord.openExternalLinks()
+    ajustes.informe_guardado(tmp_path / "informe.zip")
+    assert str(tmp_path / "informe.zip") in ajustes.estado_informe.text()
+    assert acerca_de.URL_DISCORD in ajustes.estado_informe.text()
+    assert "foro de ayuda" in ajustes.estado_informe.text()
+    assert ajustes.estado_informe.openExternalLinks()
+
+
+def test_el_discord_se_traduce(monkeypatch):
+    from farmadex import idiomas
+
+    _app()
+    try:
+        idiomas.cargar("en")
+        assert "Farmadex Discord" in acerca_de.texto_discord()
+        assert acerca_de.URL_DISCORD in acerca_de.texto_discord()
+    finally:
+        idiomas.cargar("es")

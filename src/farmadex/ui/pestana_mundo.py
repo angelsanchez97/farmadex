@@ -81,7 +81,7 @@ SUBPESTANAS = (
 )
 TITULOS = {
     "objetivos": "Fisuras para tus metas",
-    "fisuras": "Fisuras del Vacio",
+    "fisuras": "Fisuras del Vacío",
     "baro": "Baro Ki'Teer",
     "teshin": "Teshin · Camino de Acero",
     "hoy": "Hoy",
@@ -89,7 +89,7 @@ TITULOS = {
     "alertas": "Alertas",
     "arbitraje": "Arbitraje",
     "ciclos": "Ciclos",
-    "sortie": "Incursion y arcontes",
+    "sortie": "Incursión y arcontes",
     "nightwave": "Onda nocturna",
 }
 DISENOS = tuple(clave for clave, _ in SUBPESTANAS)
@@ -728,7 +728,7 @@ class PestanaMundo(QWidget):
         nueva.secciones_cambiadas.connect(self.pintar)
         nueva.avisos_cambiados.connect(self.pintar)
         nueva.probar_aviso.connect(
-            lambda: self.aviso_windows.emit(t("Asi se veran los avisos de Farmadex sobre el mundo de Warframe"))
+            lambda: self.aviso_windows.emit(t("Así se verán los avisos de Farmadex sobre el mundo de Warframe"))
         )
         if self.pagina_ajustes is not None:
             self.paginas.removeWidget(self.pagina_ajustes)
@@ -850,7 +850,7 @@ class PestanaMundo(QWidget):
     def _textos_facciones(self) -> None:
         for clave, nombre, _color, en in FACCIONES:
             self.acciones_faccion[clave].setText(glosa(nombre, en))
-        self.accion_todas.setText(t("Ensenar todas"))
+        self.accion_todas.setText(t("Enseñar todas"))
         if self._facciones:
             texto = t("Facciones: {n}", n=len(self._facciones))
         else:
@@ -858,15 +858,15 @@ class PestanaMundo(QWidget):
         for panel in self._paneles_fisuras():
             panel.boton_facciones.setText(texto)
             panel.boton_facciones.setToolTip(t(
-                "Elige las facciones que te interesan: solo se ensenan sus fisuras. "
-                "El nombre de la faccion sale con su color para reconocerla de un vistazo."))
+                "Elige las facciones que te interesan: solo se enseñan sus fisuras. "
+                "El nombre de la facción sale con su color para reconocerla de un vistazo."))
             panel.boton_facciones.updateGeometry()
 
     def _textos_fijos(self) -> None:
         for clave, texto in SUBPESTANAS:
             self.subpestanas.poner_texto(clave, t(texto))
         self.boton_personalizar.setText(t("Personalizar y avisos"))
-        self.boton_personalizar.setToolTip(t("Elige que bloques ver y de que quieres que Farmadex te avise"))
+        self.boton_personalizar.setToolTip(t("Elige qué bloques ver y de qué quieres que Farmadex te avise"))
         for panel in self._paneles_fisuras():
             for clave, texto in zip(CLAVES_MODO, MODOS):
                 panel.botones_modo[clave].setText(t(texto))
@@ -1068,7 +1068,7 @@ class PestanaMundo(QWidget):
         estado = self.estado_datos()
         if estado == "viejo":
             return t(
-                "Sin datos al dia: el estado del mundo que publica la API es de hace {tiempo}",
+                "Sin datos al día: el estado del mundo que publica la API es de hace {tiempo}",
                 tiempo=self._edad(),
             )
         if estado == "fallo":
@@ -1089,13 +1089,13 @@ class PestanaMundo(QWidget):
         if estado == "consultando":
             texto, tinta = t("Consultando el estado del mundo..."), "suave"
         elif estado == "fallo":
-            texto = t("Sin conexion con el estado del mundo ({motivo})", motivo=self._motivo_fallo)
+            texto = t("Sin conexión con el estado del mundo ({motivo})", motivo=self._motivo_fallo)
         elif estado == "viejo":
             texto = t("El estado del mundo que publica la API es de hace {tiempo}", tiempo=self._edad())
         elif self._motivo_fallo:
-            texto = t("Datos del mundo sin actualizar; se muestra lo ultimo conocido")
+            texto = t("Datos del mundo sin actualizar; se muestra lo último conocido")
         elif getattr(self.mundo, "fuente", "") == "de":
-            texto, tinta = t("warframestat no esta al dia; se usa el worldState oficial de DE"), "suave"
+            texto, tinta = t("warframestat no está al día; se usa el worldState oficial de DE"), "suave"
         else:
             texto, tinta = "", "suave"
         self.aviso.setText(texto)
@@ -1282,7 +1282,7 @@ class PestanaMundo(QWidget):
             elif len(lista) > limite:
                 mas = panel.texto(
                     f"<a href='sub:fisuras' style='color:{p['acento']};text-decoration:none'>"
-                    + _esc(t("y {n} mas", n=len(lista) - limite)) + " ›</a>", "pequeno", envolver=False)
+                    + _esc(t("y {n} más", n=len(lista) - limite)) + " ›</a>", "pequeno", envolver=False)
                 columna_era.addWidget(mas)
             columna_era.addStretch(1)
             capa_columnas.addLayout(columna_era, 1)
@@ -1314,7 +1314,7 @@ class PestanaMundo(QWidget):
             self._vacia(bloque, t("Consultando el estado del mundo..."))
             return
         if not self._eras_necesarias:
-            bloque.vacia(t("Anade objetivos en Mis metas y aqui veras las fisuras que te sirven."))
+            bloque.vacia(t("Añade objetivos en Mis metas y aquí verás las fisuras que te sirven."))
             return
         por_era: dict[str, int] = {}
         utiles = []
@@ -1367,7 +1367,7 @@ class PestanaMundo(QWidget):
         if baro.activo:
             bloque.reloj(grande, lambda b=baro: t("Ya se ha ido") if _terminado(b.expira)
                          else t("Se va en {tiempo}", tiempo=tiempo_grande(b.expira)))
-            lugar = t("Esta en {lugar}", lugar=baro.lugar) if baro.lugar else ""
+            lugar = t("Está en {lugar}", lugar=baro.lugar) if baro.lugar else ""
         else:
             bloque.reloj(grande, lambda b=baro: t("Llega en {tiempo}", tiempo=tiempo_grande(b.llegada))
                          if b.llegada and not _terminado(b.llegada) else t("Llega pronto"))
@@ -1375,7 +1375,7 @@ class PestanaMundo(QWidget):
             if baro.llegada and baro.expira and baro.expira > baro.llegada:
                 dias = round((baro.expira - baro.llegada).total_seconds() / 86400)
                 if dias >= 1:
-                    lugar = " · ".join(x for x in (lugar, t("se queda {n} dias", n=dias)) if x)
+                    lugar = " · ".join(x for x in (lugar, t("se queda {n} días", n=dias)) if x)
         izquierda = columna(grande, bloque.preparar(_recortada(lugar, "pequeno")) if lugar else None,
                             espacio=0)
         if baro.activo:
@@ -1384,12 +1384,12 @@ class PestanaMundo(QWidget):
             bloque.anadir_fila(izquierda, None, self._boton_aviso(t("Avisarme"), "baro"))
 
         if not baro.activo:
-            bloque.vacia(t("Cuando llegue veras aqui lo que trae, con lo que te falta marcado."))
+            bloque.vacia(t("Cuando llegue verás aquí lo que trae, con lo que te falta marcado."))
             if completo:
                 bloque.vacia(t("Guarda piezas Prime repetidas para cambiarlas por ducados cuando llegue"))
             return
         if not baro.inventario:
-            bloque.vacia(t("Inventario todavia sin publicar"))
+            bloque.vacia(t("Inventario todavía sin publicar"))
             return
         # Lo que cubre un objetivo, primero y marcado; luego por ducados.
         inventario = sorted(baro.inventario, key=lambda o: (not o.objetivo, -(o.ducados or 0)))
@@ -1403,7 +1403,7 @@ class PestanaMundo(QWidget):
             if utiles:
                 texto = t("Trae {n} cosas; {m} te sirven para tus metas.", n=len(inventario), m=len(utiles))
             else:
-                texto = t("Trae {n} cosas; ninguna esta en tus metas.", n=len(inventario))
+                texto = t("Trae {n} cosas; ninguna está en tus metas.", n=len(inventario))
             bloque.caja.addWidget(bloque.texto(
                 _esc(texto) + f" <a href='sub:tienda' style='color:{p['acento']};text-decoration:none'>"
                 + _esc(t("Verlo todo")) + " ›</a>", "pequeno"))
@@ -1448,14 +1448,14 @@ class PestanaMundo(QWidget):
         bloque.anadir_fila(izquierda, None, columna(cuando, tiempo, espacio=0))
         if fuente != "api":
             bloque.caja.addWidget(bloque.texto(_esc(t(
-                "La API no lo ha publicado: sale de la rotacion semanal fija del juego, que casi nunca cambia.")),
+                "La API no lo ha publicado: sale de la rotación semanal fija del juego, que casi nunca cambia.")),
                 "pequeno", tinta="tenue"))
         if not completo:
             return
-        bloque.subtitulo(t("Las proximas semanas"))
+        bloque.subtitulo(t("Las próximas semanas"))
         siguientes = avisos_mundo.teshin_siguientes(mundo, ahora)
         if siguientes is None:
-            bloque.vacia(t("No se puede saber: lo de esta semana no esta en la rotacion conocida."))
+            bloque.vacia(t("No se puede saber: lo de esta semana no está en la rotación conocida."))
         else:
             for nombre_sig, desde in siguientes:
                 dia = (desde + timedelta(minutes=1)).astimezone()
@@ -1489,7 +1489,7 @@ class PestanaMundo(QWidget):
         if not lista:
             return "", ""
         primero = lista[0].texto.split(" - ", 1)[0]
-        resumen = t("{primero} y {n} mas", primero=primero, n=len(lista) - 1) if len(lista) > 1 else primero
+        resumen = t("{primero} y {n} más", primero=primero, n=len(lista) - 1) if len(lista) > 1 else primero
         lineas = [r.texto + (f" ({r.detalle})" if r.detalle else "") for r in lista]
         fin = tiempo_restante(lista[0].expira)
         if fin and fin != "terminado":
@@ -1503,7 +1503,7 @@ class PestanaMundo(QWidget):
             return
         if "sortie" not in escondidas:
             resumen, detalle = self._resumen_lista(mundo.sortie)
-            self._fila_hoy(bloque, t("Incursion"), "acento", resumen or t("sin publicar ahora"), detalle)
+            self._fila_hoy(bloque, t("Incursión"), "acento", resumen or t("sin publicar ahora"), detalle)
             resumen, detalle = self._resumen_lista(mundo.arcontes)
             self._fila_hoy(bloque, t("Caza de arcontes"), COLOR_ARCONTES, resumen or t("sin publicar ahora"), detalle)
         if "nightwave" not in escondidas:
@@ -1577,7 +1577,7 @@ class PestanaMundo(QWidget):
         if sobran > 0:
             bloque.caja.addWidget(bloque.texto(
                 f"<a href='sub:eventos' style='color:{p['acento']};text-decoration:none'>"
-                + _esc(t("y {n} invasiones mas", n=sobran)) + " ›</a>", "pequeno"))
+                + _esc(t("y {n} invasiones más", n=sobran)) + " ›</a>", "pequeno"))
         if not invasiones:
             self._vacia(bloque, t("No hay invasiones activas"))
 
@@ -1643,7 +1643,7 @@ class PestanaMundo(QWidget):
             return
         if mundo.sortie:
             bloque.cuenta_atras(mundo.sortie[0].expira)
-            bloque.subtitulo(t("Incursion del dia"))
+            bloque.subtitulo(t("Incursión del día"))
             for r in mundo.sortie:
                 bloque.linea(
                     _esc(r.texto)
@@ -1658,7 +1658,7 @@ class PestanaMundo(QWidget):
             for r in mundo.arcontes:
                 bloque.linea(_esc(r.texto))
         if not (mundo.sortie or mundo.arcontes):
-            self._vacia(bloque, t("Sin incursion ni caza de arcontes"))
+            self._vacia(bloque, t("Sin incursión ni caza de arcontes"))
 
     def _pintar_nightwave(self, bloque: Bloque) -> None:
         p = PALETA

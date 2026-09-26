@@ -66,14 +66,14 @@ def _pasos(ventana) -> list[Paso]:
             titulo=t("Bienvenido a Farmadex"),
             cuerpo=t(
                 "Esta ventana se abre y se cierra encima del juego con {atajo} (o con Escape "
-                "para cerrarla). Esta guia rapida te ensena las partes principales; se puede "
+                "para cerrarla). Esta guía rápida te enseña las partes principales; se puede "
                 "saltar en cualquier momento.",
                 atajo=atajo,
             )
             + " "
             + t(
                 "Farmadex solo mira la pantalla y el registro del juego, pero DE no respalda "
-                "ningun programa de terceros: el aviso completo esta en Ajustes > {boton}.",
+                "ningún programa de terceros: el aviso completo está en Ajustes > {boton}.",
                 boton=t("Acerca de {app}", app=NOMBRE_APP),
             ),
             pestana=None,
@@ -82,19 +82,19 @@ def _pasos(ventana) -> list[Paso]:
         Paso(
             titulo=t("Tablero||menu"),
             cuerpo=t(
-                "Farmadex se abre aqui. \"Tu siguiente paso\" es la pieza de tus metas que antes puedes "
-                "conseguir: que reliquia es, donde sale y en que fisura abrirla. Al lado, las fisuras "
+                "Farmadex se abre aquí. \"Tu siguiente paso\" es la pieza de tus metas que antes puedes "
+                "conseguir: qué reliquia es, dónde sale y en qué fisura abrirla. Al lado, las fisuras "
                 "abiertas que te sirven; debajo, tus metas y los ciclos del mundo."
             ),
             pestana="tablero",
             objetivo=lambda v: getattr(getattr(v, "tablero", None), "heroe", None),
         ),
         Paso(
-            titulo=t("El menu"),
+            titulo=t("El menú"),
             cuerpo=t(
-                "Arriba estan las secciones: Buscar, Mis metas (tus objetivos, los primes y tu perfil), "
-                "Mundo, Herramientas (build, agrietados, video y web) y Ajustes. Las que tienen varias "
-                "partes las ensenan justo debajo del menu."
+                "Arriba están las secciones: Buscar, Mis metas (tus objetivos, los primes y tu perfil), "
+                "Mundo, Herramientas (build, agrietados, vídeo y web) y Ajustes. Las que tienen varias "
+                "partes las enseñan justo debajo del menú."
             ),
             pestana=None,
             objetivo=lambda v: getattr(v, "menu", None),
@@ -102,8 +102,8 @@ def _pasos(ventana) -> list[Paso]:
         Paso(
             titulo=t("Buscar"),
             cuerpo=t(
-                "Escribe aqui cualquier objeto, pieza, mod o reliquia, aunque tenga alguna "
-                "errata. La ficha te dice donde conseguirlo, con los sitios ordenados por el "
+                "Escribe aquí cualquier objeto, pieza, mod o reliquia, aunque tenga alguna "
+                "errata. La ficha te dice dónde conseguirlo, con los sitios ordenados por el "
                 "tiempo medio que se tarda en cada uno."
             ),
             pestana="buscador",
@@ -112,20 +112,20 @@ def _pasos(ventana) -> list[Paso]:
         Paso(
             titulo=t("Misiones y preguntas"),
             cuerpo=t(
-                "Tambien puedes escribir una mision (Hepit, Olimpo) o un tipo de mision "
-                "(supervivencia, disrupcion): te explica como se juega y que da cada rotacion. "
-                "Y puedes preguntar como hablas: \"como sacar citrine prime\", \"el ultimo "
-                "warframe\" o \"novedades\". Con la caja vacia, aqui ves lo ultimo que ha salido."
+                "También puedes escribir una misión (Hepit, Olimpo) o un tipo de misión "
+                "(supervivencia, disrupción): te explica cómo se juega y qué da cada rotación. "
+                "Y puedes preguntar como hablas: \"como sacar citrine prime\", \"el último "
+                "warframe\" o \"novedades\". Con la caja vacía, aquí ves lo último que ha salido."
             ),
             pestana="buscador",
             objetivo=lambda v: getattr(v.buscador, "ficha", None),
         ),
         Paso(
-            titulo=t("Wiki y videos"),
+            titulo=t("Wiki y vídeos"),
             cuerpo=t(
                 "\"Buscar en la wiki\" abre la wiki oficial de lo que tengas abierto, para lo que "
-                "Farmadex no cuenta (habilidades, como se construye...). \"Guias en YouTube\" "
-                "busca videos de esa mision u objeto y te los pone en Herramientas > Video."
+                "Farmadex no cuenta (habilidades, cómo se construye...). \"Guías en YouTube\" "
+                "busca vídeos de esa misión u objeto y te los pone en Herramientas > Vídeo."
             ),
             pestana="buscador",
             objetivo=lambda v: tuple(
@@ -136,8 +136,8 @@ def _pasos(ventana) -> list[Paso]:
         Paso(
             titulo=t("Objetivos"),
             cuerpo=t(
-                "Con \"+ Objetivo\" (o \"+ Set completo\" para un Prime entero) anades lo que "
-                "estas viendo a tu lista de objetivos, con barra de progreso y la mejor ruta "
+                "Con \"+ Objetivo\" (o \"+ Set completo\" para un Prime entero) añades lo que "
+                "estás viendo a tu lista de objetivos, con barra de progreso y la mejor ruta "
                 "para conseguirlo ahora mismo."
             ),
             pestana="buscador",
@@ -146,9 +146,9 @@ def _pasos(ventana) -> list[Paso]:
         Paso(
             titulo=t("Tus objetivos"),
             cuerpo=t(
-                "Aqui se quedan apuntados, con su progreso y la reliquia o el sitio directo "
+                "Aquí se quedan apuntados, con su progreso y la reliquia o el sitio directo "
                 "donde farmear cada uno ahora mismo. A la derecha, \"Para esto te sirve hoy\" te "
-                "dice que fisuras, invasiones, alertas o cosas de Baro abiertas ahora te sirven."
+                "dice qué fisuras, invasiones, alertas o cosas de Baro abiertas ahora te sirven."
             ),
             pestana="objetivos",
             objetivo=lambda v: getattr(v, "objetivos", None),
@@ -157,9 +157,9 @@ def _pasos(ventana) -> list[Paso]:
             titulo=t("Ordenar tus objetivos"),
             cuerpo=t(
                 "Arriba los separas en Sin empezar, En progreso y Completados, y puedes filtrar por "
-                "categoria (sets, recursos, armas...). En cada uno pones cuantos quieres y sumas "
+                "categoría (sets, recursos, armas...). En cada uno pones cuántos quieres y sumas "
                 "varios de golpe; un set se despliega con un clic para ver sus piezas, y en un arma "
-                "puedes apuntar sus recursos de fabricacion por separado. Antes de borrar, Farmadex "
+                "puedes apuntar sus recursos de fabricación por separado. Antes de borrar, Farmadex "
                 "te pregunta, y puedes marcar varios para quitarlos juntos."
             ),
             pestana="objetivos",
@@ -171,9 +171,9 @@ def _pasos(ventana) -> list[Paso]:
         Paso(
             titulo=t("Primes"),
             cuerpo=t(
-                "Marca las piezas prime que te faltan y pulsa \"Donde farmear\": te dice en que "
-                "reliquias salen y donde conseguirlas antes. Lo que marcas aqui se apunta "
-                "tambien en tus objetivos."
+                "Marca las piezas prime que te faltan y pulsa \"Dónde farmear\": te dice en qué "
+                "reliquias salen y dónde conseguirlas antes. Lo que marcas aquí se apunta "
+                "también en tus objetivos."
             ),
             pestana="primes",
             objetivo=lambda v: getattr(v, "primes", None),
@@ -182,7 +182,7 @@ def _pasos(ventana) -> list[Paso]:
             titulo=t("Mundo"),
             cuerpo=t(
                 "Lo que pasa ahora en el juego, en cuatro partes: Todo, Fisuras, Baro y Teshin, e "
-                "Invasiones y alertas. Fisuras del Vacio, ciclos, invasiones, arbitraje y demas, "
+                "Invasiones y alertas. Fisuras del Vacío, ciclos, invasiones, arbitraje y demás, "
                 "marcando lo que sirve para tus objetivos pendientes."
             ),
             pestana="mundo",
@@ -192,20 +192,20 @@ def _pasos(ventana) -> list[Paso]:
             titulo=t("Avisos del mundo"),
             cuerpo=t(
                 "En \"Personalizar y avisos\" eliges que te avise Windows aunque tengas la ventana "
-                "escondida: cuando llega Baro, cuando hay una fisura o una invasion que te interesa, "
-                "la noche en Cetus... Ahi tambien ocultas los bloques que no uses. Las facciones se "
-                "eligen en Fisuras, con el boton \"Facciones\". Y si pulsas una recompensa, se abre "
+                "escondida: cuando llega Baro, cuando hay una fisura o una invasión que te interesa, "
+                "la noche en Cetus... Ahí también ocultas los bloques que no uses. Las facciones se "
+                "eligen en Fisuras, con el botón \"Facciones\". Y si pulsas una recompensa, se abre "
                 "su ficha."
             ),
             pestana="mundo",
             objetivo=lambda v: getattr(getattr(v, "mundo", None), "boton_personalizar", None),
         ),
         Paso(
-            titulo=t("Video"),
+            titulo=t("Vídeo"),
             cuerpo=t(
-                "Aqui se ven las guias de YouTube sin salir de Farmadex, por si juegas con un "
-                "solo monitor. Con \"Modo video\" la ventana se queda solo con el video, encima "
-                "del juego, y con \"Salir del video\" vuelves a la vista normal."
+                "Aquí se ven las guías de YouTube sin salir de Farmadex, por si juegas con un "
+                "solo monitor. Con \"Modo vídeo\" la ventana se queda solo con el vídeo, encima "
+                "del juego, y con \"Salir del vídeo\" vuelves a la vista normal."
             ),
             pestana="video",
             # La barra de botones del panel, no el panel entero: si no, la burbuja tapa el
@@ -221,9 +221,9 @@ def _pasos(ventana) -> list[Paso]:
             titulo=t("Recompensas de reliquia"),
             cuerpo=t(
                 "Con Warframe en Ventana sin bordes (o ventana normal), al abrir una reliquia "
-                "Farmadex lee sola sus recompensas y las pinta encima. Aqui se activa o se "
-                "desactiva esa lectura automatica, y un poco mas abajo se elige si se ensenan "
-                "como etiquetas pequenas o como un panel, y que destacar en grande: lo que te "
+                "Farmadex lee sola sus recompensas y las pinta encima. Aquí se activa o se "
+                "desactiva esa lectura automática, y un poco más abajo se elige si se enseñan "
+                "como etiquetas pequeñas o como un panel, y que destacar en grande: lo que te "
                 "falta, el platino o los ducados."
             ),
             pestana="ajustes",
@@ -233,7 +233,7 @@ def _pasos(ventana) -> list[Paso]:
             titulo=t("Perfil"),
             cuerpo=t(
                 "Importa tu perfil de Warframe (el fichero JSON) para ver tu rango de "
-                "maestria, lo que te falta por dominar y tu progreso por categoria. Con el "
+                "maestría, lo que te falta por dominar y tu progreso por categoría. Con el "
                 "perfil importado, Buscar y las etiquetas de recompensas dicen si ya lo tienes."
             ),
             pestana="perfil",
@@ -243,8 +243,8 @@ def _pasos(ventana) -> list[Paso]:
             titulo=t("Build"),
             cuerpo=t(
                 "Abre en el juego la pantalla de mejoras de un warframe o un arma y "
-                "pulsa {atajo}: Farmadex lee sus mods y arcanos y los lista aqui. "
-                "Pulsas uno y te dice de donde sale.",
+                "pulsa {atajo}: Farmadex lee sus mods y arcanos y los lista aquí. "
+                "Pulsas uno y te dice de dónde sale.",
                 atajo=ventana.config.get("hotkey_build", "Ctrl+Alt+B"),
             ),
             pestana="builds",
@@ -258,9 +258,9 @@ def _pasos(ventana) -> list[Paso]:
         Paso(
             titulo=t("Agrietados"),
             cuerpo=t(
-                "Para saber si un mod agrietado es bueno: pon el raton sobre la tarjeta en el juego y "
-                "pulsa {atajo}, o apunta sus estadisticas a mano. Te da la nota de cada una, de S (lo "
-                "mejor) a F, entre que valores puede salir y un precio de referencia en warframe.market.",
+                "Para saber si un mod agrietado es bueno: pon el ratón sobre la tarjeta en el juego y "
+                "pulsa {atajo}, o apunta sus estadísticas a mano. Te da la nota de cada una, de S (lo "
+                "mejor) a F, entre qué valores puede salir y un precio de referencia en warframe.market.",
                 atajo=ventana.config.get("hotkey_agrietado", "Ctrl+Alt+G"),
             ),
             pestana="agrietados",
@@ -273,10 +273,10 @@ def _pasos(ventana) -> list[Paso]:
         Paso(
             titulo=t("Modo juego"),
             cuerpo=t(
-                "Con Ctrl+M (o este boton) la ventana pasa a una cajita pensada para jugar o "
-                "para un directo, con solo la busqueda y lo esencial. Pulsa un resultado y sus "
+                "Con Ctrl+M (o este botón) la ventana pasa a una cajita pensada para jugar o "
+                "para un directo, con solo la búsqueda y lo esencial. Pulsa un resultado y sus "
                 "detalles se despliegan debajo, y con \"Fijar\" se queda siempre encima del juego. "
-                "La ventana se mueve y cambia de tamano arrastrando desde cualquier borde."
+                "La ventana se mueve y cambia de tamaño arrastrando desde cualquier borde."
             ),
             pestana=None,
             objetivo=lambda v: getattr(v, "boton_modo", None),
@@ -284,8 +284,8 @@ def _pasos(ventana) -> list[Paso]:
         Paso(
             titulo=t("Ajustes"),
             cuerpo=t(
-                "A la izquierda eliges la seccion: General (idioma, actualizaciones, arrancar con "
-                "Windows), Atajos, Apariencia (colores y tamano de letra), Reliquias, Datos del juego "
+                "A la izquierda eliges la sección: General (idioma, actualizaciones, arrancar con "
+                "Windows), Atajos, Apariencia (colores y tamaño de letra), Reliquias, Datos del juego "
                 "y Ayuda, donde puedes volver a ver la bienvenida."
             ),
             pestana="ajustes",
@@ -295,9 +295,9 @@ def _pasos(ventana) -> list[Paso]:
         Paso(
             titulo=t("A tu gusto"),
             cuerpo=t(
-                "En Apariencia haces la ventana y la letra mas grandes o mas pequenas y cambias "
+                "En Apariencia haces la ventana y la letra más grandes o más pequeñas y cambias "
                 "cualquier color. Lo ves antes en la vista previa, y solo se aplica al pulsar "
-                "Guardar; \"Volver a lo de fabrica\" lo deja todo como estaba."
+                "Guardar; \"Volver a lo de fábrica\" lo deja todo como estaba."
             ),
             pestana="ajustes",
             objetivo=lambda v: _en_ajustes(v, "aspecto", "escala_interfaz", "escala_letra"),
@@ -305,7 +305,7 @@ def _pasos(ventana) -> list[Paso]:
         Paso(
             titulo=t("Si no sale nada al abrir una reliquia"),
             cuerpo=t(
-                "Pulsa \"Comprobar la lectura de reliquias\": te dice paso a paso que falla. Si "
+                "Pulsa \"Comprobar la lectura de reliquias\": te dice paso a paso qué falla. Si "
                 "no lo arreglas, \"Guardar informe para enviar\" deja un archivo para mandarlo a "
                 "quien te ayude; no lleva nada de tu cuenta."
             ),
@@ -348,9 +348,9 @@ class CapaGuia(QWidget):
         self.cuerpo = EtiquetaC("", "normal", envolver=True)
         self.contador = EtiquetaC("", "pequeno")
 
-        self.boton_saltar = BotonC(t("Saltar guia"), tam=10)
+        self.boton_saltar = BotonC(t("Saltar guía"), tam=10)
         self.boton_saltar.clicked.connect(self.saltar)
-        self.boton_atras = BotonC(t("Atras"), icono=GLIFO_ATRAS, tam=10)
+        self.boton_atras = BotonC(t("Atrás"), icono=GLIFO_ATRAS, tam=10)
         self.boton_atras.clicked.connect(self.atras)
         self.boton_siguiente = BotonC(principal=True, icono="derecha", tam=10)
         self.boton_siguiente.clicked.connect(self.siguiente)

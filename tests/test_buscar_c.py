@@ -60,7 +60,7 @@ def test_ficha_de_mision_con_cabecera_tira_y_paneles_por_rotacion(buscador):
     nodo = buscador.con.execute("SELECT id FROM nodos WHERE nombre_en = 'Hydron'").fetchone()[0]
     buscador.abrir_mision(f"nodo:{nodo}")
     texto = buscador.ficha.toPlainText()
-    assert "HYDRON" in texto.upper() and "SEDNA" in texto and "QUE TE DAN Y CUANDO" in texto and "QUE HACER" in texto
+    assert "HYDRON" in texto.upper() and "SEDNA" in texto and "QUÉ TE DAN Y CUÁNDO" in texto and "QUÉ HACER" in texto
     tiras = buscador.ficha.findChildren(TiraRondas)
     assert len(tiras) == 1
     # Defensa: A, A, B, C cada 3 oleadas, dos vueltas.
@@ -68,7 +68,7 @@ def test_ficha_de_mision_con_cabecera_tira_y_paneles_por_rotacion(buscador):
     assert tiras[0].celdas[0][1] == "oleada 3" and tiras[0].celdas[3][1] == "oleada 12"
     assert "oleadas 12, 24, 36" in tiras[0].celdas[3][2]
     rotulos = [p.rotulo.texto_completo() for p in buscador.ficha.findChildren(PanelC) if p.rotulo is not None]
-    assert any("ROTACION A" in r for r in rotulos)
+    assert any("ROTACIÓN A" in r for r in rotulos)
 
 
 def test_los_paneles_de_rotacion_se_despliegan_con_y_n_mas(buscador):
@@ -77,7 +77,7 @@ def test_los_paneles_de_rotacion_se_despliegan_con_y_n_mas(buscador):
     premios = [{"item_id": i, "nombre_en": f"Cosa {i}", "nombre_es": f"Cosa {i}", "padre_en": None,
                 "padre_es": None, "rareza": "Common", "probabilidad": 5.0} for i in range(9)]
     corto = buscador._filas_rotacion(premios, False, "A")
-    assert corto.count("<tr>") == pb.MAX_FILAS_ROTACION and "href='mas:A'" in corto and "y 3 mas" in corto
+    assert corto.count("<tr>") == pb.MAX_FILAS_ROTACION and "href='mas:A'" in corto and "y 3 más" in corto
     entero = buscador._filas_rotacion(premios, True, "A")
     assert entero.count("<tr>") == 9 and "ver menos" in entero
 
@@ -122,12 +122,12 @@ def test_pieza_prime_con_pasos_y_el_set(buscador):
     ).fetchone()[0]
     buscador.abrir(sistemas)
     texto = buscador.ficha.toPlainText()
-    assert "COMO CONSEGUIRLO" in texto and "PASO 1" in texto and "Consigue la reliquia" in texto
+    assert "CÓMO CONSEGUIRLO" in texto and "PASO 1" in texto and "Consigue la reliquia" in texto
     assert "Elige la pieza al acabar" in texto
     casillas = buscador.ficha.findChildren(CasillaC)
     assert len(casillas) >= 2
     marcada = [c for c in casillas if c._marcado]
-    assert len(marcada) == 1 and "tu estas aqui" in marcada[0].sub.text()
+    assert len(marcada) == 1 and "tú estás aquí" in marcada[0].sub.text()
     # Pulsar otra pieza del set abre su ficha.
     otra = next(c for c in casillas if not c._marcado)
     otra.pulsado.emit()
@@ -137,7 +137,7 @@ def test_pieza_prime_con_pasos_y_el_set(buscador):
 def test_set_con_donde_se_consigue_pieza_a_pieza(buscador):
     buscador.abrir(_id(buscador.con, "Ash Prime"))
     texto = buscador.ficha.toPlainText()
-    assert "DONDE SE CONSIGUE" in texto
+    assert "DÓNDE SE CONSIGUE" in texto
     assert "Sistemas" in texto and "Chasis" in texto
     html = unquote(buscador.ficha.toHtml())
     assert "item:" in html and "glosa:" in html

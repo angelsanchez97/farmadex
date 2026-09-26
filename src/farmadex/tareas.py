@@ -23,12 +23,12 @@ def motivo_para_el_usuario(error: Exception) -> str:
         return t("la fuente ha cambiado")
     if isinstance(error, ErrorDescarga):
         if error.estado is None:
-            return t("sin conexion con la fuente")
+            return t("sin conexión con la fuente")
         if error.estado >= 500 or error.estado in (408, 429):
             return t("la fuente no responde")
         return t("la fuente ha cambiado")
     if isinstance(error, (httpx.TransportError, ConnectionError, TimeoutError)):
-        return t("sin conexion con la fuente")
+        return t("sin conexión con la fuente")
     return t("fallo inesperado; detalles en el registro")
 
 
@@ -56,12 +56,12 @@ class TareaDatos(QThread):
                     # Muchos nombres de las tablas de DE que el catalogo de WFCD no conoce:
                     # una de las dos fuentes va por detras del parche.
                     mensaje += " · " + t(
-                        "Aviso: {n} nombres de las tablas de drops no estan en el catalogo; "
-                        "una de las fuentes va por detras del parche",
+                        "Aviso: {n} nombres de las tablas de drops no están en el catálogo; "
+                        "una de las fuentes va por detrás del parche",
                         n=resumen["sin_casar"],
                     )
             else:
-                mensaje = t("Datos al dia")
+                mensaje = t("Datos al día")
             self.terminada.emit(True, mensaje)
         except Exception as e:  # noqa: BLE001 - el fallo se ensena en la ventana
             log.exception("Fallo preparando los datos")

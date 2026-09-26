@@ -48,154 +48,154 @@ from ..idiomas import es_castellano, glosa, t
 MODOS: dict[str, tuple[str, str, str, str]] = {
     "Survival": (
         "Supervivencia", "Survival",
-        "Aguanta oleadas de enemigos mientras baja el soporte vital; recoge las capsulas "
+        "Aguanta oleadas de enemigos mientras baja el soporte vital; recoge las cápsulas "
         "de soporte vital para que no se agote.",
         "Recompensa cada 5 minutos, en ciclos A, A, B, C que se repiten: la C cae en los "
         "minutos 20, 40, 60... Desde el minuto 5 puedes extraer cuando quieras.",
     ),
     "Conjunction Survival": (
         "Supervivencia conjunta", "Conjunction Survival",
-        "Supervivencia especial de Lua: aguanta a los enemigos y manten el soporte vital "
+        "Supervivencia especial de Lua: aguanta a los enemigos y mantén el soporte vital "
         "como en una Supervivencia normal.",
         "Igual que en Supervivencia: recompensa cada 5 minutos, en ciclos A, A, B, C que se "
         "repiten; la C cae en los minutos 20, 40, 60...",
     ),
     "Defense": (
         "Defensa", "Defense",
-        "Protege el objetivo de las oleadas de enemigos; si lo destruyen, la mision falla.",
+        "Protege el objetivo de las oleadas de enemigos; si lo destruyen, la misión falla.",
         "Recompensa cada 3 oleadas, en ciclos A, A, B, C que se repiten: la C cae en las "
         "oleadas 12, 24, 36... En cada parada eliges salir o seguir; si sigues y fallas, "
         "pierdes lo acumulado.",
     ),
     "Mirror Defense": (
         "Defensa reflectante", "Mirror Defense",
-        "Defiende dos objetivos que se van alternando; pasas de uno a otro por un tunel del Vacio.",
+        "Defiende dos objetivos que se van alternando; pasas de uno a otro por un túnel del Vacío.",
         "Recompensas en ciclos A, A, B, C que se repiten, como en una Defensa. La wiki no "
-        "deja claro cada cuanto llegan.",
+        "deja claro cada cuánto llegan.",
     ),
     "Mobile Defense": (
         "Defensa móvil", "Mobile Defense",
-        "Lleva la masa de datos a cada terminal y defiendela mientras se descarga.",
-        "Solo da premio al terminar en algunas versiones (Vacio, Zariman, Archwing); en el "
+        "Lleva la masa de datos a cada terminal y defiéndela mientras se descarga.",
+        "Solo da premio al terminar en algunas versiones (Vacío, Zariman, Archwing); en el "
         "resto te llevas lo que sueltan los enemigos.",
     ),
     "Excavation": (
         "Excavación", "Excavation",
-        "Pon en marcha excavadoras con las celulas de energia que sueltan algunos enemigos "
-        "y defiendelas hasta que terminen.",
+        "Pon en marcha excavadoras con las células de energía que sueltan algunos enemigos "
+        "y defiéndelas hasta que terminen.",
         "Una recompensa por cada excavadora que termina, en ciclos A, A, B, C que se repiten: "
         "la C llega con 4, 8, 12... excavadoras completadas.",
     ),
     "Interception": (
         "Interceptación", "Interception",
-        "Captura y manten las cuatro torres (A, B, C y D) para sumar puntos antes que el enemigo.",
+        "Captura y mantén las cuatro torres (A, B, C y D) para sumar puntos antes que el enemigo.",
         "Una recompensa por ronda, en ciclos A, A, B, C que se repiten: la C es la ronda 4, "
         "8, 12... Al final de cada ronda eliges salir o seguir.",
     ),
     "Disruption": (
         "Interrupción", "Disruption",
-        "Usa las llaves que sueltan algunos enemigos para activar los conductos y defiendelos "
+        "Usa las llaves que sueltan algunos enemigos para activar los conductos y defiéndelos "
         "de los Demolysts; hay cuatro conductos por ronda.",
         "Una recompensa por ronda si salvas al menos un conducto, pero no va en A, A, B, C: la "
-        "rotacion depende de la ronda y de cuantos conductos salves. Rondas 1 y 2: A, o B si "
+        "rotación depende de la ronda y de cuántos conductos salves. Rondas 1 y 2: A, o B si "
         "salvas los cuatro (en la 2 bastan tres). Ronda 3: A con uno, B con dos o tres, C con "
-        "los cuatro. De la 4 en adelante: B con uno o dos, C con tres o cuatro. Salvar mas no "
+        "los cuatro. De la 4 en adelante: B con uno o dos, C con tres o cuatro. Salvar más no "
         "siempre conviene: para la A sal tras la ronda 2 (desde la 4 ya no sale); para la B, "
         "rondas 1 y 2 salvando los cuatro; para la C, sigue desde la ronda 3 salvando tres o "
         "cuatro en cada ronda.",
     ),
     "Defection": (
         "Deserción", "Defection",
-        "Escolta a los grupos de desertores Kavor hasta la nave de extraccion; si mueren "
-        "demasiados, la mision falla.",
+        "Escolta a los grupos de desertores Kavor hasta la nave de extracción; si mueren "
+        "demasiados, la misión falla.",
         "Recompensa cada 2 grupos rescatados, en ciclos A, A, B, C que se repiten: la C llega "
         "con 8, 16, 24... grupos.",
     ),
     "Infested Salvage": (
         "Salvamento infestado", "Infested Salvage",
-        "Descifra los datos con tres consolas mientras la infestacion las corroe; si caen las "
-        "tres, la mision falla.",
+        "Descifra los datos con tres consolas mientras la infestación las corroe; si caen las "
+        "tres, la misión falla.",
         "Una recompensa por cada ronda de descifrado completada, en ciclos A, A, B, C que se "
         "repiten. Tras cada ronda tienes unos segundos para decidir si sales o sigues.",
     ),
     "Sanctuary Onslaught": (
         "Masacre en el Santuario", "Sanctuary Onslaught",
-        "La mision de Cefalon Simaris: mata sin parar para que no baje la eficiencia y entra "
+        "La misión de Cefalon Simaris: mata sin parar para que no baje la eficiencia y entra "
         "en el conducto para pasar a la siguiente zona.",
         "Recompensa cada 2 zonas, en ciclos A, A, B, C que se repiten (la C, en las zonas 8, "
         "16, 24...). Si la eficiencia se agota, sales con lo que llevas.",
     ),
     "Alchemy": (
         "Alquimia", "Alchemy",
-        "Llena el crisol con el elemento que pide, llevando anforas de elementos basicos, "
+        "Llena el crisol con el elemento que pide, llevando ánforas de elementos básicos, "
         "mientras aguantas a los enemigos.",
         "Una recompensa por cada crisol completado, en ciclos A, A, B, C que se repiten.",
     ),
     "Legacyte Harvest": (
         "Legacyte Harvest", "Legacyte Harvest",
-        "Atrae a los Legacytes y capturalos; si se escapa el primero, la mision falla.",
+        "Atrae a los Legacytes y captúralos; si se escapa el primero, la misión falla.",
         "Una recompensa por cada captura, en ciclos A, A, B, C que se repiten. Puedes extraer "
-        "despues de la primera captura.",
+        "después de la primera captura.",
     ),
     "Arbitration": (
         "Arbitraje", "Arbitration",
-        "Un modo normal con enemigos mas duros y sin segunda oportunidad: si caes, no puedes "
+        "Un modo normal con enemigos más duros y sin segunda oportunidad: si caes, no puedes "
         "levantarte.",
-        "Recompensa al final de cada rotacion, en orden A, A, B, B y despues C en todas las "
-        "siguientes; cada rotacion da ademas Esencia Vitus. Si sales a mitad no te llevas "
+        "Recompensa al final de cada rotación, en orden A, A, B, B y después C en todas las "
+        "siguientes; cada rotación da además Esencia Vitus. Si sales a mitad no te llevas "
         "nada, pero si fallas conservas las rotaciones completadas.",
     ),
     "Spy": (
         "Espionaje", "Spy",
-        "Infiltrate y hackea las tres bovedas de datos; si fallas una, esa no da premio.",
-        "La rotacion depende de cuantas bovedas saques con exito, en cualquier orden: la "
+        "Infíltrate y hackea las tres bóvedas de datos; si fallas una, esa no da premio.",
+        "La rotación depende de cuántas bóvedas saques con éxito, en cualquier orden: la "
         "primera da A, la segunda B y la tercera C. Hay que intentar las tres antes de extraer.",
     ),
     "Rescue": (
         "Rescate", "Rescue",
-        "Encuentra al rehen, liberalo y llevalo vivo a la extraccion.",
-        "Un premio al terminar, y su rotacion depende de como lo hagas: A si salta la alarma, "
+        "Encuentra al rehén, libéralo y llévalo vivo a la extracción.",
+        "Un premio al terminar, y su rotación depende de cómo lo hagas: A si salta la alarma, "
         "B si lo rescatas sin alarma o matando a todos los carceleros, y C si haces las dos cosas.",
     ),
     "Sabotage": (
         "Sabotaje", "Sabotage",
-        "Llega al objetivo (un reactor, una nave...), inutilizalo y ve a la extraccion.",
+        "Llega al objetivo (un reactor, una nave...), inutilízalo y ve a la extracción.",
         "Si el nodo tiene escondites ocultos, cada uno que encuentres da un premio: el primero "
         "A, el segundo B y el tercero C.",
     ),
     "Caches": (
         "Sabotaje con escondites", "Sabotage",
-        "Un sabotaje con escondites ocultos por el mapa: ademas de cumplir el objetivo, "
-        "buscalos antes de extraer.",
+        "Un sabotaje con escondites ocultos por el mapa: además de cumplir el objetivo, "
+        "búscalos antes de extraer.",
         "Cada escondite encontrado da un premio: el primero A, el segundo B y el tercero C. "
         "Para la C hay que encontrar los tres.",
     ),
     "Capture": (
         "Captura", "Capture",
-        "Persigue al objetivo, derribalo antes de que escape y capturalo.",
-        "Un solo premio al terminar la mision.",
+        "Persigue al objetivo, derríbalo antes de que escape y captúralo.",
+        "Un solo premio al terminar la misión.",
     ),
     "Exterminate": (
         "Exterminio", "Exterminate",
-        "Mata a todos los enemigos que marca el contador y ve a la extraccion.",
-        "Un solo premio al terminar, en las versiones que lo tienen (Vacio, Archwing...); en "
-        "muchos nodos normales solo das creditos.",
+        "Mata a todos los enemigos que marca el contador y ve a la extracción.",
+        "Un solo premio al terminar, en las versiones que lo tienen (Vacío, Archwing...); en "
+        "muchos nodos normales solo das créditos.",
     ),
     "Assassination": (
         "Asesinato", "Assassination",
-        "Encuentra y mata al jefe de la mision.",
+        "Encuentra y mata al jefe de la misión.",
         "Al morir, el jefe suelta un objeto de su tabla (a menudo piezas de warframe); cada "
         "partida es un intento.",
     ),
     "Hijack": (
         "Usurpación", "Hijack",
-        "Escolta el vehiculo por su ruta, recargandolo con tus escudos.",
-        "La version normal no da premio especial al terminar.",
+        "Escolta el vehículo por su ruta, recargándolo con tus escudos.",
+        "La versión normal no da premio especial al terminar.",
     ),
     "Assault": (
         "Asalto", "Assault",
         "Entra en la Fortaleza Kuva y destruye el arma Navar.",
-        "No da premios de mision: solo afinidad y creditos.",
+        "No da premios de misión: solo afinidad y créditos.",
     ),
     "Arena": (
         "Arena", "Arena",
@@ -205,60 +205,60 @@ MODOS: dict[str, tuple[str, str, str, str]] = {
     "Rush": (
         "Persecución", "Rush",
         "Con Archwing, destruye los tres transportes Corpus antes de que escapen.",
-        "El premio depende de cuantos transportes destruyas: uno da A, dos dan B y los tres dan C.",
+        "El premio depende de cuántos transportes destruyas: uno da A, dos dan B y los tres dan C.",
     ),
     "Pursuit": (
         "Estampida", "Pursuit",
         "Con Archwing, persigue una nave Grineer, inutiliza su motor y sus generadores de "
         "escudo y defiende tu nave.",
-        "Un solo premio al terminar la mision.",
+        "Un solo premio al terminar la misión.",
     ),
     "Skirmish": (
         "Escaramuza", "Skirmish",
-        "Mision de Railjack: destruye los cazas y las naves de tripulacion que pide el "
+        "Misión de Railjack: destruye los cazas y las naves de tripulación que pide el "
         "objetivo; a veces hay un objetivo extra.",
         "Un premio al completar todos los objetivos. En algunos nodos las tablas separan "
-        "A, B y C, pero la wiki no explica que decide cada una.",
+        "A, B y C, pero la wiki no explica qué decide cada una.",
     ),
     "Volatile": (
         "Volátil", "Volatile",
-        "Mision de Railjack: aborda una nave Corpus, sabotea su reactor y destruyela desde "
+        "Misión de Railjack: aborda una nave Corpus, sabotea su reactor y destrúyela desde "
         "el Railjack.",
         "Un premio al completar todos los objetivos.",
     ),
     "Orphix": (
         "Orphix", "Orphix",
         "Destruye los Orphix (primero sus resonadores, con Necramech) antes de que el control "
-        "Sentient llegue al maximo.",
+        "Sentient llegue al máximo.",
         "Recompensa cada 3 Orphix destruidos, en ciclos A, A, B, C que se repiten; tras cada "
         "tanda puedes salir o seguir.",
     ),
     "Void Storm": (
         "Tormenta del Vacío", "Void Storm",
-        "Fisura del Vacio en Railjack: reune reactivo matando enemigos corrompidos para abrir "
+        "Fisura del Vacío en Railjack: reúne reactivo matando enemigos corrompidos para abrir "
         "tu reliquia.",
-        "Al terminar recibes la pieza de tu reliquia y, ademas, un premio de la tabla de la "
-        "Tormenta del Vacio.",
+        "Al terminar recibes la pieza de tu reliquia y, además, un premio de la tabla de la "
+        "Tormenta del Vacío.",
     ),
     "Void Flood": (
         "Inundación del Vacío", "Void Flood",
-        "Mision del Zariman: sella las grietas del Vacio llevandoles Vitoplast mientras "
+        "Misión del Zariman: sella las grietas del Vacío llevándoles Vitoplast mientras "
         "aguantas a los enemigos.",
         "Recompensa cada 3 grietas selladas (con el Thrax derrotado), en ciclos A, A, B, C "
         "que se repiten; tras cada una eliges salir o seguir.",
     ),
     "Void Cascade": (
         "Cascada del Vacío", "Void Cascade",
-        "Mision del Zariman: purga los Exolizadores de la infestacion del Vacio antes de que "
-        "se llene el medidor de cascada, o la mision falla.",
+        "Misión del Zariman: purga los Exolizadores de la infestación del Vacío antes de que "
+        "se llene el medidor de cascada, o la misión falla.",
         "Recompensa cada 4 Exolizadores purgados, en ciclos A, A, B, C que se repiten; tras "
         "cada una puedes salir o seguir.",
     ),
     "Void Armageddon": (
         "Armagedón del Vacío", "Void Armageddon",
-        "Mision del Zariman: defiende los dos Exodampers, que se alternan, y protege la "
-        "reliquia del Angel del Vacio.",
-        "Recompensa cada 3 oleadas superadas (con el Angel derrotado), en ciclos A, A, B, C "
+        "Misión del Zariman: defiende los dos Exodampers, que se alternan, y protege la "
+        "reliquia del Ángel del Vacío.",
+        "Recompensa cada 3 oleadas superadas (con el Ángel derrotado), en ciclos A, A, B, C "
         "que se repiten; tras cada una eliges salir o seguir.",
     ),
     "The Circuit": (
@@ -273,47 +273,47 @@ MODOS: dict[str, tuple[str, str, str, str]] = {
         "Circuito", "The Circuit",
         "Encadena etapas en el Circuito de Duviri para subir de nivel.",
         "Premios por nivel alcanzado en el Circuito: cada nivel se cobra una vez por semana "
-        "(se reinicia el lunes a las 0:00 UTC) y, pasado el ultimo, los premios se repiten.",
+        "(se reinicia el lunes a las 0:00 UTC) y, pasado el último, los premios se repiten.",
     ),
     "Hard": (
         "Circuito (Camino de Acero)", "The Circuit (Steel Path)",
         "Encadena etapas en el Circuito de Duviri para subir de nivel.",
         "Premios por nivel alcanzado en el Circuito: cada nivel se cobra una vez por semana "
-        "(se reinicia el lunes a las 0:00 UTC) y, pasado el ultimo, los premios se repiten.",
+        "(se reinicia el lunes a las 0:00 UTC) y, pasado el último, los premios se repiten.",
     ),
     "The Perita Rebellion": (
         "The Perita Rebellion", "The Perita Rebellion",
-        "Cumple ordenes al azar durante 12 minutos y despues derrota al jefe que elijas.",
-        "Cada 3 ordenes cumplidas dan un premio de la A; cada orden, uno de la B (segun el "
-        "jefe elegido); y terminar la mision da uno de la C.",
+        "Cumple órdenes al azar durante 12 minutos y después derrota al jefe que elijas.",
+        "Cada 3 órdenes cumplidas dan un premio de la A; cada orden, uno de la B (según el "
+        "jefe elegido); y terminar la misión da uno de la C.",
     ),
     "Follie's Hunt": (
         "Follie's Hunt", "Follie's Hunt",
         "Lleva pintura a los tres lienzos mientras te persiguen los clones de Follie.",
         "Al terminar recibes un premio al azar de la A y uno asegurado de la B; la C solo se "
-        "daba durante el evento Operacion: Atramentum.",
+        "daba durante el evento Operación: Atramentum.",
     ),
     "Netracells": (
         "Netraceldas", "Netracells",
-        "Encuentra la boveda y baja su seguridad matando enemigos dentro de la zona marcada.",
-        "Solo da premio las 5 primeras veces de cada semana, gastando un pulso de busqueda; "
+        "Encuentra la bóveda y baja su seguridad matando enemigos dentro de la zona marcada.",
+        "Solo da premio las 5 primeras veces de cada semana, gastando un pulso de búsqueda; "
         "sin pulsos se puede jugar, pero sin premio.",
     ),
     "Ascension": (
         "Ascensión", "Ascension",
-        "Defiende el recolector y despues la capsula de extraccion mientras sube.",
-        "Un premio al terminar la mision.",
+        "Defiende el recolector y después la cápsula de extracción mientras sube.",
+        "Un premio al terminar la misión.",
     ),
     "Shrine Defense": (
         "Defensa del santuario", "Shrine Defense",
         "Entrega ofrendas en el santuario mientras defiendes las casas Ostron y, al final, "
         "derrota al Oni infestado.",
-        "Premio al terminar la mision; no hay recompensas por oleada.",
+        "Premio al terminar la misión; no hay recompensas por oleada.",
     ),
     "Conclave": (
         "Cónclave", "Conclave",
         "Partidas contra otros jugadores (PvP).",
-        "Se gana reputacion de Conclave para la tienda de Teshin; ademas, cada partida puede "
+        "Se gana reputación de Conclave para la tienda de Teshin; además, cada partida puede "
         "soltar algo de su tabla.",
     ),
 }
@@ -363,17 +363,17 @@ AABC: dict[str, tuple[str, int]] = {
 }
 # Frase por unidad; {rot} es la letra y {lista}, "20, 40, 60...".
 UNIDADES = {
-    "minuto": "Aqui la rotacion {rot} es la recompensa de los minutos {lista}",
-    "oleada": "Aqui la rotacion {rot} es la recompensa de las oleadas {lista}",
-    "ronda": "Aqui la rotacion {rot} es la recompensa de las rondas {lista}",
-    "zona": "Aqui la rotacion {rot} es la recompensa de las zonas {lista}",
-    "excavadora": "Aqui la rotacion {rot} llega con {lista} excavadoras completadas",
-    "crisol": "Aqui la rotacion {rot} llega con {lista} crisoles completados",
-    "captura": "Aqui la rotacion {rot} llega con {lista} capturas",
-    "grupo": "Aqui la rotacion {rot} llega con {lista} grupos de desertores rescatados",
-    "grieta": "Aqui la rotacion {rot} llega con {lista} grietas selladas",
-    "exolizador": "Aqui la rotacion {rot} llega con {lista} Exolizadores purgados",
-    "orphix": "Aqui la rotacion {rot} llega con {lista} Orphix destruidos",
+    "minuto": "Aquí la rotación {rot} es la recompensa de los minutos {lista}",
+    "oleada": "Aquí la rotación {rot} es la recompensa de las oleadas {lista}",
+    "ronda": "Aquí la rotación {rot} es la recompensa de las rondas {lista}",
+    "zona": "Aquí la rotación {rot} es la recompensa de las zonas {lista}",
+    "excavadora": "Aquí la rotación {rot} llega con {lista} excavadoras completadas",
+    "crisol": "Aquí la rotación {rot} llega con {lista} crisoles completados",
+    "captura": "Aquí la rotación {rot} llega con {lista} capturas",
+    "grupo": "Aquí la rotación {rot} llega con {lista} grupos de desertores rescatados",
+    "grieta": "Aquí la rotación {rot} llega con {lista} grietas selladas",
+    "exolizador": "Aquí la rotación {rot} llega con {lista} Exolizadores purgados",
+    "orphix": "Aquí la rotación {rot} llega con {lista} Orphix destruidos",
 }
 # En que rotaciones del ciclo de cuatro cae cada letra (1.a y 2.a son A, 3.a B, 4.a C).
 _POSICIONES_AABC = {"A": (1, 2, 5, 6), "B": (3, 7, 11), "C": (4, 8, 12)}
@@ -381,49 +381,49 @@ _POSICIONES_AABC = {"A": (1, 2, 5, 6), "B": (3, 7, 11), "C": (4, 8, 12)}
 # Modos que no van en A, A, B, C: una linea escrita a mano por rotacion.
 ROTACIONES: dict[str, dict[str, str]] = {
     "Spy": {
-        "A": "Aqui la rotacion A es la primera boveda que saques con exito.",
-        "B": "Aqui la rotacion B es la segunda boveda que saques con exito.",
-        "C": "Aqui la rotacion C es la tercera boveda: hay que sacar las tres.",
+        "A": "Aquí la rotación A es la primera bóveda que saques con éxito.",
+        "B": "Aquí la rotación B es la segunda bóveda que saques con éxito.",
+        "C": "Aquí la rotación C es la tercera bóveda: hay que sacar las tres.",
     },
     "Caches": {
-        "A": "Aqui la rotacion A es el primer escondite que encuentres.",
-        "B": "Aqui la rotacion B es el segundo escondite que encuentres.",
-        "C": "Aqui la rotacion C es el tercer escondite: hay que encontrar los tres.",
+        "A": "Aquí la rotación A es el primer escondite que encuentres.",
+        "B": "Aquí la rotación B es el segundo escondite que encuentres.",
+        "C": "Aquí la rotación C es el tercer escondite: hay que encontrar los tres.",
     },
     "Rescue": {
-        "A": "Aqui la rotacion A es rescatar al rehen con la alarma sonando.",
-        "B": "Aqui la rotacion B es rescatarlo sin alarma, o matando a todos los carceleros.",
-        "C": "Aqui la rotacion C es rescatarlo sin alarma y ademas matando a todos los carceleros.",
+        "A": "Aquí la rotación A es rescatar al rehén con la alarma sonando.",
+        "B": "Aquí la rotación B es rescatarlo sin alarma, o matando a todos los carceleros.",
+        "C": "Aquí la rotación C es rescatarlo sin alarma y además matando a todos los carceleros.",
     },
     "Rush": {
-        "A": "Aqui la rotacion A es destruir un transporte.",
-        "B": "Aqui la rotacion B es destruir dos transportes.",
-        "C": "Aqui la rotacion C es destruir los tres transportes.",
+        "A": "Aquí la rotación A es destruir un transporte.",
+        "B": "Aquí la rotación B es destruir dos transportes.",
+        "C": "Aquí la rotación C es destruir los tres transportes.",
     },
     "Disruption": {
-        "A": "Aqui la rotacion A sale en las primeras rondas salvando pocos conductos: ronda 1 "
+        "A": "Aquí la rotación A sale en las primeras rondas salvando pocos conductos: ronda 1 "
              "con hasta tres, ronda 2 con uno o dos, ronda 3 con uno. Si buscas algo de la A, "
              "sal tras la ronda 2: desde la ronda 4 ya no sale.",
-        "B": "Aqui la rotacion B sale en la ronda 1 con los cuatro conductos, en la 2 con tres "
-             "o cuatro, en la 3 con dos o tres, y de la 4 en adelante con uno o dos. Lo mas "
-             "rapido: rondas 1 y 2 salvando los cuatro.",
-        "C": "Aqui la rotacion C sale en la ronda 3 si salvas los cuatro conductos, y de la "
-             "ronda 4 en adelante si salvas tres o cuatro: sigue salvandolos en cada ronda.",
+        "B": "Aquí la rotación B sale en la ronda 1 con los cuatro conductos, en la 2 con tres "
+             "o cuatro, en la 3 con dos o tres, y de la 4 en adelante con uno o dos. Lo más "
+             "rápido: rondas 1 y 2 salvando los cuatro.",
+        "C": "Aquí la rotación C sale en la ronda 3 si salvas los cuatro conductos, y de la "
+             "ronda 4 en adelante si salvas tres o cuatro: sigue salvándolos en cada ronda.",
     },
     "Arbitration": {
-        "A": "Aqui la rotacion A son la primera y la segunda rotacion.",
-        "B": "Aqui la rotacion B son la tercera y la cuarta rotacion.",
-        "C": "Aqui la rotacion C es de la quinta rotacion en adelante: todas son C.",
+        "A": "Aquí la rotación A son la primera y la segunda rotación.",
+        "B": "Aquí la rotación B son la tercera y la cuarta rotación.",
+        "C": "Aquí la rotación C es de la quinta rotación en adelante: todas son C.",
     },
     "The Perita Rebellion": {
-        "A": "Aqui la rotacion A llega cada 3 ordenes cumplidas.",
-        "B": "Aqui la rotacion B llega con cada orden cumplida y depende del jefe elegido.",
-        "C": "Aqui la rotacion C es terminar la mision.",
+        "A": "Aquí la rotación A llega cada 3 órdenes cumplidas.",
+        "B": "Aquí la rotación B llega con cada orden cumplida y depende del jefe elegido.",
+        "C": "Aquí la rotación C es terminar la misión.",
     },
     "Follie's Hunt": {
-        "A": "Aqui la rotacion A es el premio al azar de cada partida completada.",
-        "B": "Aqui la rotacion B es el premio asegurado de cada partida completada.",
-        "C": "Aqui la rotacion C solo se daba durante el evento Operacion: Atramentum.",
+        "A": "Aquí la rotación A es el premio al azar de cada partida completada.",
+        "B": "Aquí la rotación B es el premio asegurado de cada partida completada.",
+        "C": "Aquí la rotación C solo se daba durante el evento Operación: Atramentum.",
     },
 }
 
@@ -457,7 +457,7 @@ CORTAS_UNIDAD = {
 # que ROTACIONES. Los modos sin regla clara (Escaramuza, Defensa espejo, el Circuito)
 # no estan: mejor no poner nada que inventar.
 CORTAS: dict[str, dict[str, str]] = {
-    "Spy": {"A": "1a boveda", "B": "2a boveda", "C": "3a boveda"},
+    "Spy": {"A": "1a bóveda", "B": "2a bóveda", "C": "3a bóveda"},
     "Caches": {"A": "1 escondite", "B": "2 escondites", "C": "3 escondites"},
     "Rescue": {"A": "con alarma", "B": "sin alarma o carceleros muertos",
                "C": "sin alarma y carceleros muertos"},
@@ -465,7 +465,7 @@ CORTAS: dict[str, dict[str, str]] = {
     "Disruption": {"A": "rondas 1-2 con 1-2 conductos", "B": "rondas 1-2 con 4 conductos",
                    "C": "ronda 3+ con 4 conductos"},
     "Arbitration": {"A": "rotaciones 1 y 2", "B": "rotaciones 3 y 4", "C": "de la 5a en adelante"},
-    "The Perita Rebellion": {"A": "cada 3 ordenes", "B": "cada orden", "C": "al terminar"},
+    "The Perita Rebellion": {"A": "cada 3 órdenes", "B": "cada orden", "C": "al terminar"},
     "Follie's Hunt": {"A": "premio al azar", "B": "premio asegurado", "C": "solo en evento"},
 }
 _PRIMERAS_AABC = {"A": (1, 2), "B": (3,), "C": (4,)}
@@ -497,11 +497,12 @@ def nombre(modo_en: str | None) -> str:
         return ""
     es, en = MODOS[modo][:2]
     if not es_castellano():
-        # Los catalogos de otros idiomas tienen las claves sin tildes ("Tormenta del Vacio").
-        llana = _sin_tildes(es)
-        traducido = t(llana)
-        if traducido != llana:
-            return traducido
+        # La clave del catalogo puede ir con tildes ("Tormenta del Vacío") o, en las mas
+        # antiguas, sin ellas ("Tormenta del Vacio"): se prueban las dos.
+        for clave in dict.fromkeys((es, _sin_tildes(es))):
+            traducido = t(clave)
+            if traducido != clave:
+                return traducido
     return glosa(es, en)
 
 
@@ -565,7 +566,7 @@ def explicacion(modo_en: str | None, rotacion: str | None = None) -> str:
     _, _, que, recompensas = MODOS[modo]
     lineas = [
         nombre(modo),
-        t("Que hacer: {detalle}", detalle=t(que)),
+        t("Qué hacer: {detalle}", detalle=t(que)),
         t("Recompensas: {detalle}", detalle=t(recompensas)),
     ]
     especifica = linea_rotacion(modo, rotacion)

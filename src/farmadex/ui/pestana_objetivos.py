@@ -85,7 +85,7 @@ INSIGNIAS = {
 def _rotacion(mision: dict, color_texto: str) -> str:
     """'rotacion C' explicando, al pasar el raton, cuando llega en el modo de esa mision."""
     return glosario.enlace_rotacion(
-        mision.get("modo"), mision["rotacion"], t("rotacion {rot}", rot=mision["rotacion"]), color_texto
+        mision.get("modo"), mision["rotacion"], t("rotación {rot}", rot=mision["rotacion"]), color_texto
     )
 
 
@@ -241,7 +241,7 @@ class ControlCantidad(QWidget):
         self.cuenta.setAlignment(Qt.AlignCenter)
         self.cuenta.setMinimumWidth(px(max(64, ancho_barra // 3), False))
         self.paso = _Paso(contexto.pasos.get(clave, 1))
-        self.paso.setToolTip(t("Cuantas unidades suma o resta cada clic (de 1 a {max}).",
+        self.paso.setToolTip(t("Cuántas unidades suma o resta cada clic (de 1 a {max}).",
                                max=_miles(MAX_CANTIDAD)))
         self.paso.setAccessibleName(t("Cantidad por clic"))
         self.paso.valueChanged.connect(lambda v: contexto.pasos.__setitem__(clave, v))
@@ -299,7 +299,7 @@ class DialogoCantidad(QDialog):
         titulo = EtiquetaC(nombre, "seccion")
         form = QFormLayout()
         form.addRow(t("Quiero conseguir"), self.meta)
-        form.addRow("", self._nota(t("Minimo 1, maximo {max}.", max=_miles(MAX_CANTIDAD))))
+        form.addRow("", self._nota(t("Mínimo 1, máximo {max}.", max=_miles(MAX_CANTIDAD))))
         form.addRow(t("Ya tengo"), self.actual)
         form.addRow("", self._nota(t("De 0 hasta lo que quieres conseguir.")))
 
@@ -310,7 +310,7 @@ class DialogoCantidad(QDialog):
         if en_inventario is not None:
             linea = QHBoxLayout()
             linea.addWidget(self._nota(t("Tu inventario dice que tienes {n}.", n=_miles(en_inventario))), 1)
-            self.usar_inventario = BotonC(t("Usar ese numero"))
+            self.usar_inventario = BotonC(t("Usar ese número"))
             self.usar_inventario.clicked.connect(
                 lambda: self.actual.setValue(min(en_inventario, self.meta.value()))
             )
@@ -450,7 +450,7 @@ class FilaObjetivo(QWidget):
             listos = sum(1 for r in recursos if r.completado)
             self.boton_recursos = BotonGlifo(
                 "abajo" if abierto else "derecha",
-                t("Recursos de fabricacion ({listos} de {total} listos)", listos=listos, total=len(recursos)),
+                t("Recursos de fabricación ({listos} de {total} listos)", listos=listos, total=len(recursos)),
                 tam=12,
             )
             self.boton_recursos.setToolTip(
@@ -495,7 +495,7 @@ class FilaObjetivo(QWidget):
         self.completar.setEnabled(not objetivo.completado)
         self.completar.clicked.connect(self._completar)
         self.editar = BotonGlifo("editar", t("Editar"))
-        self.editar.setToolTip(t("Cambiar cuanto quieres conseguir y cuanto tienes"))
+        self.editar.setToolTip(t("Cambiar cuánto quieres conseguir y cuánto tienes"))
         self.editar.clicked.connect(self._editar)
         self.quitar = BotonGlifo("cerrar", t("Quitar"))
         self.quitar.setToolTip(t("Quitar"))
@@ -523,7 +523,7 @@ class FilaObjetivo(QWidget):
         self.panel_recursos.capa.setContentsMargins(m + px(44, False), px(8, False), m, px(10, False))
         self.panel_recursos.capa.setSpacing(px(6, False))
         self.rotulo_recursos = EtiquetaC(
-            t("Recursos de fabricacion · {listos} de {total} listos", listos=listos, total=len(recursos)),
+            t("Recursos de fabricación · {listos} de {total} listos", listos=listos, total=len(recursos)),
             "rotulo", mayus=True)
         self.panel_recursos.capa.addWidget(self.rotulo_recursos)
         if abierto:
@@ -546,13 +546,13 @@ class FilaObjetivo(QWidget):
     def _texto_ruta(self, ruta) -> str:
         p = PALETA
         if not ruta:
-            return t("Sin ruta conocida: puede venir de una mision de historia o del mercado.")
+            return t("Sin ruta conocida: puede venir de una misión de historia o del mercado.")
         reliquia = ruta["reliquia"]
         if ruta.get("tipo") != "reliquia" or not reliquia:
             # No sale de reliquias (Rhino cae del Chacal en Fossa): el sitio, tal cual.
             mision = ruta["mision"]
             if not mision:
-                return t("Sin ruta conocida: puede venir de una mision de historia o del mercado.")
+                return t("Sin ruta conocida: puede venir de una misión de historia o del mercado.")
             trozos = [f"<b>{html.escape(mision.get('donde') or '')}</b>"]
             if mision.get("mision"):
                 trozos.append(glosario.enlace_mision(
@@ -567,12 +567,12 @@ class FilaObjetivo(QWidget):
         radiante = t("{prob}% en Radiante", prob=f"{prob:.1f}")
         if ruta["solo_en_boveda"]:
             return (
-                f"<span style='color:{COLOR_BOVEDA}'>{t('Solo en boveda')}</span> &middot; "
+                f"<span style='color:{COLOR_BOVEDA}'>{t('Solo en bóveda')}</span> &middot; "
                 f"<span style='color:{p['texto']}'>{nombre}</span> ({radiante}). "
                 + t("Hay que comprarla a otro jugador.")
             )
         mision = ruta["mision"]
-        detalle = f"{html.escape(mision['donde'])}" if mision else t("sin mision conocida")
+        detalle = f"{html.escape(mision['donde'])}" if mision else t("sin misión conocida")
         if mision and mision["mision"]:
             detalle += " &middot; " + glosario.enlace_mision(
                 mision.get("modo"), mision["mision"], p["texto"], mision.get("rotacion"))
@@ -580,7 +580,7 @@ class FilaObjetivo(QWidget):
             detalle += " &middot; " + _rotacion(mision, p["texto"])
         return (
             f"<span style='color:{p['texto']}'><b>{nombre}</b></span> ({radiante}) "
-            f"&middot; {t('farmeala en')} <span style='color:{p['texto']}'>{detalle}</span>"
+            f"&middot; {t('farméala en')} <span style='color:{p['texto']}'>{detalle}</span>"
         )
 
     # -- acciones --
@@ -595,7 +595,7 @@ class FilaObjetivo(QWidget):
             return  # ya en el maximo posible
         if not confirmar(
             self, t("Ampliar la meta"),
-            t("Ya tienes los {meta} que querias de {nombre}. Quieres subir la meta a {nueva}?",
+            t("Ya tienes los {meta} que querías de {nombre}. ¿Quieres subir la meta a {nueva}?",
               meta=_miles(self.objetivo.objetivo), nombre=self.objetivo.nombre, nueva=_miles(nueva)),
         ):
             return
@@ -623,7 +623,7 @@ class FilaObjetivo(QWidget):
     def _borrar(self) -> None:
         if not confirmar(
             self, t("Quitar objetivo"),
-            t("Seguro que quieres quitar {nombre}? Se pierde lo que llevabas apuntado.",
+            t("¿Seguro que quieres quitar {nombre}? Se pierde lo que llevabas apuntado.",
               nombre=self.objetivo.nombre_completo),
         ):
             return
@@ -677,7 +677,7 @@ class PanelSet(QWidget):
         self.etiqueta = EtiquetaC(t("Set: {hechas} de {total} piezas", hechas=hechas, total=total), "pequeno")
 
         self.menos = BotonC("", icono="menos", tam=11)
-        self.menos.setToolTip(t("Deshacer la ultima pieza conseguida"))
+        self.menos.setToolTip(t("Deshacer la última pieza conseguida"))
         self.menos.setEnabled(hechas > 0)
         self.menos.clicked.connect(self._restar)
         self.cuenta = EtiquetaC(f"{hechas} / {total}", "dato", tinta="acento" if hechas == total else "texto")
@@ -765,7 +765,7 @@ class PanelSet(QWidget):
     def _borrar(self) -> None:
         if not confirmar(
             self, t("Quitar set"),
-            t("Seguro que quieres quitar el set {nombre} con sus {n} piezas? Se pierde lo que llevabas apuntado.",
+            t("¿Seguro que quieres quitar el set {nombre} con sus {n} piezas? Se pierde lo que llevabas apuntado.",
               nombre=self.entrada.nombre, n=len(self.entrada.objetivos)),
         ):
             return
@@ -881,8 +881,8 @@ def lineas_hoy(mundo, pasos: list, ahora=None) -> list[dict]:
         for objeto in invasion.objetos or []:
             paso = buscar(objeto)
             if paso is not None:
-                anadir("invasion", t("Invasion"), paso, invasion.nodo, hex_de("aviso"),
-                       t("Una invasion en {nodo} lo da ahora mismo", nodo=invasion.nodo))
+                anadir("invasion", t("Invasión"), paso, invasion.nodo, hex_de("aviso"),
+                       t("Una invasión en {nodo} lo da ahora mismo", nodo=invasion.nodo))
     for alerta in getattr(mundo, "alertas", None) or []:
         if alerta.expira and alerta.expira <= ahora:
             continue
@@ -1026,7 +1026,7 @@ class PestanaObjetivos(QWidget):
         self.filtro.blockSignals(True)
         self.filtro.clear()
         for clave, texto in (
-            (None, t("Todas las categorias")),
+            (None, t("Todas las categorías")),
             (estado_objetivos.SETS, t("Sets y piezas")),
             (estado_objetivos.WARFRAMES, t("Warframes")),
             (estado_objetivos.ARMAS, t("Armas")),
@@ -1037,22 +1037,22 @@ class PestanaObjetivos(QWidget):
         self.filtro.setCurrentIndex(max(0, self.filtro.findData(self.categoria)))
         self.filtro.blockSignals(False)
         self.filtro.updateGeometry()
-        self.todos.setText(t("Marcar los de esta pagina"))
+        self.todos.setText(t("Marcar los de esta página"))
         self.anterior.setText(t("‹ Anterior"))
         self.siguiente.setText(t("Siguiente ›"))
         self.boton_inventario.setText(t("Leer inventario de la pantalla"))
         self.boton_inventario.setToolTip(t(
             "Con esto encendido, Farmadex lee solo las cantidades cuando abres el Inventario o la "
-            "Fundicion en el juego y las apunta en tus objetivos. Es lo mismo que la opcion de Ajustes."))
-        self.boton_anadir.setText(t("Anadir un objetivo"))
+            "Fundición en el juego y las apunta en tus objetivos. Es lo mismo que la opción de Ajustes."))
+        self.boton_anadir.setText(t("Añadir un objetivo"))
         self.boton_anadir.setToolTip(t("Busca algo y pulsa '+ Objetivo' en su ficha."))
         self.panel_hoy.poner_titulo(t("Para esto te sirve hoy"))
         self.boton_mundo.setText(t("Ver el mundo"))
-        self.panel_ayuda.poner_titulo(t("Como se usa"))
+        self.panel_ayuda.poner_titulo(t("Cómo se usa"))
         self.ayuda.setText("<br>".join(html.escape(x) for x in (
-            t("+ y - suman o restan; ×1 elige cuanto suma cada clic."),
+            t("+ y - suman o restan; ×1 elige cuánto suma cada clic."),
             t("Al abrir reliquias en solitario, Farmadex lo suma solo."),
-            t("La marca lo da por hecho, el lapiz sirve para editar y la X para quitar."),
+            t("La marca lo da por hecho, el lápiz sirve para editar y la X para quitar."),
             t("La flecha abre las piezas del set o los recursos para fabricarlo."),
         )))
 
@@ -1126,7 +1126,7 @@ class PestanaObjetivos(QWidget):
             cfg["inventario_pasivo"] = activo
             config_farmadex.guardar(cfg)
         self.aviso.setText(
-            t("Listo: abre el Inventario o la Fundicion en el juego y Farmadex apuntara solo lo que tienes.")
+            t("Listo: abre el Inventario o la Fundición en el juego y Farmadex apuntará solo lo que tienes.")
             if activo else t("Farmadex ya no lee el Inventario solo.")
         )
         self.aviso.show()
@@ -1235,7 +1235,7 @@ class PestanaObjetivos(QWidget):
         lista = ", ".join(nombres[:6]) + (" ..." if len(nombres) > 6 else "")
         if not confirmar(
             self, t("Borrar objetivos"),
-            t("Seguro que quieres borrar {n} objetivos? ({lista}) Se pierde lo que llevabas apuntado.",
+            t("¿Seguro que quieres borrar {n} objetivos? ({lista}) Se pierde lo que llevabas apuntado.",
               n=len(nombres), lista=lista),
         ):
             return
@@ -1326,7 +1326,7 @@ class PestanaObjetivos(QWidget):
         self.boton_mundo.setVisible(self.mundo is not None)
         hay_objetivos = bool(estado_objetivos.listar(self.usuario))
         if not hay_objetivos:
-            texto = t("Cuando tengas objetivos, aqui veras las fisuras e invasiones abiertas ahora que te sirven.")
+            texto = t("Cuando tengas objetivos, aquí verás las fisuras e invasiones abiertas ahora que te sirven.")
             self.capa_hoy.addWidget(EtiquetaC(texto, "pequeno", envolver=True))
             return
         if self.mundo is None:
@@ -1346,7 +1346,7 @@ class PestanaObjetivos(QWidget):
             caja.setToolTip(t("Para {nombre}", nombre=linea["detalle"]))
             self.capa_hoy.addWidget(caja)
         if len(lineas) > MAX_LINEAS_HOY:
-            self.capa_hoy.addWidget(EtiquetaC(t("y {n} mas en Mundo", n=len(lineas) - MAX_LINEAS_HOY),
+            self.capa_hoy.addWidget(EtiquetaC(t("y {n} más en Mundo", n=len(lineas) - MAX_LINEAS_HOY),
                                               "pequeno", tinta="suave"))
 
     def _textos_hoy(self) -> dict[str, str]:
@@ -1393,7 +1393,7 @@ class PestanaObjetivos(QWidget):
 
         hay_alguno = bool(estado_objetivos.listar(self.usuario))
         if not hay_alguno:
-            self.resumen.setText(t("Todavia no tienes objetivos. Busca algo y pulsa '+ Objetivo'."))
+            self.resumen.setText(t("Todavía no tienes objetivos. Busca algo y pulsa '+ Objetivo'."))
         else:
             pendientes = cuenta[SIN_EMPEZAR] + cuenta[EN_PROGRESO]
             self.resumen.setText(
@@ -1409,8 +1409,8 @@ class PestanaObjetivos(QWidget):
 
         if not trozo:
             self.vacio.setText(
-                t("Todavia no tienes objetivos. Busca algo y pulsa '+ Objetivo'.") if not hay_alguno
-                else t("Aqui no hay nada con este filtro.")
+                t("Todavía no tienes objetivos. Busca algo y pulsa '+ Objetivo'.") if not hay_alguno
+                else t("Aquí no hay nada con este filtro.")
             )
             self.vacio.show()
             self.caja_filas.insertWidget(0, self.vacio)
@@ -1425,7 +1425,7 @@ class PestanaObjetivos(QWidget):
             widget.seleccion.connect(self._seleccion)
             self.caja_filas.insertWidget(self.caja_filas.count() - 1, widget)
 
-        self.texto_pagina.setText(t("Pagina {n} de {total}", n=self.pagina + 1, total=total))
+        self.texto_pagina.setText(t("Página {n} de {total}", n=self.pagina + 1, total=total))
         self.anterior.setEnabled(self.pagina > 0)
         self.siguiente.setEnabled(self.pagina < total - 1)
         self.todos.blockSignals(True)

@@ -85,7 +85,7 @@ def test_la_linea_de_la_wiki_junta_modos_y_nodos_sin_repetir():
     ("Defense", "a", "oleadas 3 y 6"),
     ("Excavation", "C", "4a excavadora"),
     ("Interception", "C", "4a ronda"),
-    ("Spy", "C", "3a boveda"),
+    ("Spy", "C", "3a bóveda"),
     ("Defection", "C", "8 grupos"),
     ("Void Cascade", "C", "16 Exolizadores"),
     ("Arbitrations", "C", "de la 5a en adelante"),
@@ -121,7 +121,7 @@ def test_la_forma_corta_se_traduce():
 
 def test_disrupcion_ya_no_dice_que_salvar_mas_siempre_es_mejor():
     texto = mm.MODOS["Disruption"][3]
-    assert "Cuanto mas avanzas" not in texto
+    assert "Cuanto más avanzas" not in texto
     assert "al menos un conducto" in texto and "sal tras la ronda 2" in texto
     assert "desde la ronda 4 ya no sale" in mm.linea_rotacion("Disruption", "A")
     assert "rondas 1 y 2 salvando los cuatro" in mm.linea_rotacion("Disruption", "B")
@@ -149,8 +149,8 @@ def test_disrupcion_con_su_regla_de_rondas_y_conductos():
 def test_el_desglose_de_disrupcion_habla_de_rondas():
     texto = desglose_tiempo.texto(_disrupcion("C"))
     primera = texto.splitlines()[0]
-    assert primera == ("~20 min por partida (4 rondas de ~4 min mas llegar, extraer y la carga), que dan "
-                       "2 premios de la rotacion C: ~10.2 min por intento.")
+    assert primera == ("~20 min por partida (4 rondas de ~4 min más llegar, extraer y la carga), que dan "
+                       "2 premios de la rotación C: ~10.2 min por intento.")
     assert "rotaciones" not in primera
     # 10.25 min por intento al 10 % -> ~102.5 min de media (1.7 h).
     assert "x ~10 intentos de media (10.0% cada uno) = ~1.7 h." in texto

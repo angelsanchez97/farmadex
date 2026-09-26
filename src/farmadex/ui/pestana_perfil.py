@@ -54,7 +54,7 @@ log = obtener("perfil_ui")
 # Nombres oficiales en castellano de los sindicatos, por su etiqueta del perfil.
 SINDICATOS = {
     "SteelMeridianSyndicate": "Meridiano de Acero",
-    "ArbitersSyndicate": "Arbitros de Hexis",
+    "ArbitersSyndicate": "Árbitros de Hexis",
     "CephalonSudaSyndicate": "Cefalon Suda",
     "PerrinSyndicate": "Secuencia Perrin",
     "RedVeilSyndicate": "Velo Rojo",
@@ -69,7 +69,7 @@ SINDICATOS = {
     "ZarimanSyndicate": "Los Holdfasts",
     "EntratiLabSyndicate": "Cavia",
     "HexSyndicate": "Los Hex",
-    "KahlSyndicate": "Guarnicion de Kahl",
+    "KahlSyndicate": "Guarnición de Kahl",
     "ConclaveSyndicate": "Conclave",
 }
 # Color de cada sindicato de facciones (el de su emblema en el juego); el resto, acento.
@@ -85,9 +85,9 @@ COLOR_SINDICATO = {
 # Intrinsecos: los de Railjack y los del Errante, en el orden del juego.
 INTRINSECOS = {
     "LPS_PILOTING": "Pilotaje",
-    "LPS_GUNNERY": "Artilleria",
-    "LPS_TACTICAL": "Tactica",
-    "LPS_ENGINEERING": "Ingenieria",
+    "LPS_GUNNERY": "Artillería",
+    "LPS_TACTICAL": "Táctica",
+    "LPS_ENGINEERING": "Ingeniería",
     "LPS_COMMAND": "Mando",
     "LPS_DRIFT_RIDING": "Monta",
     "LPS_DRIFT_COMBAT": "Combate",
@@ -257,14 +257,14 @@ class PestanaPerfil(QWidget):
     def _leido(self, perfil) -> None:
         datos_perfil.guardar(self.usuario, perfil, self._ruta_en_curso)
         mensaje = t(
-            "Perfil de {nombre} importado: rango de maestria {rango}, {objetos} objetos con XP y {nodos} nodos",
+            "Perfil de {nombre} importado: rango de maestría {rango}, {objetos} objetos con XP y {nodos} nodos",
             nombre=perfil.nombre, rango=perfil.rango, objetos=len(perfil.xp), nodos=len(perfil.nodos),
         )
         if self.indice is not None:
             casado = datos_perfil.casar_con_catalogo(self.usuario, self.indice)
             if casado.sin_catalogo:
                 mensaje += " " + t(
-                    "({n} objetos del perfil no estan en el catalogo; probablemente son del ultimo parche)",
+                    "({n} objetos del perfil no están en el catálogo; probablemente son del último parche)",
                     n=len(casado.sin_catalogo),
                 )
                 log.info("Sin catalogo: %s", ", ".join(casado.sin_catalogo[:20]))
@@ -323,18 +323,18 @@ class PestanaPerfil(QWidget):
         panel = PanelC(t("Perfil del jugador: preparado, pero hoy sin fuente de datos"))
         panel.capa.addWidget(EtiquetaC(t(
             "Digital Extremes no publica ahora mismo los datos del perfil: la descarga desde "
-            "warframe.com que usaba esta pestana devuelve acceso denegado, tambien con la sesion iniciada."
+            "warframe.com que usaba esta pestaña devuelve acceso denegado, también con la sesión iniciada."
         ), "normal", envolver=True))
         panel.capa.addWidget(EtiquetaC(t(
-            "Si consigues un fichero de perfil valido (por ejemplo, uno guardado antes), "
-            "puedes importarlo con {boton}. Se esta estudiando leer el perfil directamente "
+            "Si consigues un fichero de perfil válido (por ejemplo, uno guardado antes), "
+            "puedes importarlo con {boton}. Se está estudiando leer el perfil directamente "
             "de tus propias pantallas del juego.",
             boton=f"<b>{html.escape(t('Importar perfil (JSON)...'))}</b>",
         ), "normal", envolver=True))
         panel.capa.addWidget(EtiquetaC(t(
             "Con el perfil, la ficha de cada objeto en Buscar dice si ya lo has dominado, "
-            "y aqui veras lo que te falta por categoria y los nodos que no has completado. "
-            "Farmadex no pide nada a Digital Extremes: solo lee el fichero que tu le das."
+            "y aquí verás lo que te falta por categoría y los nodos que no has completado. "
+            "Farmadex no pide nada a Digital Extremes: solo lee el fichero que tú le das."
         ), "pequeno", envolver=True))
         self.capa_contenido.addWidget(panel)
 
@@ -372,13 +372,13 @@ class PestanaPerfil(QWidget):
     # -- paneles ---------------------------------------------------------------------
 
     def _panel_maestria(self, meta: dict, conteo: dict[str, dict]) -> PanelC:
-        panel = PanelC(t("Tu maestria"))
-        rotulo = EtiquetaC(t("Rango de maestria"), "pequeno", mayus=True)
+        panel = PanelC(t("Tu maestría"))
+        rotulo = EtiquetaC(t("Rango de maestría"), "pequeno", mayus=True)
         self.rango = EtiquetaC(str(meta.get("rango", 0)), "portada")
         self.rango.setStyleSheet(
             f"color: {hex_de('acento')}; font-family: '{TITULAR}'; font-size: {px(56)}px; font-weight: 600;"
             " background: transparent;")
-        self.rango.setToolTip(t("Rango de maestria {n}", n=meta.get("rango", 0)))
+        self.rango.setToolTip(t("Rango de maestría {n}", n=meta.get("rango", 0)))
         izquierda = columna(rotulo, self.rango, None, espacio=0)
 
         dominados = sum(c[DOMINADO] for c in conteo.values())
@@ -396,21 +396,21 @@ class PestanaPerfil(QWidget):
             detalles.append(Path(meta["fichero"]).name)
         derecha = columna(
             EtiquetaC(meta.get("nombre") or "", "seccion", recortar=True),
-            EtiquetaC(t("Dominas {d} de {total} objetos que dan maestria", d=dominados, total=total), "normal"),
+            EtiquetaC(t("Dominas {d} de {total} objetos que dan maestría", d=dominados, total=total), "normal"),
             BarraFina(dominados / total if total else 0, tinta="acento", alto=5),
             EtiquetaC(" · ".join(detalles), "pequeno", envolver=True),
             espacio=px(6, False),
         )
         if a_medias:
             derecha.addWidget(EtiquetaC(
-                t("Lo mas rapido: subir a 30 lo que ya tienes a medias ({n}).", n=a_medias), "pequeno",
+                t("Lo más rápido: subir a 30 lo que ya tienes a medias ({n}).", n=a_medias), "pequeno",
                 envolver=True))
         derecha.addStretch(1)
         panel.capa.addLayout(fila(izquierda, px(24, False), derecha, espacio=px(8, False)))
         return panel
 
     def _panel_categorias(self, conteo: dict[str, dict]) -> PanelC:
-        panel = PanelC(t("Maestria por categoria"))
+        panel = PanelC(t("Maestría por categoría"))
         rejilla = QGridLayout()
         rejilla.setHorizontalSpacing(px(14, False))
         rejilla.setVerticalSpacing(px(5, False))
@@ -467,7 +467,7 @@ class PestanaPerfil(QWidget):
         boton.clicked.connect(lambda: self._alternar("dominar"))
         panel.capa.addLayout(fila(resumen, boton, espacio=px(12, False)))
         if len(todas) > MAX_RESUMEN_DOMINAR and not abierto:
-            panel.capa.addWidget(EtiquetaC(t("y {n} mas", n=len(todas) - MAX_RESUMEN_DOMINAR), "pequeno"))
+            panel.capa.addWidget(EtiquetaC(t("y {n} más", n=len(todas) - MAX_RESUMEN_DOMINAR), "pequeno"))
         if abierto:
             panel.capa.addWidget(self._lista_dominar(grupos))
         return panel
@@ -513,7 +513,7 @@ class PestanaPerfil(QWidget):
     def _panel_intrinsecos(self, valores: dict[str, int]) -> PanelC | None:
         if not any(clave in valores for clave in INTRINSECOS):
             return None
-        panel = PanelC(t("Intrinsecos"), remate=False)
+        panel = PanelC(t("Intrínsecos"), remate=False)
         grupos = (
             (t("Railjack"), [k for k in INTRINSECOS if k in _INTRINSECOS_RAILJACK]),
             (t("Errante"), [k for k in INTRINSECOS if k not in _INTRINSECOS_RAILJACK]),
@@ -543,7 +543,7 @@ class PestanaPerfil(QWidget):
             linea = transparente(QWidget())
             linea.setLayout(fila(Rombo(8, COLOR_SINDICATO.get(s["tag"], "acento")),
                                  EtiquetaC(nombre, "fuerte", recortar=True), None, rango, espacio=px(8, False)))
-            linea.setToolTip(t("Reputacion: {n}", n=_miles(s["standing"])))
+            linea.setToolTip(t("Reputación: {n}", n=_miles(s["standing"])))
             panel.capa.addWidget(linea)
         return panel
 
@@ -551,7 +551,7 @@ class PestanaPerfil(QWidget):
         titulo = t("Nodos pendientes del Camino de Acero") if acero else t("Nodos pendientes")
         panel = PanelC(titulo, remate=False)
         if not pendientes:
-            panel.capa.addWidget(EtiquetaC(t("Mapa completo: no te falta ningun nodo."), "normal", tinta="ok"))
+            panel.capa.addWidget(EtiquetaC(t("Mapa completo: no te falta ningún nodo."), "normal", tinta="ok"))
             return panel
         nombres = self._nombres_nodos()
         # El indice trae el mismo planeta con y sin tilde segun el nodo ("Pluton" y
@@ -573,9 +573,9 @@ class PestanaPerfil(QWidget):
         orden = sorted(por_planeta, key=lambda c: (c == "?", c))  # sin planeta conocido, al final
         resumen = " · ".join(f"{etiquetas[c]} {len(por_planeta[c])}" for c in orden[:MAX_RESUMEN_PLANETAS])
         if len(orden) > MAX_RESUMEN_PLANETAS:
-            resumen += " · " + t("y {n} mas", n=len(orden) - MAX_RESUMEN_PLANETAS)
+            resumen += " · " + t("y {n} más", n=len(orden) - MAX_RESUMEN_PLANETAS)
         abierto = "nodos" in self._abiertos
-        boton = BotonC(t("Ocultar") if abierto else t("Ver cuales"), icono="derecha", tam=11)
+        boton = BotonC(t("Ocultar") if abierto else t("Ver cuáles"), icono="derecha", tam=11)
         boton.clicked.connect(lambda: self._alternar("nodos"))
         panel.capa.addLayout(fila(EtiquetaC(resumen, "normal", envolver=True), boton, espacio=px(10, False)))
         # La lista entera se monta siempre (tambien sirve para buscar), pero plegada.
@@ -590,10 +590,10 @@ class PestanaPerfil(QWidget):
         return panel
 
     def _panel_origen(self) -> PanelC:
-        panel = PanelC(t("De donde sale esto"), remate=False)
+        panel = PanelC(t("De dónde sale esto"), remate=False)
         panel.capa.addWidget(EtiquetaC(t(
             "Hoy el juego no deja descargar el perfil solo: si tienes tu perfil en un fichero JSON, "
-            "importalo con el boton de arriba. Ademas, la maestria se marca sola cuando abres "
+            "impórtalo con el botón de arriba. Además, la maestría se marca sola cuando abres "
             "Perfil > Equipamiento en el juego: Farmadex solo mira la pantalla."
         ), "pequeno", envolver=True))
         return panel

@@ -150,7 +150,7 @@ def test_el_mantenimiento_va_plegado_en_avanzado_y_explicado(ajustes):
         assert boton.isVisibleTo(ajustes)
     notas = " ".join(n.text() for n in ajustes._notas)
     assert "tus objetivos no se tocan" in notas          # reconstruir
-    assert "No borres nada de ahi" in notas              # carpeta
+    assert "No borres nada de ahí" in notas              # carpeta
     assert "cookies de YouTube" in notas                 # reproductor
     assert "No cambia las probabilidades" in notas       # ritmo
     assert "Es un atajo de teclado" in notas             # leer bajo el cursor
@@ -236,7 +236,7 @@ def test_lo_de_fabrica_limpia_todos_los_temas(ajustes, config_temporal):
     ajustes._cargar_aspecto()
     ajustes.aspecto_de_fabrica()
     assert ajustes.hay_cambios_aspecto()
-    assert "fabrica" in ajustes.estado_aspecto.text()
+    assert "fábrica" in ajustes.estado_aspecto.text()
     ajustes.guardar_aspecto()
     guardado = config_temporal.cargar(recargar=True)
     assert guardado["colores_personalizados"] == {}
@@ -329,13 +329,13 @@ def test_la_bienvenida_trae_lo_prometido(ventana):
     ventana.mostrar_bienvenida()
     capa = ventana._bienvenida
     texto = " ".join(e.text() for e in capa.textos)
-    for pieza in ("vaas", "twitch.tv/vaas1897", "github.com/angelsanchez97/farmadex/releases",
+    for pieza in ("vaas", "twitch.tv/vaas1897", "discord.gg/7ezAmfqesS", "github.com/angelsanchez97/farmadex/releases",
                   "SHA256SUMS.txt", "Get-FileHash", "EE.log", "memoria del juego",
                   "we do not endorse any use of third-party software", "at your own risk",
                   "Preguntas frecuentes", "Gracias"):
         assert pieza in texto, pieza
     assert "no te pueden banear" not in texto.lower()
-    assert "no esta aprobado por DE" in texto
+    assert "no está aprobado por DE" in texto
     capa.terminar(False)
 
 
@@ -358,7 +358,7 @@ def test_acerca_de_explica_windows_la_descarga_y_la_huella(app, config_temporal)
 
     dialogo = acerca_de.DialogoAcercaDe()
     texto = "\n".join(e.text() for e in dialogo.findChildren(QLabel))
-    for pieza in ("Windows protegio tu PC", acerca_de.URL_RELEASES, "SHA256SUMS.txt", "Get-FileHash",
+    for pieza in ("Windows protegió tu PC", acerca_de.URL_RELEASES, "SHA256SUMS.txt", "Get-FileHash",
                   "EE.log", "No lee ni escribe la memoria del juego"):
         assert pieza in texto, pieza
     assert not dialogo.boton_bienvenida.isVisibleTo(dialogo)  # sin ventana no hay bienvenida

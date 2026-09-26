@@ -68,10 +68,10 @@ GLIFO_TIENDA = ""
 COL_NOMBRE, COL_VALOR, COL_RANGO, COL_GRADO, COL_BARRA = range(5)
 # Titular del veredicto segun la posicion media (0 peor .. 1 mejor) de lo evaluado.
 TITULARES = (
-    (0.7, "Tirada muy buena: las estadisticas han salido altas."),
+    (0.7, "Tirada muy buena: las estadísticas han salido altas."),
     (0.5, "Buena tirada: por encima de lo normal."),
     (0.3, "Tirada normal: ni buena ni mala."),
-    (0.0, "Tirada floja: las estadisticas han salido bajas."),
+    (0.0, "Tirada floja: las estadísticas han salido bajas."),
 )
 
 
@@ -238,7 +238,7 @@ class PestanaAgrietados(QWidget):
         form.addLayout(fila(None, self.boton_limpiar, self.boton_evaluar, espacio=px(8, False)))
 
         # -- panel "Que tal ha salido": la tabla de grados -------------------------------
-        self.panel_tabla = PanelC(t("Que tal ha salido"))
+        self.panel_tabla = PanelC(t("Qué tal ha salido"))
         self.tabla = QTableWidget(0, 5)
         self.tabla.verticalHeader().hide()
         self.tabla.setEditTriggers(QTableWidget.NoEditTriggers)
@@ -359,29 +359,29 @@ class PestanaAgrietados(QWidget):
         self.tecla_atajo.setText(atajo.upper())
         self.tecla_atajo.setVisible(bool(atajo))
         self.nota.setText(t(
-            "Elige el arma, apunta cada estadistica con su valor (marca la negativa) y pulsa Evaluar: "
-            "veras entre que valores puede salir cada una en esa arma y que grado tiene la tuya, de S "
-            "(lo mejor) a F. Si pones el raton encima de la tarjeta en el juego y pulsas el boton o el "
+            "Elige el arma, apunta cada estadística con su valor (marca la negativa) y pulsa Evaluar: "
+            "verás entre qué valores puede salir cada una en esa arma y qué grado tiene la tuya, de S "
+            "(lo mejor) a F. Si pones el ratón encima de la tarjeta en el juego y pulsas el botón o el "
             "atajo, Farmadex intenta rellenarlo por ti; si no lo lee seguro, te avisa para que lo revises."
         ))
         self.panel_form.poner_titulo(t("El agrietado"))
-        self.panel_tabla.poner_titulo(t("Que tal ha salido"))
+        self.panel_tabla.poner_titulo(t("Qué tal ha salido"))
         self.panel_veredicto.poner_titulo(t("Veredicto"))
         self.panel_precio.poner_titulo(t("Precio de agrietados parecidos"))
         self.etiqueta_arma.setText(t("Arma"))
-        self.etiqueta_disposicion.setText(t("Disposicion"))
-        self.etiqueta_stat.setText(t("Estadistica"))
+        self.etiqueta_disposicion.setText(t("Disposición"))
+        self.etiqueta_stat.setText(t("Estadística"))
         self.etiqueta_valor.setText(t("Valor"))
         self.etiqueta_negativo.setText(t("Negativa"))
-        self.etiqueta_maestria.setText(t("Maestria"))
+        self.etiqueta_maestria.setText(t("Maestría"))
         self.etiqueta_variado.setText(t("Veces variado"))
         self.boton_evaluar.setText(t("Evaluar"))
         self.boton_limpiar.setText(t("Limpiar"))
         self.boton_precio.setText(t("Consultar precio"))
         self.nota_precio.setText(t("Mira las subastas de warframe.market y la media de la semana."))
-        self.vacio_tabla.setText(t("Apunta las estadisticas y pulsa Evaluar: aqui veras que tal ha salido cada una."))
+        self.vacio_tabla.setText(t("Apunta las estadísticas y pulsa Evaluar: aquí verás qué tal ha salido cada una."))
         self.tabla.setHorizontalHeaderLabels(
-            [t("Estadistica").upper(), t("Valor").upper(), t("Puede salir entre").upper(), t("Grado").upper(), ""]
+            [t("Estadística").upper(), t("Valor").upper(), t("Puede salir entre").upper(), t("Grado").upper(), ""]
         )
         self._pintar_leyenda()
         self._arma_cambiada(self.arma.currentIndex())
@@ -436,7 +436,7 @@ class PestanaAgrietados(QWidget):
         if actual is not None:
             self.elegir_arma(actual.slug)
         if not self.armas:
-            self._poner_estado(t("No hay lista de armas con agrietado: hace falta conexion la primera vez."))
+            self._poner_estado(t("No hay lista de armas con agrietado: hace falta conexión la primera vez."))
 
     def _nombre_arma(self, arma: mercado.Arma) -> str:
         nombre_es = self.nombres_es.get(arma.unique_name)
@@ -465,9 +465,9 @@ class PestanaAgrietados(QWidget):
             return
         extra = ""
         if arma.tipo == "kitgun":
-            extra = "  " + t("(kitgun: se evalua como secundaria)")
+            extra = "  " + t("(kitgun: se evalúa como secundaria)")
         self.rombos.poner(rombos_disposicion(arma.disposicion))
-        self.rombos.setToolTip(t("disposicion {d} {puntos}", d=f"{arma.disposicion:.2f}",
+        self.rombos.setToolTip(t("disposición {d} {puntos}", d=f"{arma.disposicion:.2f}",
                                  puntos=puntos_disposicion(arma.disposicion)))
         self.disposicion.setText(f"×{arma.disposicion:.2f}{extra}")
         self.boton_precio.setEnabled(True)
@@ -541,7 +541,7 @@ class PestanaAgrietados(QWidget):
         self._poner_veredicto("")
         self._poner_precio("")
         if tarjeta.velado:
-            self._poner_estado(t("La tarjeta esta velada: no tiene estadisticas hasta que hagas su desafio."))
+            self._poner_estado(t("La tarjeta está velada: no tiene estadísticas hasta que hagas su desafío."))
             return
         if tarjeta.arma_slug:
             if not self.elegir_arma(tarjeta.arma_slug):
@@ -554,11 +554,11 @@ class PestanaAgrietados(QWidget):
         self.maestria.setValue(tarjeta.maestria or 0)
         self.variado.setValue(tarjeta.variado or 0)
         if tarjeta.fiable:
-            self._poner_estado(t("Leido de la pantalla. Si algo no cuadra, corrigelo y vuelve a evaluar."))
+            self._poner_estado(t("Leído de la pantalla. Si algo no cuadra, corrígelo y vuelve a evaluar."))
             self.estado.poner_tinta("suave")
             self.evaluar()
         elif tarjeta.avisos:
-            self._poner_estado(t("Leido a medias, revisa antes de evaluar:") + "\n• "
+            self._poner_estado(t("Leído a medias, revisa antes de evaluar:") + "\n• "
                                + "\n• ".join(t(a) for a in tarjeta.avisos))
             self.estado.poner_tinta("aviso")
         else:
@@ -574,7 +574,7 @@ class PestanaAgrietados(QWidget):
             self._poner_veredicto(t("Elige el arma del agrietado."), aviso=True)
             return
         if len(estadisticas) < 2:
-            self._poner_veredicto(t("Apunta al menos dos estadisticas."), aviso=True)
+            self._poner_veredicto(t("Apunta al menos dos estadísticas."), aviso=True)
             return
         positivos = [e for e in estadisticas if not e[2]]
         negativos = [e for e in estadisticas if e[2]]
@@ -635,12 +635,12 @@ class PestanaAgrietados(QWidget):
         if fuera:
             self._poner_veredicto(t(
                 "{lista}: el valor no entra en lo posible para esta arma. Suele ser que el arma no es esa, "
-                "que el valor esta mal apuntado o que el signo esta al reves.", lista=", ".join(fuera),
+                "que el valor está mal apuntado o que el signo está al revés.", lista=", ".join(fuera),
             ), aviso=True)
         else:
             self._poner_veredicto(
                 t("Grados: {grados}. Un grado alto solo dice que la tirada fue buena; que el agrietado "
-                  "sirva depende de que las estadisticas le vengan bien al arma.", grados=", ".join(letras)),
+                  "sirva depende de que las estadísticas le vengan bien al arma.", grados=", ".join(letras)),
                 titular=titular_de(self.evaluaciones),
             )
 
@@ -681,11 +681,11 @@ def texto_precio(resumen, media_sin, media_con, variado: int = 0) -> str:
     if resumen is None or resumen.error:
         partes.append(t("warframe.market: no disponible ({error})", error=(resumen.error if resumen else "")))
     elif not resumen.subastas:
-        partes.append(t("warframe.market: ahora mismo no hay subastas de este arma."))
+        partes.append(t("warframe.market: ahora mismo no hay subastas de esta arma."))
     else:
         n = len(resumen.subastas)
         partes.append(t(
-            "warframe.market: {n} subastas parecidas abiertas, la mas barata <b>{minimo}p</b>, mediana <b>{mediana}p</b>.",
+            "warframe.market: {n} subastas parecidas abiertas, la más barata <b>{minimo}p</b>, mediana <b>{mediana}p</b>.",
             n=n, minimo=resumen.minimo, mediana=f"{resumen.mediana:.0f}",
         ))
     media = media_con if variado else media_sin
@@ -695,5 +695,5 @@ def texto_precio(resumen, media_sin, media_con, variado: int = 0) -> str:
             tipo=t("variados") if media.variado else t("sin variar"),
             mediana=f"{media.mediana:.0f}", media=f"{media.media:.0f}", n=media.volumen,
         ))
-    partes.append(t("Es solo una referencia: lo que vale de verdad depende de que estadisticas lleve y de a quien le sirvan."))
+    partes.append(t("Es solo una referencia: lo que vale de verdad depende de qué estadísticas lleve y de a quién le sirvan."))
     return "<br>".join(partes)

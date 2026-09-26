@@ -161,7 +161,7 @@ def test_los_avisos_se_reescriben_al_cambiar_de_idioma_y_de_tema(ventana):
     from farmadex.ui import widgets
 
     ventana._hay_version_nueva(_Version())
-    assert "version nueva" in ventana.banner.text()
+    assert "versión nueva" in ventana.banner.text()
     ventana.cambiar_idioma("en")
     assert "new version" in ventana.banner.text() and "9.9.9" in ventana.banner.text()
     ventana.cambiar_tema("tenno")

@@ -29,7 +29,7 @@ TEMAS = {
         "aviso": "#f0a63c", "ok": "#8fd08a", "secundario": "#58d3c0", "fondo_rgb": "9, 12, 13",
     },
     "vacio": {
-        "titulo": "Vacio (azul)",
+        "titulo": "Vacío (azul)",
         "fondo": "#0e1218", "panel": "#171d26", "panel2": "#1f2733", "boton": "#1f2733", "borde": "#2b3442",
         "texto": "#e8ebf1", "suave": "#93a0b4", "acento": "#4aa3ff", "acento_texto": "#08101c",
         "aviso": "#f0a63c", "ok": "#6fcf7a", "secundario": "#e2b455", "fondo_rgb": "14, 18, 24",
@@ -103,23 +103,23 @@ COLOR_AVISO = PALETA["aviso"]
 # (clave de la paleta, nombre en Ajustes, que pinta)
 CATEGORIAS_COLOR = (
     ("fondo", "Fondo de la ventana", "El color de fondo de toda la ventana"),
-    ("panel", "Cajas y listas", "La caja de busqueda, las listas y los recuadros de cada seccion"),
-    ("panel2", "Tarjetas", "Las tarjetas de cada objeto, mision o recompensa"),
+    ("panel", "Cajas y listas", "La caja de búsqueda, las listas y los recuadros de cada sección"),
+    ("panel2", "Tarjetas", "Las tarjetas de cada objeto, misión o recompensa"),
     ("boton", "Botones", "El fondo de los botones y de los desplegables"),
-    ("borde", "Bordes", "Las lineas que separan y rodean cada cosa"),
+    ("borde", "Bordes", "Las líneas que separan y rodean cada cosa"),
     ("texto", "Texto", "El texto normal"),
-    ("suave", "Texto secundario", "Las notas y explicaciones en pequeno"),
-    ("acento", "Color principal", "Titulos, pestana activa, enlaces y el boton principal"),
-    ("acento_texto", "Texto del boton principal", "El texto que va encima del color principal"),
+    ("suave", "Texto secundario", "Las notas y explicaciones en pequeño"),
+    ("acento", "Color principal", "Títulos, pestaña activa, enlaces y el botón principal"),
+    ("acento_texto", "Texto del botón principal", "El texto que va encima del color principal"),
     ("secundario", "Color de apoyo", "Fisuras, reliquias y lo que puedes hacer ahora mismo"),
-    ("aviso", "Avisos", "Lo que pide atencion: datos viejos, algo que falla"),
-    ("ok", "Todo bien", "Lo que esta disponible o ha salido bien"),
+    ("aviso", "Avisos", "Lo que pide atención: datos viejos, algo que falla"),
+    ("ok", "Todo bien", "Lo que está disponible o ha salido bien"),
 )
 CLAVES_COLOR = tuple(c for c, _n, _a in CATEGORIAS_COLOR)
 
 # Pasos de los dos tamanos: (factor, nombre). 1.0 es como viene.
 ESCALAS_INTERFAZ = ((0.9, "Compacta"), (1.0, "Normal"), (1.15, "Grande"), (1.3, "Muy grande"))
-ESCALAS_LETRA = ((0.9, "Pequena"), (1.0, "Normal"), (1.15, "Grande"), (1.3, "Muy grande"), (1.5, "Enorme"))
+ESCALAS_LETRA = ((0.9, "Pequeña"), (1.0, "Normal"), (1.15, "Grande"), (1.3, "Muy grande"), (1.5, "Enorme"))
 
 # Escala activa: "interfaz" agranda relleno, bordes redondeados y letra de los controles;
 # "letra" solo la letra. La leen `px` y `hoja_estilos`.

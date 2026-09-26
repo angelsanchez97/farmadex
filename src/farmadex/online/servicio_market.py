@@ -85,7 +85,7 @@ def resumen(precios: Precios) -> str:
     if precios.con_rango:
         # Un mod sin rango vale otra cosa: se dice de que rango es el precio.
         etiqueta = (
-            t("rango maximo ({n})", n=precios.rango)
+            t("rango máximo ({n})", n=precios.rango)
             if precios.rango_max is not None and precios.rango == precios.rango_max
             else t("rango {n}", n=precios.rango)
         )

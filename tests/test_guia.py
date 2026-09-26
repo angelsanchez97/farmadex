@@ -106,7 +106,7 @@ def test_wiki_y_youtube_se_resaltan_juntos(ventana):
     ventana.resize(1180, 760)
     ventana.mostrar_guia()
     guia = ventana._guia
-    i = next(i for i, p in enumerate(guia._pasos) if p.titulo == "Wiki y videos")
+    i = next(i for i, p in enumerate(guia._pasos) if p.titulo == "Wiki y vídeos")
     guia._ir_a_paso(i)
     from PySide6.QtCore import QPoint, QRect
 

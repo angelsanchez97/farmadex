@@ -335,7 +335,7 @@ def calcular(mundo, prefs, ahora: datetime | None = None, facciones: set[str] | 
                 )) or i.recompensas
                 avisos.append(Aviso(
                     f"invasion|{i.nodo}|{i.recompensas}",
-                    t("Invasion en {nodo}: {premio}", nodo=i.nodo, premio=premio),
+                    t("Invasión en {nodo}: {premio}", nodo=i.nodo, premio=premio),
                     ahora + timedelta(days=3),
                 ))
 
@@ -348,7 +348,7 @@ def calcular(mundo, prefs, ahora: datetime | None = None, facciones: set[str] | 
     sortie = getattr(mundo, "sortie", []) or []
     if prefs["incursion"] and sortie and vigente(sortie[0].expira):
         avisos.append(Aviso(f"incursion|{_iso(sortie[0].expira)}",
-                            t("Hay una incursion nueva"), sortie[0].expira or ahora + timedelta(days=1)))
+                            t("Hay una incursión nueva"), sortie[0].expira or ahora + timedelta(days=1)))
     arcontes = getattr(mundo, "arcontes", []) or []
     if prefs["arcontes"] and arcontes and vigente(arcontes[0].expira):
         avisos.append(Aviso(f"arcontes|{_iso(arcontes[0].expira)}",
@@ -367,7 +367,7 @@ def juntar(avisos: list[Aviso]) -> str:
     """Un solo texto para el globo de Windows: una linea por aviso, como mucho MAX_LINEAS."""
     lineas = [a.texto for a in avisos[:MAX_LINEAS]]
     if len(avisos) > MAX_LINEAS:
-        lineas.append(t("y {n} avisos mas en la pestana Mundo", n=len(avisos) - MAX_LINEAS))
+        lineas.append(t("y {n} avisos más en la pestaña Mundo", n=len(avisos) - MAX_LINEAS))
     return "\n".join(lineas)
 
 

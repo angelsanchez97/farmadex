@@ -207,7 +207,7 @@ class EtiquetasRecompensas(QWidget):
                 lineas.append(("\u2605 " + motivo.texto.upper(), color, muy_grande))
                 # Se decide en segundos y con el juego de fondo: la marca va justo
                 # bajo el motivo, no al final, para que se vea de un vistazo.
-                etiqueta_mejor = t("MEJOR OPCION") if self._seguro else t("Probablemente la mejor")
+                etiqueta_mejor = t("MEJOR OPCIÓN") if self._seguro else t("Probablemente la mejor")
                 lineas.append((etiqueta_mejor, color_mejor, fuente))
             else:
                 lineas.append((motivo.texto.upper(), color, grande))
@@ -219,7 +219,7 @@ class EtiquetasRecompensas(QWidget):
             if detalle:
                 lineas.append((" · ".join(detalle), COLOR_TEXTO, fuente))
             if r.vaulted:
-                lineas.append((t("En boveda"), COLOR_BOVEDA, fuente))
+                lineas.append((t("En bóveda"), COLOR_BOVEDA, fuente))
             if r.objetivo:
                 lineas.append((t("Objetivo: {nombre}", nombre=r.objetivo), COLOR_OBJETIVO, fuente))
             marca = self.maestria.get(r.item_id)

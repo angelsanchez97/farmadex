@@ -89,7 +89,7 @@ def test_las_pestanas_cambian_de_idioma_al_vuelo(castellano_al_salir, tmp_path, 
     idiomas.cargar("es")
     ajustes, buscador, mundo = PestanaAjustes(), PestanaBuscador(), PestanaMundo()
     assert buscador.boton_objetivo.text() == "+ Objetivo"
-    assert mundo.tarjetas["fisuras"].title() == "Fisuras del Vacio"
+    assert mundo.tarjetas["fisuras"].title() == "Fisuras del Vacío"
 
     codigos = []
     ajustes.idioma_cambiado.connect(codigos.append)

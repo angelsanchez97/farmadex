@@ -127,7 +127,7 @@ def test_el_nodo_abre_su_ficha_con_rotaciones_y_premios(buscador):
     assert "Hydron" in html and "Sedna" in html
     assert "Protege el objetivo" in html  # que hacer en una Defensa
     assert "(oleada 12)" in html  # la rotacion C a la vista
-    assert "Aqui la rotacion C es la recompensa de las oleadas 12, 24, 36..." in html
+    assert "Aquí la rotación C es la recompensa de las oleadas 12, 24, 36..." in html
     # Lo que suelta, por rotacion, enlazado a la ficha de cada objeto.
     axi = buscador.con.execute("SELECT id FROM items WHERE nombre_en = 'Axi A7 Relic'").fetchone()[0]
     assert f"item:{axi}" in html and "11.1%" in html
@@ -143,7 +143,7 @@ def test_el_tipo_de_mision_abre_su_ficha_con_sus_nodos(buscador):
     _buscar(buscador, "defensa")
     assert buscador._mision_actual == "modo:Defense"
     html = unquote(buscador.ficha.toHtml())
-    assert "Tipo de mision" in html and "NODOS DE ESTE TIPO (1)" in html
+    assert "Tipo de misión" in html and "NODOS DE ESTE TIPO (1)" in html
     nodo = buscador.con.execute("SELECT id FROM nodos WHERE nombre_en = 'Hydron'").fetchone()[0]
     assert f"nodo:{nodo}" in html
     # Pinchar el nodo abre su ficha; Atras vuelve a la del tipo.
@@ -160,7 +160,7 @@ def test_la_ficha_de_disrupcion_trae_la_tabla_de_rondas(buscador):
     texto = buscador.ficha.toPlainText()
     assert "Conductos salvados" in texto and "4+" in texto
     assert "rondas 1-2 con 4 conductos" in texto
-    assert "Cuanto mas avanzas" not in texto
+    assert "Cuanto más avanzas" not in texto
 
 
 def test_los_objetos_siguen_delante_si_casan(buscador):

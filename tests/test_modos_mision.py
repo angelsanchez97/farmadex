@@ -36,7 +36,7 @@ def castellano():
 def test_cada_modo_de_los_datos_tiene_que_hacer_y_recompensas(modo):
     texto = mm.explicacion(modo)
     titulo, que, recompensas = texto.splitlines()
-    assert titulo and que.startswith("Que hacer: ") and recompensas.startswith("Recompensas: ")
+    assert titulo and que.startswith("Qué hacer: ") and recompensas.startswith("Recompensas: ")
 
 
 def test_sin_porcentajes_en_los_textos():
@@ -56,11 +56,11 @@ def test_los_alias_dan_el_mismo_texto():
 def test_la_rotacion_de_la_fila_anade_su_linea():
     supervivencia = mm.explicacion("Survival", "C").splitlines()
     assert supervivencia[0] == "Supervivencia"
-    assert supervivencia[-1] == "Aqui la rotacion C es la recompensa de los minutos 20, 40, 60..."
-    assert mm.linea_rotacion("Defense", "A") == "Aqui la rotacion A es la recompensa de las oleadas 3, 6, 15, 18..."
-    assert mm.linea_rotacion("Excavation", "b") == "Aqui la rotacion B llega con 3, 7, 11... excavadoras completadas"
-    assert "tercera boveda" in mm.linea_rotacion("Spy", "C")
-    assert "quinta rotacion" in mm.linea_rotacion("Arbitrations", "C")
+    assert supervivencia[-1] == "Aquí la rotación C es la recompensa de los minutos 20, 40, 60..."
+    assert mm.linea_rotacion("Defense", "A") == "Aquí la rotación A es la recompensa de las oleadas 3, 6, 15, 18..."
+    assert mm.linea_rotacion("Excavation", "b") == "Aquí la rotación B llega con 3, 7, 11... excavadoras completadas"
+    assert "tercera bóveda" in mm.linea_rotacion("Spy", "C")
+    assert "quinta rotación" in mm.linea_rotacion("Arbitrations", "C")
     # Sin rotacion, o con un modo sin regla por letra (Circuito), no hay linea extra.
     assert len(mm.explicacion("Survival").splitlines()) == 3
     assert mm.linea_rotacion("The Circuit", "B") == ""
@@ -80,12 +80,12 @@ def test_el_tooltip_del_modo_se_titula_con_el_modo(app):
     assert "text-decoration:none" in enlace and "color:#abc" in enlace
     clave = enlace.split("href='glosa:", 1)[1].split("'", 1)[0]
     texto = glosario.texto(clave)
-    assert "<b>Supervivencia</b>" in texto and "Tipo de mision" not in texto
+    assert "<b>Supervivencia</b>" in texto and "Tipo de misión" not in texto
     assert "minutos 20, 40, 60" in texto
     # La rotacion lleva las reglas del modo y cuando llega esa letra.
     rot = glosario.enlace_rotacion("Survival", "C", "Rotacion C", "#abc")
     texto_rot = glosario.texto(rot.split("href='glosa:", 1)[1].split("'", 1)[0])
-    assert "<b>Rotacion</b>" in texto_rot and "En Supervivencia:" in texto_rot
+    assert "<b>Rotación</b>" in texto_rot and "En Supervivencia:" in texto_rot
 
 
 def test_en_ingles_sale_traducido():
@@ -119,7 +119,7 @@ def test_la_fila_de_una_mision_sin_fin_lleva_el_modo_y_su_rotacion(buscador):
     buscador.abrir(buscador.con.execute("SELECT id FROM items WHERE nombre_en = 'Axi A7 Relic'").fetchone()[0])
     html = unquote(buscador.ficha.toHtml())
     assert "glosa:mision?Defensa" in html
-    assert "Aqui la rotacion A es la recompensa de las oleadas 3, 6, 15, 18..." in html
+    assert "Aquí la rotación A es la recompensa de las oleadas 3, 6, 15, 18..." in html
     assert "glosa:rotacion?En Defensa:" in html
 
 

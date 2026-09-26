@@ -250,7 +250,7 @@ def puntuar(
                 p.via = "nada"
                 p.notas.append(t("No se vende ni da ducados"))
             else:
-                p.notas.append(t("Sin precio: no esta en warframe.market"))
+                p.notas.append(t("Sin precio: no está en warframe.market"))
             continue
         if precios_de is None:
             p.notas.append(t("Sin precio: mercado no disponible"))
@@ -330,7 +330,7 @@ def decidir(
     haya elegido el usuario (ver `ServicioComparador`).
     """
     if not puntuaciones:
-        return Veredicto([], None, False, t("no se reconocio ninguna recompensa"), escuadra, prioridad)
+        return Veredicto([], None, False, t("no se reconoció ninguna recompensa"), escuadra, prioridad)
     prioridad = prio.normalizar(prioridad) if prioridad else prio.EQUILIBRADO
     if prioridad != prio.EQUILIBRADO:
         return _decidir_por_criterios(puntuaciones, escuadra, prioridad)
@@ -348,7 +348,7 @@ def _decidir_por_criterios(puntuaciones: list[Puntuacion], escuadra: bool, prior
 
     identificadas = [i for i, p in enumerate(puntuaciones) if p.item_id != SIN_IDENTIFICAR]
     if not identificadas:
-        return veredicto(None, False, t("no se identifico ninguna recompensa"))
+        return veredicto(None, False, t("no se identificó ninguna recompensa"))
     # sorted es estable: a igualdad total se queda la de mas a la izquierda, como antes.
     orden = sorted(
         identificadas,
@@ -359,7 +359,7 @@ def _decidir_por_criterios(puntuaciones: list[Puntuacion], escuadra: bool, prior
     if not any(prio.cumple(c, mejor) for c in criterios):
         # Ni precio, ni ducados, ni nada del usuario en ninguna: igual que en equilibrado.
         if mejor.rareza and len(puntuaciones) > 1:
-            return veredicto(orden[0], False, t("sin precios; es la mas rara ({rareza})", rareza=mejor.rareza))
+            return veredicto(orden[0], False, t("sin precios; es la más rara ({rareza})", rareza=mejor.rareza))
         return veredicto(None, False, t("sin precio ni ducados de ninguna"))
 
     segunda = puntuaciones[orden[1]] if len(orden) > 1 else None
@@ -391,7 +391,7 @@ def _motivo_criterio(criterio: str, p: Puntuacion) -> str:
         return t("completa un set ({progreso})", progreso=f"{tengo}/{total}")
     if criterio == "nueva":
         if prio.motivo_nueva(p) == "sin_dominar":
-            return t("aun no lo has dominado")
+            return t("aún no lo has dominado")
         return t("no lo tienes")
     if criterio == "platino":
         texto = t("{n} platino", n=p.platino)
@@ -413,7 +413,7 @@ def _decidir_equilibrado(puntuaciones: list[Puntuacion], escuadra: bool) -> Vere
     sin_identificar = [i for i in orden if puntuaciones[i].item_id == SIN_IDENTIFICAR]
     orden = [i for i in orden if i not in sin_identificar]
     if not orden:
-        return Veredicto(puntuaciones, None, False, t("no se identifico ninguna recompensa"), escuadra)
+        return Veredicto(puntuaciones, None, False, t("no se identificó ninguna recompensa"), escuadra)
     mejor = puntuaciones[orden[0]]
     desconocidas = [p for p in puntuaciones if p.desconocida]
 
@@ -428,7 +428,7 @@ def _decidir_equilibrado(puntuaciones: list[Puntuacion], escuadra: bool) -> Vere
         if mejor.rareza and len(puntuaciones) > 1:
             return Veredicto(
                 puntuaciones, orden[0], False,
-                t("sin precios; es la mas rara ({rareza})", rareza=mejor.rareza), escuadra,
+                t("sin precios; es la más rara ({rareza})", rareza=mejor.rareza), escuadra,
             )
         return Veredicto(
             puntuaciones, None, False, t("sin precio ni ducados de ninguna"), escuadra,

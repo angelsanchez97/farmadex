@@ -46,6 +46,7 @@ from .acerca_de import (
     URL_AVISOS,
     URL_REPOSITORIO,
     _enlace,
+    enlace_discord,
     frase,
     html_secciones,
     preguntas_frecuentes,
@@ -96,21 +97,21 @@ def _tecla_html(texto: str) -> str:
 def pasos_basicos(atajo: str) -> list[str]:
     """Los ocho pasos de "Lo basico", en HTML y en el idioma activo."""
     return [
-        frase("Abrelo encima del juego con {atajo}, y escondelo con Escape. Cuando no lo ves, sigue "
+        frase("Ábrelo encima del juego con {atajo}, y escóndelo con Escape. Cuando no lo ves, sigue "
               "esperando en los iconos junto al reloj de Windows.", atajo=_tecla_html(atajo)),
         frase("Pon Warframe en Ventana sin bordes (Opciones > Pantalla). En pantalla completa "
               "exclusiva no se puede ver nada encima del juego."),
-        frase("En Buscar escribe cualquier cosa, aunque sea con faltas: te dice donde se consigue, con "
-              "que probabilidad y cuanto se tarda en cada sitio."),
-        frase("Con \"+ Objetivo\" lo apuntas. En el Tablero ves tu siguiente paso, y en Mis metas cuanto "
-              "te falta y donde farmear cada cosa ahora mismo."),
-        frase("Al abrir una reliquia, Farmadex lee solo las recompensas y te marca la que mas te "
+        frase("En Buscar escribe cualquier cosa, aunque sea con faltas: te dice dónde se consigue, con "
+              "qué probabilidad y cuánto se tarda en cada sitio."),
+        frase("Con \"+ Objetivo\" lo apuntas. En el Tablero ves tu siguiente paso, y en Mis metas cuánto "
+              "te falta y dónde farmear cada cosa ahora mismo."),
+        frase("Al abrir una reliquia, Farmadex lee solo las recompensas y te marca la que más te "
               "conviene."),
         frase("En Mundo tienes lo que pasa ahora en el juego: fisuras, ciclos, invasiones, Baro "
               "Ki'Teer... Y si quieres, Windows te avisa cuando pase algo que te interesa."),
         frase("En Herramientas, Build lee los mods de una build desde la pantalla del juego, y Agrietados "
-              "te dice si un mod agrietado es bueno y cuanto se pide por uno parecido."),
-        frase("En Ajustes, con las secciones a la izquierda, cambias atajos, colores, tamano de letra "
+              "te dice si un mod agrietado es bueno y cuánto se pide por uno parecido."),
+        frase("En Ajustes, con las secciones a la izquierda, cambias atajos, colores, tamaño de letra "
               "e idioma."),
     ]
 
@@ -121,11 +122,11 @@ def _apartados(atajo: str) -> list[tuple[str, str]]:
     p = PALETA
     que_es = (
         f"<p>{frase('Farmadex es un ayudante para Warframe que se abre encima del juego. Sirve para no '
-                    'tener que salir a la wiki: te dice donde conseguir cada cosa y cuanto se tarda, '
+                    'tener que salir a la wiki: te dice dónde conseguir cada cosa y cuánto se tarda, '
                     'apunta lo que quieres farmear, lee las recompensas de las reliquias y te cuenta '
-                    'que esta pasando ahora en el juego.')}</p>"
-        f"<p>{frase('Lo hace vaas, un jugador, en su tiempo libre. Es gratis, sin anuncios, y el codigo es '
-                    'publico.')}</p>"
+                    'qué está pasando ahora en el juego.')}</p>"
+        f"<p>{frase('Lo hace vaas, un jugador, en su tiempo libre. Es gratis, sin anuncios, y el código es '
+                    'público.')}</p>"
         f"<p style='color: {p['suave']};'>{frase('Esta bienvenida sale sola solo esta vez. Puedes volver a '
                                                  'verla cuando quieras en Ajustes > Ayuda.')}</p>"
     )
@@ -134,23 +135,24 @@ def _apartados(atajo: str) -> list[tuple[str, str]]:
     faq = html_secciones(preguntas_frecuentes(atajo), nivel="h4")
     gracias = (
         f"<p>{frase('Gracias por probar Farmadex.')}</p>"
-        f"<p>{frase('Los datos salen del trabajo de la comunidad: WFCD (catalogo de objetos y estado del '
+        f"<p>{frase('Los datos salen del trabajo de la comunidad: WFCD (catálogo de objetos y estado del '
                     'mundo), las tablas de drops oficiales de Digital Extremes, la wiki de Warframe y '
                     'warframe.market.')}</p>"
         f"<p>{frase('Y gracias a quienes lo prueban y mandan sus comentarios: mucho de lo que ves ha '
-                    'salido de ahi.')}</p>"
+                    'salido de ahí.')}</p>"
         f"<p>{texto_autor()}</p>"
-        f"<p>{frase('Dudas, fallos o ideas: escribe en el chat del canal o abre un aviso en {avisos}.',
-                    avisos=_enlace(URL_AVISOS, 'GitHub'))}</p>"
-        f"<p>{frase('Codigo y descargas: {enlace}', enlace=_enlace(URL_REPOSITORIO, URL_REPOSITORIO.removeprefix('https://')))}</p>"
-        f"<p style='color: {p['suave']};'>{frase('Farmadex no esta afiliado a Digital Extremes ni tiene su '
+        f"<p>{frase('Dudas, fallos o ideas: escribe en el Discord de Farmadex ({discord}), en el chat '
+                    'del canal o abre un aviso en {avisos}.',
+                    discord=enlace_discord(), avisos=_enlace(URL_AVISOS, 'GitHub'))}</p>"
+        f"<p>{frase('Código y descargas: {enlace}', enlace=_enlace(URL_REPOSITORIO, URL_REPOSITORIO.removeprefix('https://')))}</p>"
+        f"<p style='color: {p['suave']};'>{frase('Farmadex no está afiliado a Digital Extremes ni tiene su '
                                                  'respaldo. Warframe y todo su contenido son de Digital '
                                                  'Extremes.')}</p>"
     )
     return [
-        (t("Que es Farmadex"), que_es),
-        (t("Lo basico, paso a paso"), basico),
-        (t("Es seguro?"), seguro),
+        (t("Qué es Farmadex"), que_es),
+        (t("Lo básico, paso a paso"), basico),
+        (t("¿Es seguro?"), seguro),
         (t("Preguntas frecuentes"), faq),
         (t("Gracias"), gracias),
     ]
@@ -331,7 +333,7 @@ class CapaBienvenida(QWidget):
         # -- pie: Atras · n DE 5 · Siguiente ---------------------------------------------------
         self.nota_pie = EtiquetaC(t("Puedes volver a verla en Ajustes > Ayuda."), "pequeno", recortar=True)
         self.contador = EtiquetaC("", "dato", tinta="suave", mayus=True)
-        self.boton_atras = BotonC(t("Atras"), icono=GLIFO_ATRAS, tam=11)
+        self.boton_atras = BotonC(t("Atrás"), icono=GLIFO_ATRAS, tam=11)
         self.boton_atras.clicked.connect(lambda: self._ir_a(self.paginas.currentIndex() - 1))
         self.boton_siguiente = BotonC(t("Siguiente"), principal=True, icono="derecha", tam=11)
         self.boton_siguiente.clicked.connect(lambda: self._ir_a(self.paginas.currentIndex() + 1))
@@ -401,10 +403,10 @@ class CapaBienvenida(QWidget):
         self.boton_empezar.update()
         self.boton_guia.setVisible(ultimo and self._ofrecer_guia)
         if ultimo:
-            aviso = (t("Elige como empezar. El recorrido senala cada parte de la ventana, paso a paso.")
+            aviso = (t("Elige cómo empezar. El recorrido señala cada parte de la ventana, paso a paso.")
                      if self._ofrecer_guia else "")
         else:
-            aviso = t("Al final eliges como empezar. El recorrido senala cada parte de la ventana, paso a paso.")
+            aviso = t("Al final eliges cómo empezar. El recorrido señala cada parte de la ventana, paso a paso.")
         self.nota_empezar.setText(aviso)
         self.nota_empezar.setVisible(bool(aviso))
         self.caja_empezar.setVisible(ultimo or (indice == APARTADO_BASICO and self._ofrecer_guia))

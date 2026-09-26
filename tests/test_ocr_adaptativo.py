@@ -92,8 +92,10 @@ def test_fuera_de_windows_no_se_mide(monkeypatch):
 
 # --- configuracion -------------------------------------------------------------------
 
-def test_modo_por_defecto_es_automatico_y_uno_raro_tambien():
+def test_modo_por_defecto_es_automatico_y_uno_raro_tambien(monkeypatch):
     from farmadex import config
+
+    monkeypatch.setattr(ocr, "_winocr_instalado", True)
 
     assert config.POR_DEFECTO["ocr_modo"] == "auto"
     assert modo_de_config({}) == "auto"
@@ -271,6 +273,7 @@ def test_ajustes_elige_el_modo_de_ocr_y_avisa(monkeypatch, tmp_path):
     monkeypatch.setenv("FARMADEX_DATOS", str(tmp_path))
     QApplication.instance() or QApplication([])
     monkeypatch.setattr(pestana_ajustes, "guardar", lambda cfg: None)
+    monkeypatch.setattr(ocr, "_winocr_instalado", True)
     ajustes = pestana_ajustes.PestanaAjustes()
     monkeypatch.setitem(ajustes.config, "ocr_modo", ajustes.config.get("ocr_modo", "auto"))
     combo = ajustes.ocr_modo
@@ -289,3 +292,32 @@ def test_lector_pasivo_cambia_de_motor():
     assert lector.motor.motor == "auto"
     lector.cambiar_motor("ligero")
     assert lector.motor.motor == "ligero"
+
+
+def test_sin_winocr_la_opcion_windows_no_sale_y_cuenta_como_auto(monkeypatch):
+    """Si el OCR de Windows no esta instalado no se ofrece en Ajustes, y quien lo tenia
+    guardado lee con el modo automatico."""
+    monkeypatch.setattr(ocr, "_winocr_instalado", False)
+    assert ocr.modo_de_config({"ocr_modo": "windows"}) == "auto"
+    assert ocr.modo_de_config({"ocr_modo": "ligero"}) == "ligero"
+    monkeypatch.setattr(ocr, "_winocr_instalado", True)
+    assert ocr.modo_de_config({"ocr_modo": "windows"}) == "windows"
+
+
+def test_desplegable_de_ajustes_sin_winocr(monkeypatch, tmp_path):
+    from PySide6.QtWidgets import QApplication
+
+    from farmadex import config
+    from farmadex.ui.pestana_ajustes import PestanaAjustes
+
+    monkeypatch.setattr(config, "RUTA_CONFIG", tmp_path / "config.json")
+    monkeypatch.setattr(config, "_compartida", None)
+    QApplication.instance() or QApplication([])
+    config.cargar()["ocr_modo"] = "windows"
+    for instalado, esperado in ((False, ["auto", "rapido", "ligero"]), (True, ["auto", "rapido", "ligero", "windows"])):
+        monkeypatch.setattr(ocr, "_winocr_instalado", instalado)
+        ajustes = PestanaAjustes()
+        claves = [ajustes.ocr_modo.itemData(i) for i in range(ajustes.ocr_modo.count())]
+        assert claves == esperado
+        assert ajustes.ocr_modo.currentData() == ("windows" if instalado else "auto")
+        ajustes.deleteLater()

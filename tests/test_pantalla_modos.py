@@ -281,5 +281,5 @@ def test_resumen_en_texto_de_las_recompensas():
         Recompensa(2, "Forma", "FORMA", (0, 0, 1, 1)),
     ]
     texto = resumir(recompensas)
-    assert "Sistemas de Ash Prime (30 platino, 45 ducados, En boveda, Objetivo: 1/2)" in texto
+    assert "Sistemas de Ash Prime (30 platino, 45 ducados, En bóveda, Objetivo: 1/2)" in texto
     assert texto.endswith("Forma")

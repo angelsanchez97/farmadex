@@ -78,7 +78,7 @@ def test_tarjeta_fiable_rellena_y_evalua_sola(pestana, armas):
     rubico = pestana.arma_elegida()
     assert pestana.disposicion.text().startswith("×")
     assert pestana.rombos.n == rombos_disposicion(rubico.disposicion)
-    assert "disposicion" in pestana.rombos.toolTip()
+    assert "disposición" in pestana.rombos.toolTip()
     # Titular del veredicto (todo B: una tirada normal) y la tabla con su barra.
     assert pestana.titular.isVisibleTo(pestana) and "normal" in pestana.titular.text()
     assert pestana.tabla.cellWidget(0, 4) is not None

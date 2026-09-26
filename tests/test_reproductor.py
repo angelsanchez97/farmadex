@@ -158,7 +158,7 @@ def test_si_falla_dice_que_no_se_puede_y_no_abre_nada_solo(panel, abiertas):
     estado = Path(panel.lanzados[0][1][panel.lanzados[0][1].index("--estado") + 1])
     estado.write_text("ERROR sin_webview2", encoding="utf-8")
     panel._sondear()
-    assert "No se puede reproducir aqui" in panel.mensaje.text()
+    assert "No se puede reproducir aquí" in panel.mensaje.text()
     assert not panel.boton_fallo.isHidden() and proceso.matado
     assert abiertas == []  # el navegador solo al pulsar
     panel.boton_fallo.click()
@@ -171,7 +171,7 @@ def test_si_no_arranca_el_proceso(app, abiertas):
 
     p = reproductor.PanelVideo(lanzar=lanzar, incrustar=lambda hwnd: QWidget())
     p.abrir(URL)
-    assert "No se puede reproducir aqui" in p.mensaje.text() and abiertas == []
+    assert "No se puede reproducir aquí" in p.mensaje.text() and abiertas == []
 
 
 def test_si_el_hijo_no_contesta_a_tiempo(panel, monkeypatch):
@@ -179,7 +179,7 @@ def test_si_el_hijo_no_contesta_a_tiempo(panel, monkeypatch):
     panel.abrir(URL)
     panel._sondear()
     panel._sondear()
-    assert "No se puede reproducir aqui" in panel.mensaje.text()
+    assert "No se puede reproducir aquí" in panel.mensaje.text()
 
 
 def test_cerrar_para_el_video_y_borrar_datos(panel, carpeta):
@@ -266,7 +266,7 @@ def test_guias_en_la_pestana_video_y_modo_video_recordado(ventana):
     assert ventana.pagina_actual() is ventana.video and ventana.video.url == URL
     ventana.aplicar_modo("video")
     assert ventana.modo == "video" and not ventana.menu.isVisibleTo(ventana)
-    assert ventana.boton_modo.text() == "Salir del video"
+    assert ventana.boton_modo.text() == "Salir del vídeo"
     ventana.setGeometry(50, 60, 500, 330)
     ventana.alternar_modo()  # Ctrl+M / "Salir del video"
     assert ventana.modo == "completo" and ventana.config["overlay_geometria_video"] == [50, 60, 500, 330]

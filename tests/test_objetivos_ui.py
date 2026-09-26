@@ -59,7 +59,7 @@ def test_diez_por_pagina_y_pestanas_de_estado(pestana):
     assert len(_filas(pestana)) == 10 and pestana.siguiente.isEnabled()
     assert _filas(pestana)[0].objetivo.nombre == "Recurso 11"  # lo ultimo, arriba
     pestana.siguiente.click()
-    assert len(_filas(pestana)) == 2 and pestana.texto_pagina.text() == "Pagina 2 de 2"
+    assert len(_filas(pestana)) == 2 and pestana.texto_pagina.text() == "Página 2 de 2"
 
     pestana.estados.setCurrentIndex(2)
     assert [w.objetivo.nombre for w in _filas(pestana)] == ["Hecho"]

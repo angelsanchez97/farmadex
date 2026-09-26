@@ -186,7 +186,7 @@ def test_solo_rareza_se_elige_la_mas_rara_pero_sin_seguridad(indice):
     con.execute("INSERT INTO reliquia_recompensas VALUES (6, 'Intact', 7, 'Common', 25.0)")
     v = puntuar([_r(7, "Otra"), _r(5, "Pieza Sin Datos")], indice, None)
     assert v.mejor == 1 and not v.seguro
-    assert "mas rara" in v.motivo
+    assert "más rara" in v.motivo
 
 
 def test_casi_empate_se_avisa(indice):

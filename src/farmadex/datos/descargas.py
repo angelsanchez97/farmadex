@@ -184,7 +184,7 @@ class EstadoDatos:
 
     # Nombre de cada fuente tal como lo da indice.desfase_con_el_juego.
     FUENTES = {
-        "catalogo de objetos": ("items_sha", "publicado_items_sha"),
+        "catálogo de objetos": ("items_sha", "publicado_items_sha"),
         "tablas de drops": ("drops_hash", "publicado_drops_hash"),
     }
 

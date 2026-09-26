@@ -240,9 +240,9 @@ class LectorBuild(LectorBase):
                  build.milisegundos, build.equipo.nombre if build.equipo else build.equipo_texto or "?",
                  len(build.equipados), len(build.coleccion), len(build.arcanos), len(build.sin_identificar))
         if build.vacia:
-            self.estado.emit(t("No se reconocio nada: abre la pantalla de mejoras del arsenal y vuelve a probar"))
+            self.estado.emit(t("No se reconoció nada: abre la pantalla de mejoras del arsenal y vuelve a probar"))
         else:
-            self.estado.emit(t("Build leida"))
+            self.estado.emit(t("Build leída"))
         self.leida.emit(build)
 
 

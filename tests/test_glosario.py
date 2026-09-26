@@ -33,7 +33,7 @@ def test_cada_termino_esta_traducido(ruta):
 def test_el_texto_lleva_titulo_y_explicacion_en_el_idioma(app):
     idiomas.cargar("es")
     texto = glosario.texto("boveda")
-    assert "<b>Boveda</b>" in texto and "otro jugador" in texto
+    assert "<b>Bóveda</b>" in texto and "otro jugador" in texto
     idiomas.cargar("en")
     assert "<b>Vault</b>" in glosario.texto("boveda")
     idiomas.cargar("es")
@@ -117,7 +117,7 @@ def test_sugiere_lo_parecido_palabra_a_palabra(buscador):
     buscador._buscar()
     nombres = [r["nombre_en"] for r in buscador.sugerencias("dame ash ya")]
     assert "Ash Prime" in nombres
-    assert "Quiza buscabas" in buscador.ficha.toPlainText()
+    assert "Quizá buscabas" in buscador.ficha.toPlainText()
     # Pinchar una sugerencia abre su ficha.
     from PySide6.QtCore import QUrl
 
@@ -149,7 +149,7 @@ def test_el_glosario_en_mundo_y_en_el_filtro(app):
 
     idiomas.cargar("es")
     mundo = PestanaMundo()
-    assert "<b>Fisura del Vacio</b>" in mundo.fisuras_todo.rotulo.toolTip()
+    assert "<b>Fisura del Vacío</b>" in mundo.fisuras_todo.rotulo.toolTip()
     assert "<b>Camino de Acero</b>" in mundo.botones_modo["acero"].toolTip()
     buscador = PestanaBuscador()
-    assert "<b>Boveda</b>" in buscador.ocultar_vaulted.toolTip()
+    assert "<b>Bóveda</b>" in buscador.ocultar_vaulted.toolTip()

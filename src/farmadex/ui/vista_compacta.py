@@ -294,8 +294,8 @@ class VistaCompacta(QWidget):
         elif indice_vivo is None:
             self.tarjeta_pieza.poner(t("Siguiente pieza"), "", t("Preparando los datos..."), "")
         else:
-            self.tarjeta_pieza.poner(t("Siguiente pieza"), "", t("Sin metas todavia"),
-                                     t("Anade objetivos en Mis metas y aqui veras tu siguiente pieza."))
+            self.tarjeta_pieza.poner(t("Siguiente pieza"), "", t("Sin metas todavía"),
+                                     t("Añade objetivos en Mis metas y aquí verás tu siguiente pieza."))
         self.tarjeta_pieza.setToolTip(t("Abrir su ficha") if self._item_pieza else "")
         self.tarjeta_pieza.setCursor(Qt.PointingHandCursor if self._item_pieza else Qt.ArrowCursor)
 
@@ -316,7 +316,7 @@ class VistaCompacta(QWidget):
             trozos.append(t("Reliquia {reliquia}", reliquia=f"<b style='color:{p['secundario']}'>"
                             f"{html.escape(paso.reliquia)}</b>"))
         if paso.boveda:
-            trozos.append(html.escape(t("Solo en boveda: hay que comprarla a otro jugador")))
+            trozos.append(html.escape(t("Solo en bóveda: hay que comprarla a otro jugador")))
         else:
             mision = paso.mision
             if mision.get("donde"):
@@ -336,7 +336,7 @@ class VistaCompacta(QWidget):
         self.pie.setText(t("↑↓ otro resultado · Enter ficha completa · Ctrl+M vista completa"))
         self.boton_tarjetas.setText(t("Tarjetas"))
         self.boton_tarjetas.setToolTip(
-            t("Ensena u oculta las tarjetas de tu siguiente pieza y de la fisura que te sirve"))
+            t("Enseña u oculta las tarjetas de tu siguiente pieza y de la fisura que te sirve"))
         self._poner_tecla()
         self.tecla.setToolTip(t("Con esta tecla se abre y se esconde Farmadex desde el juego"))
         # Los nombres vienen del indice en el idioma de la interfaz: se recalcula despues de
@@ -499,7 +499,7 @@ class VistaCompacta(QWidget):
         if item["es_prime"]:
             etiquetas.append(_etiqueta("Prime", p["panel"], color_rareza("Rare"), "prime"))
         if item["vaulted"]:
-            etiquetas.append(_etiqueta(t("En boveda"), "#3a2a12", COLOR_BOVEDA, "boveda"))
+            etiquetas.append(_etiqueta(t("En bóveda"), "#3a2a12", COLOR_BOVEDA, "boveda"))
         elif item["vaulted"] == 0 and es_reliquia:
             etiquetas.append(_etiqueta(t("Disponible"), "#15301a", COLOR_DISPONIBLE, "boveda"))
         if item["ducados"]:
@@ -549,7 +549,7 @@ class VistaCompacta(QWidget):
             )
             if ruta["solo_en_boveda"]:
                 return texto + "<br>" + glosario.enlace(
-                    "boveda", t("Solo en boveda: hay que comprarla a otro jugador"), COLOR_BOVEDA
+                    "boveda", t("Solo en bóveda: hay que comprarla a otro jugador"), COLOR_BOVEDA
                 )
             if ruta["mision"]:
                 return texto + "<br>" + self._mision(ruta["mision"])
@@ -582,7 +582,7 @@ class VistaCompacta(QWidget):
             return f"{glosario.enlace('pieza', t('Se construye con'), p['suave'])}: {piezas}"
         return (
             f"<span style='color:{p['suave']}'>"
-            + html.escape(t("Sin fuentes registradas: puede venir de una mision de historia, del mercado, "
+            + html.escape(t("Sin fuentes registradas: puede venir de una misión de historia, del mercado, "
                             "de un evento o de un sindicato."))
             + "</span>"
         )
@@ -594,7 +594,7 @@ class VistaCompacta(QWidget):
         if misiones:
             partes.append(html.escape(t("Cae en")) + " " + self._mision(misiones[0]))
         else:
-            partes.append(f"<span style='color:{p['suave']}'>{html.escape(t('No cae en ninguna mision activa'))}</span>")
+            partes.append(f"<span style='color:{p['suave']}'>{html.escape(t('No cae en ninguna misión activa'))}</span>")
         # La pieza rara es la menos probable; la columna de rareza no es fiable en las tablas.
         contenido = relaciones.contenido_de(self.con, reliquia_id, "Radiant")
         if contenido:
@@ -634,6 +634,6 @@ class VistaCompacta(QWidget):
                 f"{html.escape(_con_padre(nombre_idioma(r), nombre_idioma(r, 'padre')))}</a>"
                 for r in parecidos
             )
-            salida.append(f"<div style='margin-top:4px;color:{p['suave']}'>{html.escape(t('Quiza buscabas:'))} {enlaces}</div>")
+            salida.append(f"<div style='margin-top:4px;color:{p['suave']}'>{html.escape(t('Quizá buscabas:'))} {enlaces}</div>")
         return "".join(salida)
 

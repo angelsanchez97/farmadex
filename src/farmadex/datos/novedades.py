@@ -98,7 +98,7 @@ def ultima(con: sqlite3.Connection | None, filtro: str = "todo") -> dict | None:
 def titulo(datos: dict) -> str:
     """'Actualizacion 44.0' en el idioma de la interfaz (o el nombre tal cual si no hay numero)."""
     if datos.get("numero"):
-        return t("Actualizacion {n}", n=datos["numero"])
+        return t("Actualización {n}", n=datos["numero"])
     return datos.get("actualizacion") or ""
 
 

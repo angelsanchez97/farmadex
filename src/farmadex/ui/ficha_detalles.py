@@ -226,14 +226,14 @@ def bloque_glifo(glifo: dict, compacto: bool = False, titulo: bool = True) -> st
     )
     canjear = (f"<a style='color:{p['acento']}' href='{html.escape(glifos.url_canje(codigo))}'>"
                f"{html.escape(t('Canjear en la web'))} &rarr;</a>")
-    cabecera = (f"<span style='color:{p['suave']}'>{html.escape(t('Codigo del glifo:'))}</span> "
+    cabecera = (f"<span style='color:{p['suave']}'>{html.escape(t('Código del glifo:'))}</span> "
                 f"<b style='font-size:{15 if compacto else 17}px'>{html.escape(codigo)}</b>&nbsp;&nbsp;{boton}")
     if compacto:
         return f"<div style='margin-top:4px'>{cabecera}</div>"
-    nota = html.escape(t("Escribelo en el Mercado del juego o en la web de Warframe. Sale de la wiki "
+    nota = html.escape(t("Escríbelo en el Mercado del juego o en la web de Warframe. Sale de la wiki "
                          "oficial: si ya no funciona, es que ha caducado."))
     return (
-        (_seccion(t("Codigo de canje")) if titulo else "")
+        (_seccion(t("Código de canje")) if titulo else "")
         + f"<div>{cabecera} &nbsp; {canjear}</div>"
         + f"<div style='color:{p['suave']};font-size:12px;margin-top:3px'>{nota}</div>"
     )
@@ -294,7 +294,7 @@ def bloque_arma(arma: dict, compacto: bool = False) -> str:
         linea_disp = (f"<br>{glosario.enlace('disposicion', html.escape(_g('Disposición de riven', 'Riven disposition')), p['suave'])}: {disposicion}"
                       if disposicion else "")
         return f"<div style='margin-top:4px'>{resumen}{linea_disp}</div>"
-    salida = _seccion(t("Estadisticas")) + _tabla(_celdas(pares, 3))
+    salida = _seccion(t("Estadísticas")) + _tabla(_celdas(pares, 3))
     if tipos:
         salida += f"<div style='margin:4px 0 0 4px'>{tipos}</div>"
     return salida
@@ -316,7 +316,7 @@ def bloque_warframe(wf: dict, compacto: bool = False, titulo: bool = True, con_h
         nombres = ", ".join(html.escape((h.get("es") if castellano else "") or h["en"]) for h in habilidades)
         return (f"<div style='margin-top:4px'>{linea}</div>"
                 + (f"<div style='color:{p['suave']}'>{nombres}</div>" if nombres else ""))
-    salida = ((_seccion(t("Estadisticas")) if titulo else "") + _tabla(_celdas(pares, 4))) if pares else ""
+    salida = ((_seccion(t("Estadísticas")) if titulo else "") + _tabla(_celdas(pares, 4))) if pares else ""
     pasiva = wf.get("pasiva") or {}
     texto_pasiva = (pasiva.get("es") if castellano else "") or pasiva.get("en") or ""
     if texto_pasiva:
@@ -423,5 +423,5 @@ def bloque_fuentes_compacto(con: sqlite3.Connection | None, item_id: int | None,
             filas.append(" &middot; ".join(trozos))
     if not filas:
         return ""
-    return (f"<div style='margin-top:6px;color:{p['suave']}'>{html.escape(t('Tambien sale en:'))}</div>"
+    return (f"<div style='margin-top:6px;color:{p['suave']}'>{html.escape(t('También sale en:'))}</div>"
             + "".join(f"<div style='margin-left:8px'>{f}</div>" for f in filas))

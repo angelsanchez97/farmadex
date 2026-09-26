@@ -166,7 +166,7 @@ def test_el_precio_dice_que_criterio_es_y_su_falta_se_ve(catalogo_reliquia):
     ]
     comparador.puntuar(recompensas, con, lambda slug: precios.get(slug), None, escuadra=True)
     assert (recompensas[0].platino, recompensas[0].criterio_platino) == (1, "minimo")
-    assert texto_platino(recompensas[0]) == "1 platino (venta mas barata)"
+    assert texto_platino(recompensas[0]) == "1 platino (venta más barata)"
     # Orthos no tiene ordenes: la etiqueta lo dice, no parece que valga cero.
     assert recompensas[1].platino is None and recompensas[1].nota
 

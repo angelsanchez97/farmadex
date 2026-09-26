@@ -89,12 +89,12 @@ class LectorAgrietado(LectorBase):
         if self.lector is None:
             self.iniciar()
             if self.lector is None:
-                self.estado.emit(t("Falta la lista de armas con agrietado: hace falta conexion la primera vez"))
-                self.leida.emit(TarjetaLeida(avisos=[t("Falta la lista de armas con agrietado: hace falta conexion la primera vez")]))
+                self.estado.emit(t("Falta la lista de armas con agrietado: hace falta conexión la primera vez"))
+                self.leida.emit(TarjetaLeida(avisos=[t("Falta la lista de armas con agrietado: hace falta conexión la primera vez")]))
                 return
         if self.motor.fallo:
             self._avisar_motor(self.motor.fallo)
-            self.leida.emit(TarjetaLeida(avisos=[t("El lector de pantalla no esta disponible")]))
+            self.leida.emit(TarjetaLeida(avisos=[t("El lector de pantalla no está disponible")]))
             return
         self.estado.emit(t("Leyendo la tarjeta bajo el cursor..."))
         juego = pantalla.region_juego()
@@ -112,19 +112,19 @@ class LectorAgrietado(LectorBase):
             tarjeta = leer_tarjeta(imagen, self.motor, self.lector)
         except ErrorMotorOCR as e:
             self._avisar_motor(str(e))
-            self.leida.emit(TarjetaLeida(avisos=[t("El lector de pantalla no esta disponible")]))
+            self.leida.emit(TarjetaLeida(avisos=[t("El lector de pantalla no está disponible")]))
             return
         log.info("Agrietado leido en %.0f ms: arma=%s nombre=%s stats=%d fiable=%s avisos=%s",
                  (time.monotonic() - inicio) * 1000, tarjeta.arma_slug, tarjeta.nombre,
                  len(tarjeta.estadisticas), tarjeta.fiable, tarjeta.avisos)
         if tarjeta.velado:
-            self.estado.emit(t("La tarjeta esta velada: no hay nada que evaluar"))
+            self.estado.emit(t("La tarjeta está velada: no hay nada que evaluar"))
         elif tarjeta.fiable:
-            self.estado.emit(t("Agrietado leido: {arma} {nombre}", arma=tarjeta.arma_nombre, nombre=tarjeta.nombre))
+            self.estado.emit(t("Agrietado leído: {arma} {nombre}", arma=tarjeta.arma_nombre, nombre=tarjeta.nombre))
         elif not tarjeta.estadisticas and not tarjeta.arma_texto:
             self.estado.emit(t("No se ve ninguna tarjeta de agrietado bajo el cursor"))
         else:
-            self.estado.emit(t("Agrietado leido a medias: revisa lo que falta"))
+            self.estado.emit(t("Agrietado leído a medias: revisa lo que falta"))
         self.leida.emit(tarjeta)
 
 

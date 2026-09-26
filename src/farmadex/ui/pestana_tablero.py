@@ -409,7 +409,7 @@ class PestanaTablero(QWidget):
         self.refrescar()
 
     def _textos_fijos(self) -> None:
-        self.caja.setPlaceholderText(t("Busca un objeto, una reliquia o una mision"))
+        self.caja.setPlaceholderText(t("Busca un objeto, una reliquia o una misión"))
         self.heroe.poner_titulo(t("Tu siguiente paso"))
         self.panel_fisuras.poner_titulo(t("Fisuras que te sirven"))
         self.panel_metas.poner_titulo(t("Mis metas"))
@@ -540,7 +540,7 @@ class PestanaTablero(QWidget):
             quedan = sum(1 for p in self._pasos if p.objetivo.grupo == objetivo.grupo)
             conjunto = objetivo.grupo_nombre or objetivo.nombre.split(":")[0]
             if quedan == 1:
-                return t("Es la ultima pieza que te falta de {set}", set=conjunto)
+                return t("Es la última pieza que te falta de {set}", set=conjunto)
             return t("Te faltan {n} piezas de {set} para el set", n=quedan, set=conjunto)
         if objetivo.objetivo > 1:
             return t("Llevas {actual} de {total}", actual=objetivo.actual, total=objetivo.objetivo)
@@ -549,21 +549,21 @@ class PestanaTablero(QWidget):
     def _hitos(self, paso: PasoMeta) -> list[Hito]:
         hitos = []
         if paso.es_reliquia and paso.boveda:
-            hitos.append(Hito(t("En la boveda"), t("Solo con reliquias que ya tengas"), "aviso"))
+            hitos.append(Hito(t("En la bóveda"), t("Solo con reliquias que ya tengas"), "aviso"))
         elif paso.es_reliquia:
             if self.mundo is None:
-                abiertas = t("Sin datos del mundo todavia")
+                abiertas = t("Sin datos del mundo todavía")
             else:
                 n = fisuras_abiertas(self.mundo, paso.era)
                 abiertas = (t("Ninguna abierta ahora") if n == 0 else t("1 abierta ahora") if n == 1
                             else t("{n} abiertas ahora", n=n))
-            hito = Hito(t("Abrela en una fisura {era}", era=paso.era), abiertas, "secundario", clicable=True)
+            hito = Hito(t("Ábrela en una fisura {era}", era=paso.era), abiertas, "secundario", clicable=True)
             hito.pulsado.connect(lambda: self.navegar.emit("mundo"))
             hitos.append(hito)
         siguiente = next((p for p in self._pasos[1:] if p.farmeable), None)
         if siguiente is not None:
             detalle = " · ".join(x for x in (siguiente.reliquia, texto_tiempo(siguiente.minutos)) if x)
-            hito = Hito(t("Despues"), f"{siguiente.nombre}: {detalle}" if detalle else siguiente.nombre, "acento",
+            hito = Hito(t("Después"), f"{siguiente.nombre}: {detalle}" if detalle else siguiente.nombre, "acento",
                         clicable=bool(siguiente.item))
             if siguiente.item:
                 hito.pulsado.connect(lambda i=siguiente.item["id"]: self.abrir_item.emit(i))
@@ -578,12 +578,12 @@ class PestanaTablero(QWidget):
                 None, EtiquetaC(t("Comprobando datos..."), "seccion", tinta="suave"), None), 1)
             return
         if not hay:
-            titulo, texto = t("Aun no tienes metas"), t(
-                "Busca un objeto y pulsa \"+ Objetivo\". Aqui veras cual es la pieza que antes puedes "
-                "conseguir, donde sale y en que fisura abrir su reliquia.")
+            titulo, texto = t("Aún no tienes metas"), t(
+                "Busca un objeto y pulsa \"+ Objetivo\". Aquí verás cuál es la pieza que antes puedes "
+                "conseguir, dónde sale y en qué fisura abrir su reliquia.")
         else:
             titulo, texto = t("Has conseguido todas tus metas"), t(
-                "Busca algo nuevo que quieras farmear y anadelo con \"+ Objetivo\".")
+                "Busca algo nuevo que quieras farmear y añádelo con \"+ Objetivo\".")
         boton = BotonC(t("Buscar algo"), principal=True, icono="buscar")
         boton.clicked.connect(self.enfocar)
         self.capa_heroe.addLayout(columna(
@@ -598,7 +598,7 @@ class PestanaTablero(QWidget):
             if self.indice is None and self._hay_objetivos():
                 texto = t("Comprobando datos...")
             elif not self._hay_objetivos():
-                texto = t("Todavia no tienes metas. Busca algo y pulsa '+ Objetivo'.")
+                texto = t("Todavía no tienes metas. Busca algo y pulsa '+ Objetivo'.")
             else:
                 texto = t("No te queda nada pendiente.")
             self.capa_metas.addWidget(EtiquetaC(texto, "normal", tinta="suave", envolver=True), 1)
@@ -639,7 +639,7 @@ class PestanaTablero(QWidget):
         eras = eras_de(self._pasos)
         if not eras:
             self.capa_fisuras.addWidget(EtiquetaC(
-                t("Cuando tengas metas que salen de reliquias, aqui veras las fisuras abiertas que te sirven."),
+                t("Cuando tengas metas que salen de reliquias, aquí verás las fisuras abiertas que te sirven."),
                 "normal", tinta="suave", envolver=True))
             return
         utiles = fisuras_utiles(self.mundo, self._pasos)

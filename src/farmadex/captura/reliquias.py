@@ -30,7 +30,7 @@ log = obtener("reliquias")
 FRANJA = (0.10, 0.30, 0.90, 0.72)
 
 AVISO_MOTOR = "No se pudo cargar el lector de pantalla (mira el registro)"
-AVISO_DATOS = "Los datos del juego todavia no estan preparados"
+AVISO_DATOS = "Los datos del juego todavía no están preparados"
 
 CATEGORIAS_RECOMPENSA = (
     "Warframes",
@@ -372,7 +372,7 @@ class LectorRecompensas(LectorBase):
         )
         self.estado.emit(
             t("{n} recompensas reconocidas", n=len(recompensas)) if recompensas else
-            t("No se reconocio ninguna recompensa")
+            t("No se reconoció ninguna recompensa")
         )
         self.leidas.emit(recompensas)
         if self._toca_reintentar(len(recompensas)):
@@ -640,7 +640,7 @@ def _sin_solapar(nuevos: list[Reconocido], seguros: list[Reconocido]) -> list[Re
 def texto_platino(r: Recompensa) -> str:
     """'3 platino (venta mas barata)' o '3 platino (mediana)': que precio es, no solo cuanto."""
     if r.criterio_platino == "minimo":
-        return t("{n} platino (venta mas barata)", n=r.platino)
+        return t("{n} platino (venta más barata)", n=r.platino)
     if r.criterio_platino == "mediana":
         return t("{n} platino (mediana)", n=r.platino)
     return t("{n} platino", n=r.platino)
@@ -759,7 +759,7 @@ def resumir(recompensas: list[Recompensa]) -> str:
         if r.ducados:
             detalles.append(t("{n} ducados", n=r.ducados))
         if r.vaulted:
-            detalles.append(t("En boveda"))
+            detalles.append(t("En bóveda"))
         if r.objetivo:
             detalles.append(t("Objetivo: {nombre}", nombre=r.objetivo))
         if r.nota:

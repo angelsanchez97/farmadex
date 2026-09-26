@@ -134,7 +134,7 @@ def test_market_compone_rango_maximo_y_rango_cero():
     assert len(market.cliente.pedidas) == 3
 
     texto = resumen(precios)
-    assert "rango maximo (5)" in texto and "150" in texto and "rango 0 desde 8p" in texto
+    assert "rango máximo (5)" in texto and "150" in texto and "rango 0 desde 8p" in texto
 
 
 def test_piezas_prime_siguen_sin_rango():

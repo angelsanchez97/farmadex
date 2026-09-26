@@ -101,9 +101,31 @@ CARGA_ALTA = 0.40
 CARGA_BAJA = 0.30
 
 
+_winocr_instalado: bool | None = None
+
+
+def winocr_disponible() -> bool:
+    """Si el paquete del OCR de Windows (`winocr`) esta instalado. Se mira una vez y sin
+    importarlo (importarlo carga las librerias de Windows Runtime)."""
+    global _winocr_instalado
+    if _winocr_instalado is None:
+        import importlib.util
+
+        try:
+            _winocr_instalado = importlib.util.find_spec("winocr") is not None
+        except (ImportError, ValueError):
+            _winocr_instalado = False
+    return _winocr_instalado
+
+
 def modo_de_config(config) -> str:
-    """El modo de OCR guardado en la configuracion ("auto" si falta o no se conoce)."""
+    """El modo de OCR guardado en la configuracion ("auto" si falta o no se conoce).
+
+    "windows" sin el OCR de Windows instalado cuenta como "auto": en Ajustes esa
+    opcion ni sale, y asi quien la tenia guardada no se queda en un modo invisible."""
     modo = (config or {}).get("ocr_modo", "auto")
+    if modo == "windows" and not winocr_disponible():
+        return "auto"
     return modo if modo in MODOS_OCR else "auto"
 
 CATEGORIAS_PLAUSIBLES = (

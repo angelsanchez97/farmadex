@@ -35,7 +35,7 @@ def texto_maestria(estado: EstadoItem) -> str | None:
     if estado.estado == DOMINADO:
         return t("Dominado")
     if estado.estado == A_MEDIAS:
-        return t("Maestria {pct} % (rango {rango})", pct=int(estado.porcentaje), rango=estado.rango or 0)
+        return t("Maestría {pct} % (rango {rango})", pct=int(estado.porcentaje), rango=estado.rango or 0)
     if estado.estado == SIN_TOCAR:
         return t("Sin dominar")
     return None

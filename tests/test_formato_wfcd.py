@@ -340,9 +340,9 @@ def test_el_motivo_para_el_usuario_es_corto_y_sin_urls():
     casos = {
         FuenteCambiada("WFCD ya no publica Relics.json"): "la fuente ha cambiado",
         ErrorDescarga(url, error_httpx, 404): "la fuente ha cambiado",
-        ErrorDescarga(url, httpx.ConnectError("sin red"), None): "sin conexion con la fuente",
+        ErrorDescarga(url, httpx.ConnectError("sin red"), None): "sin conexión con la fuente",
         ErrorDescarga(url, None, 503): "la fuente no responde",
-        httpx.ConnectTimeout("lento"): "sin conexion con la fuente",
+        httpx.ConnectTimeout("lento"): "sin conexión con la fuente",
         ValueError("otra cosa"): "fallo inesperado; detalles en el registro",
     }
     for error, esperado in casos.items():

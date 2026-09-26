@@ -33,10 +33,11 @@ def test_el_panel_va_justo_debajo_de_las_tarjetas_del_juego_y_no_al_borde_inferi
     base_tarjetas = max(c[1] + c[3] for c in CAJAS)
     # deja ver la marca de rareza de debajo del nombre, sin irse lejos
     assert base_tarjetas + 30 <= rect.y() <= base_tarjetas + 1440 * 0.05
-    assert rect.bottom() < 1440 * 0.62  # la franja inferior queda libre para otro overlay
+    assert rect.bottom() < 1440 * 0.66  # la franja inferior queda libre para otro overlay
     assert rect.x() <= CAJAS[0][0] and rect.right() >= CAJAS[2][0] + CAJAS[2][2]
     tarjetas = panel.rectangulos_tarjetas(rect)
-    assert len(tarjetas) == 3 and all(t.height() == ALTO_TARJETA for t in tarjetas)
+    # A 1440 de alto todo el panel va a 4/3 de su tamano de 1080p (crece con la pantalla).
+    assert len(tarjetas) == 3 and all(abs(t.height() - ALTO_TARJETA * 1440 / 1080) <= 1 for t in tarjetas)
     assert tarjetas[0].x() < tarjetas[1].x() < tarjetas[2].x()
     assert tarjetas[2].right() <= rect.right()
 
@@ -223,3 +224,28 @@ def test_las_tres_variantes_del_panel_se_pintan_con_el_motivo_del_preajuste():
             assert rect.height() == modulo.ALTOS[variante] + 2 * modulo.HUECO + modulo.ALTO_PIE
             assert lienzo.pixelColor(panel.rectangulos_tarjetas(rect)[0].center()).alpha() > 0
             panel.hide()
+
+
+def test_a_1440p_el_panel_crece_con_la_pantalla_y_respeta_el_hueco_de_la_rareza():
+    """A 2560x1440 con la escala de Windows al 100 % el panel salia pequeno: ahora todo
+    (tarjetas, letra y huecos) va en proporcion a la altura, y el hueco bajo el nombre
+    sigue siendo el de siempre para que se vea la marca de rareza."""
+    from farmadex.ui.panel_recompensas import HUECO_RAREZA
+
+    _app()
+    medidas = {}
+    for ancho, alto in ((1920, 1080), (2560, 1440), (3840, 2160)):
+        k = alto / 1080
+        cajas = [(round(x * k), round(y * k), round(w * k), round(h * k)) for x, y, w, h in
+                 ((600, 440, 230, 32), (845, 440, 230, 32), (1090, 440, 230, 32))]
+        panel = PanelRecompensas()
+        panel.resize(ancho, alto)
+        panel.recompensas = [Recompensa(i + 1, "x", "x", c) for i, c in enumerate(cajas)]
+        rect = panel.rectangulo_panel()
+        base = max(c[1] + c[3] for c in cajas)
+        assert rect.y() >= base + max(30, round(alto * HUECO_RAREZA))
+        assert rect.y() <= base + max(30, round(alto * HUECO_RAREZA)) + 2
+        medidas[alto] = (rect.height(), panel.rectangulos_tarjetas()[0].width())
+    assert abs(medidas[1440][0] - medidas[1080][0] * 4 / 3) <= 2
+    assert abs(medidas[1440][1] - medidas[1080][1] * 4 / 3) <= 2
+    assert abs(medidas[2160][0] - medidas[1080][0] * 2) <= 2

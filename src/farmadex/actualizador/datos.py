@@ -63,7 +63,7 @@ class ComprobadorDatos(QObject):
 
         guardado = _meta()
         if sha and guardado.get("items_sha") and sha != guardado["items_sha"]:
-            motivos.append("catalogo de objetos")
+            motivos.append("catálogo de objetos")
         if (
             hash_drops
             and guardado.get("drops_hash")

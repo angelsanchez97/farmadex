@@ -63,6 +63,22 @@ POR_DEFECTO = {
     # Vista compacta para el directo: cual se usaba y su propia posicion y tamano.
     "overlay_modo": "completo",
     "overlay_geometria_compacto": None,
+    "overlay_geometria_video": None,
+    # Chincheta de la vista compacta (modo juego): encima del juego aunque se haga clic en el.
+    "compacta_siempre_encima": True,
+    # Tarjetas HUD del modo juego (siguiente pieza y fisura util) encendidas.
+    "modo_juego_tarjetas": True,
+    # Mis metas > Primes: orden de la rejilla, si entran los de la Boveda y con que
+    # refinamiento y escuadra se calculan las fisuras (datos/ruta_prime.py).
+    "primes_orden": "nombre",
+    "primes_incluir_boveda": False,
+    "primes_refinamiento": "Radiant",
+    "primes_escuadra": 4,
+    # Umbral de "a Baro" (datos/ducados.py) y clave de la API de YouTube (ui/guias_youtube.py):
+    # no hay ajuste en la ventana, pero quien los ponga a mano en config.json no los pierde.
+    "ducados_umbral_platino": None,
+    "ducados_umbral_ducados": None,
+    "youtube_api_clave": None,
     "ocultar_vaulted": False,
     "ocr_reliquias_auto": True,
     # Como se ensenan las recompensas de reliquia: "etiquetas" (pequenas, junto a cada

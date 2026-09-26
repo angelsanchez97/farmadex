@@ -85,7 +85,7 @@ def _hace(epoch: float | None, ahora: float | None = None) -> str:
         return t("hace {n} min", n=int(segundos // 60))
     if segundos < 86400 * 1.5:
         return t("hace {n} h", n=int(segundos // 3600))
-    return t("hace {n} dias", n=int(segundos // 86400))
+    return t("hace {n} días", n=int(segundos // 86400))
 
 
 def recoger(
@@ -126,18 +126,18 @@ def recoger(
     if datos_listos:
         d.anadir(OK, t("Datos del juego preparados"))
     elif hay_indice:
-        d.anadir(AVISO, t("Los datos del juego aun se estan comprobando; la lectura de reliquias "
+        d.anadir(AVISO, t("Los datos del juego aún se están comprobando; la lectura de reliquias "
                           "arranca cuando terminen"))
     else:
         d.anadir(MAL, t("No hay datos del juego descargados: sin ellos no se lee ninguna reliquia. "
-                        "Comprueba la conexion a internet y pulsa 'Reconstruir el indice'"))
+                        "Comprueba la conexión a internet y pulsa 'Reconstruir el índice'"))
 
     # 2. EE.log: que exista, que se lea y que haya dado senales de vida.
     if eelog is None:
-        d.anadir(MAL, t("La vigilancia de EE.log no ha arrancado (los datos no estan listos)"))
+        d.anadir(MAL, t("La vigilancia de EE.log no ha arrancado (los datos no están listos)"))
     elif not eelog.existe:
         texto = t("No se encuentra EE.log en {ruta}. Warframe lo crea al arrancar; si el juego "
-                  "esta abierto y sigue sin aparecer, es que escribe en otra carpeta",
+                  "está abierto y sigue sin aparecer, es que escribe en otra carpeta",
                   ruta=eelog.ruta)
         if ruta_eelog_por_defecto and eelog.ruta != ruta_eelog_por_defecto:
             texto += " " + t("(la ruta de siempre es {ruta})", ruta=ruta_eelog_por_defecto)
@@ -147,31 +147,31 @@ def recoger(
     else:
         d.anadir(OK, t("EE.log encontrado en {ruta} ({kb} KB)", ruta=eelog.ruta, kb=eelog.tamano // 1024))
         if ruta_eelog_configurada and eelog.ruta != ruta_eelog_configurada:
-            d.anadir(AVISO, t("La ruta configurada ({ruta}) no existia; se usa la de siempre",
+            d.anadir(AVISO, t("La ruta configurada ({ruta}) no existía; se usa la de siempre",
                               ruta=ruta_eelog_configurada))
         if eelog.ultima_lectura is not None:
-            d.anadir(OK, t("Leyendose: {n} lineas nuevas desde que se abrio {app}, la ultima {hace}",
+            d.anadir(OK, t("Leyéndose: {n} líneas nuevas desde que se abrió {app}, la última {hace}",
                            n=eelog.lineas, app=NOMBRE_APP, hace=_hace(eelog.ultima_lectura, ahora)))
         elif eelog.modificado is not None and ahora - eelog.modificado > 5 * 60:
             d.anadir(AVISO, t("El juego no ha escrito nada en EE.log desde {hace}: parece que "
-                              "Warframe no esta abierto", hace=_hace(eelog.modificado, ahora)))
+                              "Warframe no está abierto", hace=_hace(eelog.modificado, ahora)))
         else:
-            d.anadir(DATO, t("Todavia no ha llegado ninguna linea nueva de EE.log"))
+            d.anadir(DATO, t("Todavía no ha llegado ninguna línea nueva de EE.log"))
         if eelog.ultimo_evento:
-            d.anadir(OK, t("Ultimo aviso del juego: {evento}, {hace}", evento=eelog.ultimo_evento,
+            d.anadir(OK, t("Último aviso del juego: {evento}, {hace}", evento=eelog.ultimo_evento,
                            hace=_hace(eelog.ultimo_evento_en, ahora)))
         else:
-            d.anadir(DATO, t("Ningun aviso de reliquia visto todavia en esta sesion"))
+            d.anadir(DATO, t("Ningún aviso de reliquia visto todavía en esta sesión"))
 
     # 3. Ultima pantalla de recompensas y que se hizo con ella.
     if ultima_pantalla is None:
-        d.anadir(DATO, t("Ninguna pantalla de recompensas vista en esta sesion"))
+        d.anadir(DATO, t("Ninguna pantalla de recompensas vista en esta sesión"))
     else:
-        d.anadir(OK, t("Ultima pantalla de recompensas: {hace}", hace=_hace(ultima_pantalla, ahora)))
+        d.anadir(OK, t("Última pantalla de recompensas: {hace}", hace=_hace(ultima_pantalla, ahora)))
         if ultima_lectura is None or ultima_lectura[0] < ultima_pantalla - 1:
-            d.anadir(MAL, t("De esa pantalla no se leyo nada (el lector no llego a mirarla)"))
+            d.anadir(MAL, t("De esa pantalla no se leyó nada (el lector no llegó a mirarla)"))
         elif ultima_lectura[1] == 0:
-            d.anadir(MAL, t("Se miro la pantalla pero no se reconocio ninguna recompensa"))
+            d.anadir(MAL, t("Se miró la pantalla pero no se reconoció ninguna recompensa"))
         else:
             d.anadir(OK, t("Se leyeron {n} recompensas", n=ultima_lectura[1]))
         if ultima_lectura and ultima_lectura[1] and (
@@ -181,35 +181,35 @@ def recoger(
 
     # 4. Lectura automatica y estilo.
     if config.get("ocr_reliquias_auto", True):
-        d.anadir(OK, t("Lectura automatica al abrir una reliquia: activada"))
+        d.anadir(OK, t("Lectura automática al abrir una reliquia: activada"))
     else:
-        d.anadir(MAL, t("Lectura automatica al abrir una reliquia: DESACTIVADA (solo con el atajo {atajo})",
+        d.anadir(MAL, t("Lectura automática al abrir una reliquia: DESACTIVADA (solo con el atajo {atajo})",
                         atajo=config.get("hotkey_reliquias", "")))
     if (config.get("estilo_recompensas") or "etiquetas") == "panel":
         estilo = t("panel con una tarjeta por recompensa")
     else:
-        estilo = t("etiquetas pequenas junto a cada tarjeta")
+        estilo = t("etiquetas pequeñas junto a cada tarjeta")
     d.anadir(DATO, t("Estilo de recompensas: {estilo}", estilo=estilo))
 
     # 5. Ventana del juego, modo de pantalla, monitores y escala.
     if juego is None:
-        d.anadir(AVISO, t("No se ve la ventana de Warframe: o no esta abierto, o esta minimizado"))
+        d.anadir(AVISO, t("No se ve la ventana de Warframe: o no está abierto, o está minimizado"))
     else:
         d.anadir(OK, t("Ventana de Warframe: {ancho}x{alto} en ({x}, {y})",
                        ancho=juego.ancho, alto=juego.alto, x=juego.x, y=juego.y))
     if modo_pantalla == "exclusivo":
-        d.anadir(MAL, t("Warframe esta en pantalla completa exclusiva: ninguna ventana puede dibujarse "
+        d.anadir(MAL, t("Warframe está en pantalla completa exclusiva: ninguna ventana puede dibujarse "
                         "encima del juego. En el juego: Opciones > Pantalla > Modo de pantalla = "
                         "'Ventana sin bordes'"))
     elif modo_pantalla == "desconocido":
-        d.anadir(DATO, t("Modo de pantalla: sin determinar (Warframe no esta abierto)"))
+        d.anadir(DATO, t("Modo de pantalla: sin determinar (Warframe no está abierto)"))
     else:
         modo = t("ventana") if modo_pantalla == "ventana" else t("ventana sin bordes")
         d.anadir(OK, t("Modo de pantalla: {modo}", modo=modo))
     if monitores > 1:
         donde = ""
         if monitor_juego is not None:
-            donde = t(" (el juego esta en el monitor de {ancho}x{alto} en ({x}, {y}))",
+            donde = t(" (el juego está en el monitor de {ancho}x{alto} en ({x}, {y}))",
                       ancho=monitor_juego.ancho, alto=monitor_juego.alto, x=monitor_juego.x, y=monitor_juego.y)
         d.anadir(DATO, t("{n} monitores", n=monitores) + donde)
     if abs(escala - 1.0) > 0.01:
@@ -222,9 +222,9 @@ def recoger(
     elif motor_cargado:
         d.anadir(OK, t("Lector de pantalla ({motor}) cargado", motor=motor_nombre))
     elif motor_cargado is None:
-        d.anadir(AVISO, t("Lector de pantalla ({motor}) sin arrancar todavia", motor=motor_nombre))
+        d.anadir(AVISO, t("Lector de pantalla ({motor}) sin arrancar todavía", motor=motor_nombre))
     else:
-        d.anadir(AVISO, t("Lector de pantalla ({motor}) sin cargar todavia (se carga con la primera lectura)",
+        d.anadir(AVISO, t("Lector de pantalla ({motor}) sin cargar todavía (se carga con la primera lectura)",
                           motor=motor_nombre))
 
     d.anadir(DATO, t("Idioma de {app}: {idioma}", app=NOMBRE_APP, idioma=idioma))

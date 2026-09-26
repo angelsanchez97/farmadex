@@ -22,14 +22,14 @@ from .widgets import PALETA
 TIPOS: dict[str, tuple[str, str]] = {
     "warframe": ("Warframe", "#4fc3f7"),
     "arma": ("Arma", "#ff8a50"),
-    "companero": ("Companero", "#81c784"),
+    "companero": ("Compañero", "#81c784"),
     "mod": ("Mod", "#7c9cff"),
     "arcano": ("Arcano", "#c78bff"),
     "recurso": ("Recurso", "#ffd54f"),
     "reliquia": ("Reliquia", "#d7b27a"),
     "glifo": ("Glifo", "#f48fb1"),
     # "Mision||nodo": una mision del mapa ("Mission"), no una de historia ("Quest").
-    "mision": ("Mision||nodo", "#4dd0a8"),
+    "mision": ("Misión||nodo", "#4dd0a8"),
     "cosmetico": ("Aspecto", "#b0a8c8"),
     "otro": ("Otros", "#9aa4b2"),
 }

@@ -56,8 +56,8 @@ def test_en_otro_idioma_sale_el_catalogo_o_el_ingles():
     try:
         idiomas.cargar("en")
         assert modos_mision.nombre("Disruption") == "Disruption"
-        # El catalogo tiene la clave sin tilde: se sigue encontrando.
-        assert modos_mision.nombre("Void Storm") == idiomas.t("Tormenta del Vacio")
+        # El catalogo tiene la clave con tilde: se encuentra igual que la llana.
+        assert modos_mision.nombre("Void Storm") == idiomas.t("Tormenta del Vacío")
     finally:
         idiomas.cargar("es")
 

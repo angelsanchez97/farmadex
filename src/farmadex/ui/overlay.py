@@ -97,7 +97,7 @@ SECCIONES = (
 )
 SUBSECCIONES = {
     "metas": (("objetivos", "Objetivos"), ("primes", "Primes"), ("perfil", "Perfil")),
-    "herramientas": (("build", "Build"), ("agrietados", "Agrietados"), ("video", "Video"), ("web", "Web")),
+    "herramientas": (("build", "Build"), ("agrietados", "Agrietados"), ("video", "Vídeo"), ("web", "Web")),
 }
 # Ruta -> atributo de la ventana con la pagina (se lee al navegar: una pagina puede
 # rehacerse, como Mundo al cambiar de disposicion).
@@ -300,9 +300,9 @@ class VentanaOverlay(QWidget):
         self.boton_modo = BotonC(icono="juego", pista=ATAJO_MODO)
         self.boton_modo.clicked.connect(self.alternar_modo)
         # La guia, solo con su icono: el menu necesita el sitio. El texto va en el tooltip.
-        self.boton_guia = BotonC(t("Guia"), icono="ayuda")
+        self.boton_guia = BotonC(t("Guía"), icono="ayuda")
         self.boton_guia.poner_solo_icono(True)
-        self.boton_guia.setToolTip(t("Guia") + ": " + t("Lanza la guia de uso desde el principio"))
+        self.boton_guia.setToolTip(t("Guía") + ": " + t("Lanza la guía de uso desde el principio"))
         self.boton_guia.clicked.connect(self.mostrar_guia)
         # Chincheta de la vista compacta: fijarla por encima del juego (se recuerda).
         self.boton_fijar = BotonC(t("Fijar"), icono="pin")
@@ -510,7 +510,7 @@ class VentanaOverlay(QWidget):
             ""
             if listo
             else (
-                t("Reconstruyendo el indice...")
+                t("Reconstruyendo el índice...")
                 if forzar
                 else t("Descargando los datos del juego. La primera vez tarda unos minutos.")
             ),
@@ -587,7 +587,7 @@ class VentanaOverlay(QWidget):
             enlace = (
                 f'<a style="color:{PALETA["acento"]}" href="farmadex:guia">{t("Verla ahora")}</a>'
             )
-            self._aviso("guia_nueva", t("Nuevo: guia de uso en la pestana Ajustes.") + " " + enlace)
+            self._aviso("guia_nueva", t("Nuevo: guía de uso en la pestaña Ajustes.") + " " + enlace)
 
     def mostrar_guia(self) -> None:
         """Lanza la guia desde el principio: la relanza el boton "Guia" aunque ya se
@@ -628,7 +628,7 @@ class VentanaOverlay(QWidget):
     def _anadir_objetivo(self, item_id: int, set_completo: bool) -> None:
         creados = self.objetivos.anadir_item(item_id, set_completo)
         self.estado.setText(
-            t("{n} objetivo(s) anadido(s)", n=creados) if creados else t("No se pudo anadir el objetivo")
+            t("{n} objetivo(s) añadido(s)", n=creados) if creados else t("No se pudo añadir el objetivo")
         )
 
     def _arrancar_mundo(self) -> None:
@@ -813,7 +813,7 @@ class VentanaOverlay(QWidget):
             self._aviso(
                 "exclusivo",
                 t(
-                    "Warframe esta en pantalla completa exclusiva: ninguna ventana puede dibujarse "
+                    "Warframe está en pantalla completa exclusiva: ninguna ventana puede dibujarse "
                     "encima del juego, ni las etiquetas de recompensas. Cambia a Ventana sin bordes "
                     "en Opciones > Pantalla, o usa Farmadex en el segundo monitor."
                 ),
@@ -981,7 +981,7 @@ class VentanaOverlay(QWidget):
             return
         estado, etiqueta = resultado
         if estado == "instalada":
-            self.estado.setText(t("Farmadex se ha actualizado a la version {version}", version=etiqueta))
+            self.estado.setText(t("Farmadex se ha actualizado a la versión {version}", version=etiqueta))
             # El setup que nos acaba de abrir aun puede estar cerrandose: se barre luego.
             QTimer.singleShot(60_000, descarga.limpiar)
         elif estado == "aplazada":
@@ -990,8 +990,8 @@ class VentanaOverlay(QWidget):
             self._aviso(
                 "version",
                 t(
-                    "La actualizacion {version} se aplazo: habia otro Farmadex abierto. "
-                    "Se instalara al cerrar el ultimo.",
+                    "La actualización {version} se aplazó: había otro Farmadex abierto. "
+                    "Se instalará al cerrar el último.",
                     version=etiqueta,
                 ),
             )
@@ -1009,8 +1009,8 @@ class VentanaOverlay(QWidget):
             self._aviso(
                 "version",
                 t(
-                    "La actualizacion {version} no llego a instalarse; sigues en la {actual}. "
-                    "Motivo: {motivo}. El detalle esta en logs/instalador.log.",
+                    "La actualización {version} no llegó a instalarse; sigues en la {actual}. "
+                    "Motivo: {motivo}. El detalle está en logs/instalador.log.",
                     version=etiqueta, actual=VERSION, motivo=motivo or "?",
                 ),
             )
@@ -1044,15 +1044,15 @@ class VentanaOverlay(QWidget):
 
     def _avisar_descarga_manual(self, version, motivo: str | None = None) -> None:
         """El aviso de siempre: enlace de descarga (con el motivo si la automatica fallo)."""
-        enlace = f'<a style="color:{PALETA["acento"]}" href="{version.url}">{t("Descargala")}</a>'
+        enlace = f'<a style="color:{PALETA["acento"]}" href="{version.url}">{t("Descárgala")}</a>'
         if motivo:
             texto = t(
-                "No se pudo preparar la actualizacion {version} ({motivo}). {enlace}",
+                "No se pudo preparar la actualización {version} ({motivo}). {enlace}",
                 version=version.etiqueta, motivo=motivo, enlace=enlace,
             )
         else:
             texto = t(
-                "Hay una version nueva de Farmadex ({version}). {enlace}, o instalala desde Ajustes.",
+                "Hay una versión nueva de Farmadex ({version}). {enlace}, o instálala desde Ajustes.",
                 version=version.etiqueta, enlace=enlace,
             )
         self._aviso("version", texto)
@@ -1070,9 +1070,9 @@ class VentanaOverlay(QWidget):
     def _descargar_actualizacion(self, version) -> None:
         self._aviso(
             "version",
-            t("Descargando la actualizacion {version} en segundo plano...", version=version.etiqueta),
+            t("Descargando la actualización {version} en segundo plano...", version=version.etiqueta),
         )
-        self.ajustes.estado_version(t("Descargando la version {version}...", version=version.etiqueta))
+        self.ajustes.estado_version(t("Descargando la versión {version}...", version=version.etiqueta))
         if self.descargador is not None:
             self.descargador.descargar(version)
 
@@ -1083,7 +1083,7 @@ class VentanaOverlay(QWidget):
         self._aviso(
             "version",
             t(
-                "Descargando la actualizacion {version} en segundo plano... {pct}%",
+                "Descargando la actualización {version} en segundo plano... {pct}%",
                 version=version.etiqueta, pct=pct,
             ),
         )
@@ -1095,7 +1095,7 @@ class VentanaOverlay(QWidget):
         self._aviso(
             "version",
             t(
-                'Actualizacion {version} lista. <a style="color:{color}" href="farmadex:actualizar">'
+                'Actualización {version} lista. <a style="color:{color}" href="farmadex:actualizar">'
                 "Reiniciar y actualizar</a> (si no, se instala sola al cerrar Farmadex).",
                 version=version.etiqueta, color=PALETA["acento"],
             ),
@@ -1139,7 +1139,7 @@ class VentanaOverlay(QWidget):
             self._aviso(
                 "version",
                 t(
-                    "Hay otro Farmadex abierto: la actualizacion {version} se instalara al cerrar el ultimo.",
+                    "Hay otro Farmadex abierto: la actualización {version} se instalará al cerrar el último.",
                     version=version.etiqueta,
                 ),
             )
@@ -1168,7 +1168,7 @@ class VentanaOverlay(QWidget):
         diseno = QVBoxLayout(aviso)
         diseno.setContentsMargins(26, 20, 26, 20)
         texto = QLabel(t(
-            "Actualizando Farmadex a la version {version}. Se cerrara y volvera a abrirse sola.",
+            "Actualizando Farmadex a la versión {version}. Se cerrará y volverá a abrirse sola.",
             version=etiqueta,
         ))
         texto.setWordWrap(True)
@@ -1198,20 +1198,20 @@ class VentanaOverlay(QWidget):
         self.comprobador_app.comprobar_a_mano()
 
     def _no_hay_version_nueva(self) -> None:
-        self.ajustes.estado_version(t("Estas en la ultima version ({version})", version=VERSION))
+        self.ajustes.estado_version(t("Estás en la última versión ({version})", version=VERSION))
 
     def _fallo_al_comprobar_version(self, motivo: str) -> None:
         self.ajustes.estado_version(
-            t("No se ha podido comprobar si hay version nueva ({motivo})", motivo=motivo)
+            t("No se ha podido comprobar si hay versión nueva ({motivo})", motivo=motivo)
         )
 
     def _hay_version_local(self, version) -> None:
         self._version_encontrada = version
         self._version_avisada = (version, True)
-        self.ajustes.estado_version(t("Hay una version nueva: {version}", version=version.etiqueta))
+        self.ajustes.estado_version(t("Hay una versión nueva: {version}", version=version.etiqueta))
         self._aviso(
             "version",
-            t("Hay compilada una version nueva ({version}): instalala desde Ajustes.",
+            t("Hay compilada una versión nueva ({version}): instálala desde Ajustes.",
               version=version.etiqueta),
         )
         self.ajustes.anunciar_version(version, local=True)
@@ -1320,7 +1320,7 @@ class VentanaOverlay(QWidget):
             con.close()
         log.info("Perfil actualizado solo: %d objetos con rango, %d sin leer",
                  resultado.guardadas, len(resultado.desconocidas))
-        self.estado.setText(t("Perfil leido solo: {n} objetos", n=len(lecturas)))
+        self.estado.setText(t("Perfil leído solo: {n} objetos", n=len(lecturas)))
         self.perfil.pintar()
         self.buscador.refrescar_perfil()
 
@@ -1335,7 +1335,7 @@ class VentanaOverlay(QWidget):
         except Exception:  # noqa: BLE001
             log.exception("No se pudo guardar la lectura del inventario")
             return
-        self.estado.setText(t("{n} cantidades leidas solas en pantalla", n=n))
+        self.estado.setText(t("{n} cantidades leídas solas en pantalla", n=n))
         if cambios:
             self.objetivos.refrescar()
         self.buscador.repintar()
@@ -1343,7 +1343,7 @@ class VentanaOverlay(QWidget):
     def leer_recompensas(self) -> None:
         """Lee la pantalla de recompensas de reliquia (atajo o aviso de EE.log)."""
         if self.hilo_captura is None:
-            self.estado.setText(t("Los datos todavia se estan preparando"))
+            self.estado.setText(t("Los datos todavía se están preparando"))
             return
         self._t_lectura_pedida = time.monotonic()
         if self._t_pintadas is None:
@@ -1356,7 +1356,7 @@ class VentanaOverlay(QWidget):
     def leer_build(self) -> None:
         """Atajo o boton de la pestana Build: lee la pantalla de mejoras del arsenal."""
         if self.hilo_captura is None:
-            self.estado.setText(t("Los datos todavia se estan preparando"))
+            self.estado.setText(t("Los datos todavía se están preparando"))
             return
         QTimer.singleShot(0, self.lector_build.leer_ahora)
 
@@ -1372,7 +1372,7 @@ class VentanaOverlay(QWidget):
     def leer_agrietado(self) -> None:
         """Atajo o boton de la pestana Agrietados: lee la tarjeta que hay bajo el cursor."""
         if self.hilo_captura is None:
-            self.estado.setText(t("Los datos todavia se estan preparando"))
+            self.estado.setText(t("Los datos todavía se están preparando"))
             return
         QTimer.singleShot(0, self.lector_agrietado.leer_ahora)
 
@@ -1424,7 +1424,7 @@ class VentanaOverlay(QWidget):
         """Al abrirse una reliquia: si ya se sabe que no va a salir nada, se dice ahora."""
         if self._refrescar_modo_pantalla() == pantalla.MODO_EXCLUSIVO:
             self._aviso_visible("exclusivo", t(
-                "Reliquia abierta, pero Warframe esta en pantalla completa exclusiva y Farmadex no "
+                "Reliquia abierta, pero Warframe está en pantalla completa exclusiva y Farmadex no "
                 "puede pintar encima. En el juego: Opciones > Pantalla > Modo de pantalla = "
                 "'Ventana sin bordes'."
             ))
@@ -1432,11 +1432,11 @@ class VentanaOverlay(QWidget):
         if lector is not None and lector.motor.fallo:
             self._aviso_visible("motor", t(
                 "Reliquia abierta, pero el lector de pantalla no carga: no se pueden leer las "
-                "recompensas. Abre Ajustes > Diagnostico de reliquias."
+                "recompensas. Abre Ajustes > Diagnóstico de reliquias."
             ))
         elif getattr(self, "disparador", None) is not None and not self.disparador.activo:
             self._aviso_visible("auto", t(
-                "Reliquia abierta, pero la lectura automatica esta desactivada en Ajustes: "
+                "Reliquia abierta, pero la lectura automática está desactivada en Ajustes: "
                 "pulsa {atajo} para leerla.", atajo=self.config.get("hotkey_reliquias", ""),
             ))
 
@@ -1511,7 +1511,7 @@ class VentanaOverlay(QWidget):
         if self._refrescar_modo_pantalla() == pantalla.MODO_EXCLUSIVO:
             self.estado.setText(t("Recompensas (no se pueden pintar encima del juego): {resumen}", resumen=resumen))
             self._aviso_visible("exclusivo", t(
-                "Recompensas leidas, pero Warframe esta en pantalla completa exclusiva y no se pueden "
+                "Recompensas leídas, pero Warframe está en pantalla completa exclusiva y no se pueden "
                 "pintar encima: {resumen}. Cambia el juego a 'Ventana sin bordes' (Opciones > Pantalla).",
                 resumen=resumen,
             ))
@@ -1790,8 +1790,8 @@ class VentanaOverlay(QWidget):
         if self.modo == "video":
             self.boton_modo.icono = None
             self.boton_modo.poner_pista("")
-            self.boton_modo.setText(t("Salir del video"))
-            self.boton_modo.setToolTip(t("Vuelve a la vista completa; el video sigue en Herramientas > Video"))
+            self.boton_modo.setText(t("Salir del vídeo"))
+            self.boton_modo.setToolTip(t("Vuelve a la vista completa; el vídeo sigue en Herramientas > Vídeo"))
             return
         compacto = self.modo == "compacto"
         self.boton_modo.icono = None if compacto else "juego"
@@ -1801,7 +1801,7 @@ class VentanaOverlay(QWidget):
         self.boton_modo.setToolTip(
             t("Vista completa ({atajo})", atajo=ATAJO_MODO)
             if compacto
-            else t("Modo juego: una ventana pequena con la busqueda y lo esencial, para jugar o para "
+            else t("Modo juego: una ventana pequeña con la búsqueda y lo esencial, para jugar o para "
                    "el directo ({atajo})", atajo=ATAJO_MODO)
         )
 
@@ -1823,13 +1823,13 @@ class VentanaOverlay(QWidget):
                 self.show()
                 self.raise_()
                 self.estado.setText(
-                    t("Warframe esta en pantalla completa exclusiva: el overlay se abre en el otro monitor.")
+                    t("Warframe está en pantalla completa exclusiva: el overlay se abre en el otro monitor.")
                 )
                 if self.servicio_mundo:
                     self.servicio_mundo.cadencia(visible=True)
                 return
             self.estado.setText(
-                t("Warframe esta en pantalla completa exclusiva: el overlay no puede verse encima del juego.")
+                t("Warframe está en pantalla completa exclusiva: el overlay no puede verse encima del juego.")
             )
         self.setAttribute(Qt.WA_ShowWithoutActivating, False)
         self._asegurar_en_pantalla()
@@ -1989,8 +1989,8 @@ class VentanaOverlay(QWidget):
         idiomas.cargar(codigo)
         self._pintar_pista()
         self._pintar_boton_modo()
-        self.boton_guia.setText(t("Guia"))
-        self.boton_guia.setToolTip(t("Guia") + ": " + t("Lanza la guia de uso desde el principio"))
+        self.boton_guia.setText(t("Guía"))
+        self.boton_guia.setToolTip(t("Guía") + ": " + t("Lanza la guía de uso desde el principio"))
         self.boton_fijar.setText(t("Fijar"))
         self.boton_cerrar.setToolTip(t("Esconder (Escape)"))
         for clave, titulo in SECCIONES:

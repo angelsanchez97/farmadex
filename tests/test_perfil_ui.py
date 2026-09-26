@@ -78,8 +78,8 @@ def test_importar_ensena_resumen_pendientes_y_nodos(pestana, catalogo):
     assert pestana.hay_perfil()
     assert "importado" in pestana.estado.text()
     texto = pestana.texto_plano()
-    assert pestana.rango.text() == "21" and "RANGO DE MAESTRIA" in texto
-    assert "MAESTRIA POR CATEGORIA" in texto
+    assert pestana.rango.text() == "21" and "RANGO DE MAESTRÍA" in texto
+    assert "MAESTRÍA POR CATEGORÍA" in texto
     assert "POR DOMINAR" in texto
     assert "NODOS PENDIENTES" in texto
     # Los sindicatos y los intrinsecos del fixture salen con su nombre del juego.
@@ -142,13 +142,13 @@ def test_el_buscador_marca_dominado_a_medias_y_sin_tocar(app, usuario, catalogo,
     buscador.abrir(_id(catalogo, "Excalibur"))
     assert "Dominado" in buscador.ficha.toPlainText()
     buscador.abrir(_id(catalogo, "MK1-Kunai"))  # 100.000 de 450.000 XP
-    assert "Maestria 22 % (rango 14)" in buscador.ficha.toPlainText()
+    assert "Maestría 22 % (rango 14)" in buscador.ficha.toPlainText()
     buscador.abrir(_id(catalogo, "Dark Sword"))
     assert "Sin dominar" in buscador.ficha.toPlainText()
     # Una pieza hereda la marca del objeto al que pertenece; un recurso no lleva ninguna.
     buscador.abrir(_id(catalogo, "Ferrite"))
     ficha = buscador.ficha.toPlainText()
-    assert "Dominado" not in ficha and "Sin dominar" not in ficha and "Maestria" not in ficha
+    assert "Dominado" not in ficha and "Sin dominar" not in ficha and "Maestría" not in ficha
 
 
 def test_estado_con_padre_sube_a_la_pieza(usuario, catalogo):

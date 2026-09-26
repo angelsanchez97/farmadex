@@ -39,6 +39,7 @@ Hay tres disenos (`VARIANTE`) que se probaron renderizados para elegir:
 
 from __future__ import annotations
 
+import math
 import sys
 
 from PySide6.QtCore import QPointF, QRect, QRectF, Qt, QTimer
@@ -86,6 +87,7 @@ ANCHO_UNA_TARJETA = 260
 ANCHO_MAXIMO_TARJETA = 300
 HUECO = 8
 HUECO_RAREZA = 0.04  # fraccion del alto de pantalla bajo el nombre
+ALTO_REFERENCIA = 1080  # las medidas del panel son para una pantalla de este alto
 ALTO_PIE = 24        # la barra de abajo (total y que se destaca), dentro del panel
 LADO_IMAGEN = 48
 ESTRELLA = "★ "
@@ -207,38 +209,50 @@ class PanelRecompensas(QWidget):
     def alto_tarjeta(self) -> int:
         return ALTOS.get(self.variante, ALTO_TARJETA)
 
-    def _centros(self) -> list[int]:
-        return [r.caja[0] + r.caja[2] // 2 for r in self.recompensas]
+    @property
+    def factor(self) -> float:
+        """Cuanto se agranda el panel con la pantalla del juego: 1 a 1080 de alto, 1.33 a
+        1440, 2 a 2160. Todo lo del panel (tarjetas, letra, huecos) esta medido para 1080p;
+        a 2560x1440 con la escala de Windows al 100 % salia pequeno al lado de las
+        tarjetas del juego, que si crecen con la pantalla."""
+        return max(1.0, min(2.0, self.height() / ALTO_REFERENCIA)) if self.height() > 0 else 1.0
+
+    def _centros(self) -> list[float]:
+        """Centro de cada recompensa, en unidades del panel (pixeles de 1080p)."""
+        f = self.factor
+        return [(r.caja[0] + r.caja[2] / 2) / f for r in self.recompensas]
 
     def _ancho_tarjeta(self) -> int:
         """El hueco entre dos recompensas vecinas: asi cada tarjeta cabe bajo la suya."""
         centros = sorted(self._centros())
         if len(centros) > 1:
             paso = min(b - a for a, b in zip(centros, centros[1:]))
-            ancho = paso - HUECO
+            ancho = int(paso) - HUECO
         else:
             ancho = ANCHO_UNA_TARJETA
         return max(ANCHO_MINIMO_TARJETA, min(ancho, ANCHO_MAXIMO_TARJETA))
 
-    def rectangulo_panel(self) -> QRect:
-        """Bajo la fila de tarjetas del juego, abarcando justo las nuestras."""
+    def _panel_l(self) -> QRect:
+        """Bajo la fila de tarjetas del juego, abarcando justo las nuestras (unidades del panel)."""
+        f = self.factor
         ancho = self._ancho_tarjeta()
         alto = self.alto_tarjeta
         centros = self._centros()
         base = max(r.caja[1] + r.caja[3] for r in self.recompensas)
-        izquierda = min(centros) - ancho // 2 - HUECO
-        total = max(centros) + ancho // 2 + HUECO - izquierda
+        izquierda = round(min(centros)) - ancho // 2 - HUECO
+        total = round(max(centros)) + ancho // 2 + HUECO - izquierda
         # Si no cabe tal cual (monitor mas pequeno que la captura), se desplaza dentro.
-        izquierda = max(0, min(izquierda, self.width() - total))
+        izquierda = max(0, min(izquierda, int(self.width() / f) - total))
         # Bajo el nombre el juego pinta la marca de rareza (bronce, plata, oro); el
         # panel pegado al nombre la tapaba. El hueco va en proporcion a la pantalla,
         # como la interfaz del juego (no al alto del texto: un nombre en dos lineas
-        # lo doblaria).
+        # lo doblaria). Se mide en pixeles de la pantalla, no del panel escalado, y se
+        # redondea hacia arriba para no quedarse ni un pixel corto.
         hueco_rareza = max(30, round(self.height() * HUECO_RAREZA))
-        y = min(base + hueco_rareza, self.height() - alto - 2 * HUECO - ALTO_PIE)
+        y = min(math.ceil((base + hueco_rareza) / f), int(self.height() / f) - alto - 2 * HUECO - ALTO_PIE)
         return QRect(izquierda, y, total, alto + 2 * HUECO + ALTO_PIE)
 
-    def rectangulos_tarjetas(self, panel: QRect) -> list[QRect]:
+    def _tarjetas_l(self, panel: QRect) -> list[QRect]:
         """Cada tarjeta centrada bajo SU recompensa.
 
         Antes se repartia el ancho del panel a partes iguales, y como los nombres
@@ -248,16 +262,32 @@ class PanelRecompensas(QWidget):
         ancho = self._ancho_tarjeta()
         rects = []
         for c in self._centros():
-            x = max(panel.x() + HUECO // 2, min(c - ancho // 2, panel.right() - ancho - HUECO // 2))
+            x = max(panel.x() + HUECO // 2, min(round(c) - ancho // 2, panel.right() - ancho - HUECO // 2))
             rects.append(QRect(x, panel.y() + HUECO, ancho, self.alto_tarjeta))
         return rects
 
-    def rectangulo_pie(self, panel: QRect) -> QRect:
+    def _pie_l(self, panel: QRect) -> QRect:
         """La barra de abajo: del borde de la primera tarjeta al de la ultima."""
-        tarjetas = self.rectangulos_tarjetas(panel)
+        tarjetas = self._tarjetas_l(panel)
         izquierda = min(r.left() for r in tarjetas)
         derecha = max(r.right() for r in tarjetas)
         return QRect(izquierda, panel.y() + HUECO + self.alto_tarjeta + 6, derecha - izquierda + 1, ALTO_PIE - 2)
+
+    def _a_pantalla(self, r: QRect) -> QRect:
+        """De unidades del panel a pixeles de la pantalla."""
+        f = self.factor
+        x, y = math.floor(r.x() * f), math.floor(r.y() * f)
+        return QRect(x, y, math.floor((r.x() + r.width()) * f) - x, math.floor((r.y() + r.height()) * f) - y)
+
+    # En pixeles de pantalla (lo que ven los tests y quien quiera saber que tapa el panel).
+    def rectangulo_panel(self) -> QRect:
+        return self._a_pantalla(self._panel_l())
+
+    def rectangulos_tarjetas(self, panel: QRect | None = None) -> list[QRect]:
+        return [self._a_pantalla(r) for r in self._tarjetas_l(self._panel_l())]
+
+    def rectangulo_pie(self, panel: QRect | None = None) -> QRect:
+        return self._a_pantalla(self._pie_l(self._panel_l()))
 
     # -- pintado ------------------------------------------------------------------
 
@@ -266,26 +296,30 @@ class PanelRecompensas(QWidget):
             return
         pintor = QPainter(self)
         pintor.setRenderHint(QPainter.Antialiasing)
-        panel = self.rectangulo_panel()
+        pintor.setRenderHint(QPainter.TextAntialiasing)
+        pintor.setRenderHint(QPainter.SmoothPixmapTransform)
+        # Se pinta en unidades de 1080p y el pintor lo agranda a la pantalla del juego.
+        pintor.scale(self.factor, self.factor)
+        panel = self._panel_l()
 
         # Hasta que llega el veredicto no hay mejor, y entonces no se atenua nada.
         hay_mejor = any(r.mejor for r in self.recompensas)
         pintar = {"B": self._tarjeta_semaforo, "C": self._tarjeta_compacta}.get(self.variante, self._tarjeta_cinta)
-        for r, caja in zip(self.recompensas, self.rectangulos_tarjetas(panel)):
+        for r, caja in zip(self.recompensas, self._tarjetas_l(panel)):
             pintor.save()
             atenuada = hay_mejor and not r.mejor
             if atenuada:
                 pintor.setOpacity(OPACIDAD_ATENUADA)
             pintar(pintor, r, caja, prio.motivo_principal(r, self.prioridad), atenuada)
             pintor.restore()
-        self._pie(pintor, self.rectangulo_pie(panel))
+        self._pie(pintor, self._pie_l(panel))
         pintor.end()
 
     def texto_total(self) -> str:
         """'Total en pantalla: 60 platino (4 de 4 con precio)' o que aun no hay precios."""
         con_precio = [r.platino for r in self.recompensas if r.platino is not None]
         if not con_precio:
-            return t("Sin precios todavia")
+            return t("Sin precios todavía")
         return t("Total en pantalla: {n} platino ({m} de {k} con precio)",
                  n=sum(con_precio), m=len(con_precio), k=len(self.recompensas))
 
@@ -370,7 +404,7 @@ class PanelRecompensas(QWidget):
         pintor.drawText(rect, alineacion, pintor.fontMetrics().elidedText(texto, Qt.ElideRight, rect.width()))
 
     def _texto_mejor(self) -> str:
-        return t("MEJOR OPCION") if self._seguro else t("Probablemente la mejor")
+        return t("MEJOR OPCIÓN") if self._seguro else t("Probablemente la mejor")
 
     def _detalles(self, r) -> list[tuple[str, QColor, bool]]:
         """Las lineas pequenas de debajo del nombre: (texto, color, negrita)."""
@@ -393,7 +427,7 @@ class PanelRecompensas(QWidget):
         if extra.get("minutos"):
             lineas.append((t("Farmeo medio: {tiempo}", tiempo=extra["minutos"]), suave, False))
         if r.vaulted:
-            lineas.append((t("En boveda"), COLOR_BOVEDA, False))
+            lineas.append((t("En bóveda"), COLOR_BOVEDA, False))
         marca = self.maestria.get(r.item_id)
         if marca:
             lineas.append((marca[0], _COLORES_MAESTRIA.get(marca[1], COLOR_SIN_DOMINAR), False))
@@ -407,7 +441,7 @@ class PanelRecompensas(QWidget):
         if r.ducados:
             trozos.append(t("{n} ducados", n=r.ducados))
         if r.vaulted:
-            trozos.append(t("En boveda"))
+            trozos.append(t("En bóveda"))
         return " · ".join(trozos) or (r.nota or "")
 
     # -- A: cinta de color arriba ---------------------------------------------------

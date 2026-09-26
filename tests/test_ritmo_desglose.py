@@ -58,9 +58,9 @@ def test_desglose_de_formido_cuadra_con_lo_que_se_ensena(config_temporal):
     assert eficiencia.texto_minutos(fila["minutos_medios"]) == "~70 min"
     texto = desglose_tiempo.texto(fila)
     assert texto.splitlines() == [
-        "~13.5 min por partida (hasta la rotacion C).",
+        "~13.5 min por partida (hasta la rotación C).",
         "x ~5.2 partidas de media (19.4% cada una) = ~70 min.",
-        "Es una media: puede caer antes o tardar mas.",
+        "Es una media: puede caer antes o tardar más.",
     ]
     d = eficiencia.desglose(fila)
     assert d["intento"] * d["veces"] == pytest.approx(fila["minutos_medios"], abs=0.1)
@@ -71,7 +71,7 @@ def test_desglose_de_formido_cuadra_con_lo_que_se_ensena(config_temporal):
     [
         ({"tipo": "mision", "modo": "Capture", "probabilidad": 5.0}, "~2.5 min por partida, contando la carga."),
         ({"tipo": "mision", "modo": "Survival", "rotacion": "C", "probabilidad": 10.0},
-         "hasta la rotacion C: 4 rotaciones de ~5 min"),
+         "hasta la rotación C: 4 rotaciones de ~5 min"),
         ({"tipo": "mision", "modo": "Survival", "rotacion": "A", "probabilidad": 10.0},
          "que dan 2 intentos: ~7.2 min por intento"),
         ({"tipo": "bounty", "origen_texto": "Cetus Bounty", "rotacion": "A", "probabilidad": 20.0},
@@ -101,7 +101,7 @@ def test_el_tooltip_lleva_el_desglose_y_el_ritmo(config_temporal):
 
     enlace = glosario.enlace("tiempo_medio", "~70 min", "#fff", detalle=desglose_tiempo.texto(_formido()))
     (tooltip,) = _tooltips(enlace)
-    assert "~13.5 min por partida (hasta la rotacion C).<br>x ~5.2 partidas de media" in tooltip
+    assert "~13.5 min por partida (hasta la rotación C).<br>x ~5.2 partidas de media" in tooltip
     assert "ritmo de juego Normal (x1)" in tooltip
     # Sin detalle, la explicacion generica (y tambien el ritmo).
     generico = glosario.texto("tiempo_medio")
@@ -120,12 +120,12 @@ def test_desglose_prime_con_el_modelo_de_ruta_prime(config_temporal):
     assert eficiencia.texto_minutos(sitio["minutos"]) == "~55 min"
     lineas = desglose_tiempo.texto_prime(sitio, 4, "Radiante, escuadra de 4").splitlines()
     assert lineas == [
-        "~14.5 min por partida (2 rotaciones A de ~5 min mas llegar, extraer y la carga), que dan 2 intentos: ~7.2 min por intento.",
-        "25.0% de que caiga alguna reliquia util -> ~29 min por reliquia.",
+        "~14.5 min por partida (2 rotaciones A de ~5 min más llegar, extraer y la carga), que dan 2 intentos: ~7.2 min por intento.",
+        "25.0% de que caiga alguna reliquia útil -> ~29 min por reliquia.",
         "+ ~3.5 min por fisura para abrirla.",
         "Radiante, escuadra de 4: 59% de sacar la pieza en cada fisura -> ~1.7 fisuras de media.",
         "(~29 + ~3.5 min) x ~1.7 = ~55 min.",
-        "Es una media: puede caer antes o tardar mas.",
+        "Es una media: puede caer antes o tardar más.",
     ]
 
 
@@ -167,7 +167,7 @@ def test_rapido_baja_todos_los_tiempos_en_la_misma_proporcion(config_temporal):
     # Y el ritmo sale en el tooltip.
     from farmadex.ui import glosario
 
-    assert "ritmo de juego Rapido (x0.7)" in glosario.texto("tiempo_medio")
+    assert "ritmo de juego Rápido (x0.7)" in glosario.texto("tiempo_medio")
     # Un valor raro en config.json no rompe nada: vale el normal.
     _ritmo(config_temporal, "turbo")
     assert tiempos() == normal
@@ -239,7 +239,7 @@ def test_primes_donde_farmear_con_relleno_y_desglose(app, con, prime, tmp_path, 
     # Captura: 2,5 min por partida, 10 % de reliquia -> 25 min; + 3,5 de fisura; 34 % por
     # fisura en escuadra de 4 -> 2,9 fisuras: (25 + 3,5) x 2,9 = ~83 min.
     primero = next(x for x in tooltips if "~2.5 min por partida" in x)
-    assert "10.0% de que caiga alguna reliquia util -&gt; ~25 min por reliquia." in primero
+    assert "10.0% de que caiga alguna reliquia útil -&gt; ~25 min por reliquia." in primero
     assert "34% de sacar la pieza en cada fisura -&gt; ~2.9 fisuras de media." in primero
     assert "(~25 + ~3.5 min) x ~2.9 = ~83 min." in primero
 

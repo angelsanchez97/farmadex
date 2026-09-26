@@ -15,6 +15,7 @@ lo pidio un tester, con razon, porque un boton que nadie entiende no lo usa nadi
 
 from __future__ import annotations
 
+import html
 import os
 import subprocess
 import sqlite3
@@ -45,13 +46,14 @@ from PySide6.QtWidgets import (
 )
 
 from .. import NOMBRE_APP, VERSION, idiomas
+from ..captura import ocr
 from ..captura import prioridad as prio
 from ..config import DIR_BASE, cargar, guardar
 from ..datos import eficiencia, indice
 from ..hotkeys import parsear
 from ..idiomas import t
 from . import widgets
-from .acerca_de import abrir_acerca_de, texto_autor
+from .acerca_de import abrir_acerca_de, enlace_discord, frase, texto_autor, texto_discord_corto
 from .estilo_c import (
     TITULAR,
     BotonC,
@@ -101,8 +103,8 @@ GLIFO_DESHACER = ""
 MUESTRAS_TEMA = ("fondo", "panel2", "acento", "texto")
 # Modos del lector de pantalla (captura/ocr.py): (clave en config, texto).
 MODOS_OCR = (
-    ("auto", "Automatico (recomendado)"),
-    ("rapido", "Rapido (usa mas procesador)"),
+    ("auto", "Automático (recomendado)"),
+    ("rapido", "Rápido (usa más procesador)"),
     ("ligero", "Ligero (usa menos procesador)"),
     ("windows", "OCR de Windows"),
 )
@@ -568,13 +570,13 @@ class VistaPrevia(QFrame):
     def retraducir(self) -> None:
         for etiqueta, titulo in zip(self.menu, ("Buscar", "Objetivos", "Mundo")):
             etiqueta.setText(t(titulo))
-        self.caja.setPlaceholderText(t("Busca un objeto, mision o reliquia..."))
+        self.caja.setPlaceholderText(t("Busca un objeto, misión o reliquia..."))
         self.nombre.setText("Ash Prime")
-        self.detalle.setText(t("Texto secundario: donde se consigue y cuanto se tarda."))
+        self.detalle.setText(t("Texto secundario: dónde se consigue y cuánto se tarda."))
         self.ok.setText(t("Disponible ahora"))
-        self.aviso.setText(t("Aviso: los datos van por detras del juego."))
-        self.boton.setText(t("Boton"))
-        self.principal.setText(t("Boton principal"))
+        self.aviso.setText(t("Aviso: los datos van por detrás del juego."))
+        self.boton.setText(t("Botón"))
+        self.principal.setText(t("Botón principal"))
 
     def pintar(self, paleta: dict, escala: tuple[float, float]) -> None:
         p = paleta
@@ -678,6 +680,10 @@ class PestanaAjustes(QWidget):
         self.autor.setOpenExternalLinks(True)
         self.autor.setTextInteractionFlags(Qt.TextBrowserInteraction)
         self._fijo(lambda _s: self.autor.setText(texto_autor()), "Creado por {autor}")
+        self.discord = EtiquetaC("", "pequeno", envolver=True)
+        self.discord.setOpenExternalLinks(True)
+        self.discord.setTextInteractionFlags(Qt.TextBrowserInteraction)
+        self._fijo(lambda _s: self.discord.setText(texto_discord_corto()), "Dudas y sugerencias: {enlace}")
         self.version_pie = EtiquetaC(f"{NOMBRE_APP} {VERSION}", "pequeno", tinta="tenue")
 
         self.panel_secciones = PanelC()
@@ -692,6 +698,7 @@ class PestanaAjustes(QWidget):
         columna_menu.addSpacing(px(4, False))
         columna_menu.addWidget(creditos)
         columna_menu.addWidget(self.autor)
+        columna_menu.addWidget(self.discord)
         columna_menu.addWidget(self.version_pie)
         self._ajustar_ancho_secciones()
 
@@ -775,7 +782,7 @@ class PestanaAjustes(QWidget):
     def _construir_general(self) -> None:
         # Los nombres de los idiomas van cada uno en su idioma, no se traducen.
         self.idioma = QComboBox()
-        self.idioma.addItem(t("Automatico (el de Windows)"), idiomas.AUTOMATICO)
+        self.idioma.addItem(t("Automático (el de Windows)"), idiomas.AUTOMATICO)
         for codigo, nombre in idiomas.IDIOMAS.items():
             self.idioma.addItem(nombre, codigo)
         guardado = self.config.get("idioma_ui") or idiomas.AUTOMATICO
@@ -790,7 +797,7 @@ class PestanaAjustes(QWidget):
 
         general = self._formulario()
         self._fila(general, "Idioma", self.idioma)
-        general.addRow(self._nota("El menu de la bandeja cambia de idioma al reiniciar Farmadex."))
+        general.addRow(self._nota("El menú de la bandeja cambia de idioma al reiniciar Farmadex."))
         general.addRow(self.iniciar_windows)
         general.addRow(self._nota(
             "Farmadex se abre solo al encender el PC, sin ventana, listo para el atajo."
@@ -800,19 +807,19 @@ class PestanaAjustes(QWidget):
 
         # -- version ----------------------------------------------------------------
         self.etiqueta_version = EtiquetaC(f"{NOMBRE_APP} <b>{VERSION}</b>", "seccion")
-        self.aviso_version = QLabel(t("Estas en la ultima version"))
+        self.aviso_version = QLabel(t("Estás en la última versión"))
         self.aviso_version.setWordWrap(True)
         self.aviso_version.setOpenExternalLinks(True)
         self.aviso_version.setStyleSheet(f"color: {PALETA['suave']};")
         self.boton_comprobar = self._boton("Comprobar ahora")
         self.boton_comprobar.clicked.connect(self._pedir_comprobacion)
-        self.boton_instalar = self._boton("Instalar la version nueva", principal=True)
+        self.boton_instalar = self._boton("Instalar la versión nueva", principal=True)
         self.boton_instalar.setVisible(False)
         # Para la actualizacion ya descargada y comprobada por la propia app.
         self.boton_reiniciar = self._boton("Reiniciar y actualizar", principal=True)
         self.boton_reiniciar.setVisible(False)
         self.auto_actualizar = QCheckBox()
-        self._fijo(self.auto_actualizar.setText, "Actualizar automaticamente (se instala al cerrar Farmadex)")
+        self._fijo(self.auto_actualizar.setText, "Actualizar automáticamente (se instala al cerrar Farmadex)")
         self.auto_actualizar.setChecked(bool(self.config.get("actualizar_automaticamente", True)))
         self.auto_actualizar.toggled.connect(lambda v: self._guardar("actualizar_automaticamente", v))
         version = QVBoxLayout()
@@ -821,12 +828,12 @@ class PestanaAjustes(QWidget):
         version.addWidget(self.aviso_version)
         version.addWidget(self.auto_actualizar)
         version.addWidget(self._nota(
-            "La version nueva se baja sola, se comprueba y se instala al cerrar Farmadex, "
+            "La versión nueva se baja sola, se comprueba y se instala al cerrar Farmadex, "
             "sustituyendo a la anterior. Tus objetivos y ajustes se conservan."
         ))
         version.addLayout(fila(self.boton_comprobar, self.boton_instalar, self.boton_reiniciar, None,
                                espacio=px(8, False)))
-        self._meter("general", self._grupo("Version"), version)
+        self._meter("general", self._grupo("Versión"), version)
 
     def _construir_atajos(self) -> None:
         self.campos_hotkey = {
@@ -843,14 +850,14 @@ class PestanaAjustes(QWidget):
         formulario.addRow(self._nota("Abre y cierra esta ventana encima del juego."))
         self._fila(formulario, "Leer el objeto bajo el cursor", self.campos_hotkey["cursor"])
         formulario.addRow(self._nota(
-            "Es un atajo de teclado: en el juego, pon el raton encima del nombre de un objeto "
-            "(inventario, mercado, chat...) y pulsalo. Farmadex lee el texto de alrededor y abre su "
+            "Es un atajo de teclado: en el juego, pon el ratón encima del nombre de un objeto "
+            "(inventario, mercado, chat...) y púlsalo. Farmadex lee el texto de alrededor y abre su "
             "ficha; si duda entre varios, te deja elegir. Hace una sola lectura a la vez: si lo "
-            "pulsas varias veces seguidas, las de mas se ignoran."
+            "pulsas varias veces seguidas, las de más se ignoran."
         ))
         self._fila(formulario, "Leer las recompensas de reliquia", self.campos_hotkey["reliquias"])
         formulario.addRow(self._nota(
-            "Por si la lectura automatica no salta: con la pantalla de recompensas delante, las lee "
+            "Por si la lectura automática no salta: con la pantalla de recompensas delante, las lee "
             "a mano."
         ))
         self._fila(formulario, "Leer la pantalla de mejoras (Build)", self.campos_hotkey["build"])
@@ -860,7 +867,7 @@ class PestanaAjustes(QWidget):
         self.aviso_hotkey.setStyleSheet(f"color: {PALETA['aviso']};")
         boton_hotkeys = self._boton("Aplicar atajos", principal=True)
         boton_hotkeys.clicked.connect(self._aplicar_hotkeys)
-        formulario.addRow(self._nota("Escribelos asi: Ctrl+Alt+W. Los cambios valen al pulsar Aplicar."))
+        formulario.addRow(self._nota("Escríbelos así: Ctrl+Alt+W. Los cambios valen al pulsar Aplicar."))
         fila_hotkeys = fila(boton_hotkeys, espacio=px(10, False))
         fila_hotkeys.addWidget(self.aviso_hotkey, 1)
         formulario.addRow(fila_hotkeys)
@@ -906,14 +913,14 @@ class PestanaAjustes(QWidget):
         tamanos = QGridLayout()
         tamanos.setHorizontalSpacing(px(16, False))
         tamanos.setVerticalSpacing(px(10, False))
-        for i, (clave, selector) in enumerate((("Tamano de la interfaz", self.escala_interfaz),
-                                               ("Tamano de letra", self.escala_letra))):
+        for i, (clave, selector) in enumerate((("Tamaño de la interfaz", self.escala_interfaz),
+                                               ("Tamaño de letra", self.escala_letra))):
             etiqueta = EtiquetaC("", "normal")
             self._fijo(etiqueta.setText, clave)
             tamanos.addWidget(etiqueta, i, 0)
             tamanos.addWidget(selector, i, 1, Qt.AlignLeft)
         tamanos.setColumnStretch(1, 1)
-        self.panel_tamano = self._grupo("Tamano")
+        self.panel_tamano = self._grupo("Tamaño")
         self.panel_tamano.capa.addLayout(tamanos)
 
         # -- colores: una muestra por categoria; clic = elegir, la flecha vuelve al del tema -----
@@ -940,12 +947,12 @@ class PestanaAjustes(QWidget):
                 col.addLayout(fila(muestra, etiqueta, None, deshacer, espacio=px(10, False)))
             col.addStretch(1)
             columnas.addLayout(col, 1)
-        self.boton_fabrica = self._boton("Volver a lo de fabrica")
-        self._fijo(self.boton_fabrica.setToolTip, "Quita todos los colores y tamanos personalizados, en todos los temas")
+        self.boton_fabrica = self._boton("Volver a lo de fábrica")
+        self._fijo(self.boton_fabrica.setToolTip, "Quita todos los colores y tamaños personalizados, en todos los temas")
         self.boton_fabrica.clicked.connect(self.aspecto_de_fabrica)
         nota_colores = self._nota(
             "Colores del tema elegido, por partes. Pulsa un color para cambiarlo; la flecha lo deja "
-            "como venia."
+            "como venía."
         )
         self.panel_colores = self._grupo("Colores")
         self.panel_colores.capa.addLayout(columnas)
@@ -968,7 +975,7 @@ class PestanaAjustes(QWidget):
         self.panel_previa.capa.addLayout(fila(self.boton_guardar_aspecto, self.boton_descartar_aspecto, None,
                                               espacio=px(8, False)))
         self.panel_previa.capa.addWidget(self._nota(
-            "Nada cambia hasta que pulsas Guardar. Se guarda en tu configuracion, asi que se "
+            "Nada cambia hasta que pulsas Guardar. Se guarda en tu configuración, así que se "
             "mantiene al actualizar Farmadex."
         ))
 
@@ -993,7 +1000,7 @@ class PestanaAjustes(QWidget):
 
     def _construir_reliquias(self) -> None:
         self.estilo_recompensas = QComboBox()
-        self.estilo_recompensas.addItem(t("Etiquetas pequenas junto a cada tarjeta"), "etiquetas")
+        self.estilo_recompensas.addItem(t("Etiquetas pequeñas junto a cada tarjeta"), "etiquetas")
         self.estilo_recompensas.addItem(t("Panel con una tarjeta por recompensa"), "panel")
         self.estilo_recompensas.setCurrentIndex(
             max(0, self.estilo_recompensas.findData(self.config.get("estilo_recompensas") or "etiquetas"))
@@ -1013,11 +1020,11 @@ class PestanaAjustes(QWidget):
         self.ocr_auto.setChecked(bool(self.config["ocr_reliquias_auto"]))
         self.ocr_auto.toggled.connect(lambda v: self._guardar("ocr_reliquias_auto", v))
         self.perfil_pasivo = QCheckBox()
-        self._fijo(self.perfil_pasivo.setText, "Leer sola la maestria al abrir Perfil > Equipamiento")
+        self._fijo(self.perfil_pasivo.setText, "Leer sola la maestría al abrir Perfil > Equipamiento")
         self.perfil_pasivo.setChecked(bool(self.config.get("perfil_pasivo", True)))
         self.perfil_pasivo.toggled.connect(lambda v: self._guardar("perfil_pasivo", v))
         self.inventario_pasivo = QCheckBox()
-        self._fijo(self.inventario_pasivo.setText, "Leer solas las cantidades del Inventario y la Fundicion (experimental)")
+        self._fijo(self.inventario_pasivo.setText, "Leer solas las cantidades del Inventario y la Fundición (experimental)")
         self.inventario_pasivo.setChecked(bool(self.config.get("inventario_pasivo", False)))
         self.inventario_pasivo.toggled.connect(lambda v: self._guardar("inventario_pasivo", v))
         self.botin_eelog = QCheckBox()
@@ -1027,28 +1034,28 @@ class PestanaAjustes(QWidget):
 
         lectura = self._formulario()
         self._fila(lectura, "Recompensas de reliquia", self.estilo_recompensas)
-        lectura.addRow(self._nota("Como se ensenan encima del juego las cuatro recompensas."))
+        lectura.addRow(self._nota("Cómo se enseñan encima del juego las cuatro recompensas."))
         self._fila(lectura, "Al abrir reliquias, destacar", self.prioridad_recompensas)
         lectura.addRow(self._nota(
-            "Que se marca en grande en cada recompensa: lo que te falta, lo que vale mas platino o "
-            "mas ducados."
+            "Qué se marca en grande en cada recompensa: lo que te falta, lo que vale más platino o "
+            "más ducados."
         ))
         lectura.addRow(self.ocr_auto)
         lectura.addRow(self._nota(
             "Al abrir una reliquia, Farmadex lee solo la pantalla de recompensas. Si lo quitas, "
-            "tendras que usar el atajo."
+            "tendrás que usar el atajo."
         ))
         lectura.addRow(self.perfil_pasivo)
-        lectura.addRow(self._nota("Al abrir Perfil > Equipamiento en el juego, apunta tu maestria sin que hagas nada."))
+        lectura.addRow(self._nota("Al abrir Perfil > Equipamiento en el juego, apunta tu maestría sin que hagas nada."))
         lectura.addRow(self.inventario_pasivo)
-        lectura.addRow(self._nota("Todavia en pruebas: puede leer mal alguna cantidad."))
+        lectura.addRow(self._nota("Todavía en pruebas: puede leer mal alguna cantidad."))
         lectura.addRow(self.botin_eelog)
         lectura.addRow(self._nota(
             "En misiones en solitario, suma a tus objetivos la pieza que te toca, leyendo el "
             "registro del propio juego."
         ))
         lectura.addRow(self._nota(
-            "Las lecturas solas solo miran la pantalla cuando Warframe esta delante y se ha "
+            "Las lecturas solas solo miran la pantalla cuando Warframe está delante y se ha "
             "quedado quieta; F9 en la herramienta de escaneo sigue valiendo."
         ))
         lectura.addRow(self._nota(
@@ -1076,21 +1083,24 @@ class PestanaAjustes(QWidget):
         self.resultado_diagnostico.hide()
         self.estado_informe = QLabel("")
         self.estado_informe.setWordWrap(True)
-        self.estado_informe.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        # Texto rico: tras guardar el informe lleva el enlace al foro de ayuda del Discord.
+        self.estado_informe.setTextFormat(Qt.RichText)
+        self.estado_informe.setOpenExternalLinks(True)
+        self.estado_informe.setTextInteractionFlags(Qt.TextBrowserInteraction)
         self.estado_informe.setStyleSheet(f"color: {PALETA['suave']}; font-size: {px(12)}px;")
         self.estado_informe.hide()
         diagnostico = QVBoxLayout()
         diagnostico.setSpacing(px(6, False))
         diagnostico.addWidget(self._nota(
             "Si al abrir una reliquia no sale nada encima del juego, pulsa 'Comprobar': dice si "
-            "EE.log se esta leyendo, en que modo de pantalla va el juego y si el lector esta listo. "
+            "EE.log se está leyendo, en qué modo de pantalla va el juego y si el lector está listo. "
             "'Guardar informe' deja un .zip en el Escritorio con el registro de Farmadex para "
             "enviarlo; nunca incluye EE.log ni datos de tu cuenta."
         ))
         diagnostico.addWidget(self.resultado_diagnostico)
         diagnostico.addLayout(fila(self.boton_diagnostico, self.boton_informe, None, espacio=px(8, False)))
         diagnostico.addWidget(self.estado_informe)
-        self._meter("reliquias", self._grupo("Diagnostico de reliquias"), diagnostico)
+        self._meter("reliquias", self._grupo("Diagnóstico de reliquias"), diagnostico)
 
     def _construir_datos(self) -> None:
         self.estado_datos = QLabel("")
@@ -1116,8 +1126,8 @@ class PestanaAjustes(QWidget):
         datos.addRow(self.aviso_parche)
         self._fila(datos, "Ritmo de juego", self.ritmo)
         datos.addRow(self._nota(
-            "Farmadex calcula cuanto se tarda en conseguir cada cosa. Si juegas mas rapido o mas "
-            "tranquilo que la media, cambialo y los tiempos se ajustan. No cambia las probabilidades "
+            "Farmadex calcula cuánto se tarda en conseguir cada cosa. Si juegas más rápido o más "
+            "tranquilo que la media, cámbialo y los tiempos se ajustan. No cambia las probabilidades "
             "ni el orden de los sitios."
         ))
         self._meter("datos", self._grupo("Datos del juego"), datos)
@@ -1134,12 +1144,12 @@ class PestanaAjustes(QWidget):
         ))
         self.boton_avanzado.toggled.connect(self._plegar_avanzado)
         self.avanzado = transparente(QWidget())
-        boton_datos = self._boton("Reconstruir el indice")
+        boton_datos = self._boton("Reconstruir el índice")
         boton_datos.clicked.connect(self.reconstruir.emit)
         boton_carpeta = self._boton("Abrir la carpeta de datos")
         boton_carpeta.clicked.connect(self._abrir_carpeta)
         boton_reproductor = self._boton("Borrar datos del reproductor")
-        self._fijo(boton_reproductor.setToolTip, "Cierra el video y borra la sesion y la cache del reproductor de guias")
+        self._fijo(boton_reproductor.setToolTip, "Cierra el vídeo y borra la sesión y la cache del reproductor de guías")
         boton_reproductor.clicked.connect(self.borrar_reproductor.emit)
         self.boton_reconstruir, self.boton_carpeta, self.boton_reproductor = (
             boton_datos, boton_carpeta, boton_reproductor)
@@ -1151,23 +1161,26 @@ class PestanaAjustes(QWidget):
         self.capa_avanzado.setVerticalSpacing(px(10, False))
         self.capa_avanzado.setColumnStretch(1, 1)
         for boton, texto in (
-            (boton_datos, "Vuelve a preparar el catalogo desde cero, descargando lo que haga falta. "
-                          "Usalo solo si la busqueda sale rara o faltan objetos nuevos. Tarda un poco "
+            (boton_datos, "Vuelve a preparar el catálogo desde cero, descargando lo que haga falta. "
+                          "Úsalo solo si la búsqueda sale rara o faltan objetos nuevos. Tarda un poco "
                           "y mientras tanto no se puede buscar; tus objetivos no se tocan."),
             (boton_carpeta, "Abre la carpeta donde Farmadex guarda tus ajustes, objetivos y registros, "
-                            "por si alguien que te ayuda te pide un fichero. No borres nada de ahi."),
-            (boton_reproductor, "Cierra el video y borra la sesion de YouTube y la cache del reproductor "
-                                "de guias. Sirve si los videos no cargan; despues tendras que volver a "
+                            "por si alguien que te ayuda te pide un fichero. No borres nada de ahí."),
+            (boton_reproductor, "Cierra el vídeo y borra la sesión de YouTube y la cache del reproductor "
+                                "de guías. Sirve si los vídeos no cargan; después tendrás que volver a "
                                 "aceptar las cookies de YouTube."),
         ):
             self.anadir_avanzado(boton, self._nota(texto))
 
         # Lectura de pantalla (OCR): cuanta CPU puede usar el lector (captura/ocr.py).
+        # El OCR de Windows solo se ofrece si esta instalado; guardado sin estarlo cuenta
+        # como "auto" (captura/ocr.py, modo_de_config).
+        con_windows = ocr.winocr_disponible()
         self.ocr_modo = QComboBox()
-        for i, (clave, texto) in enumerate(MODOS_OCR):
+        for i, (clave, texto) in enumerate(m for m in MODOS_OCR if con_windows or m[0] != "windows"):
             self.ocr_modo.addItem("", clave)
             self._fijo(lambda s, i=i: self.ocr_modo.setItemText(i, s), texto)
-        self.ocr_modo.setCurrentIndex(max(0, self.ocr_modo.findData(self.config.get("ocr_modo") or "auto")))
+        self.ocr_modo.setCurrentIndex(max(0, self.ocr_modo.findData(ocr.modo_de_config(self.config))))
 
         def cambiar_ocr_modo(_indice: int) -> None:
             modo = self.ocr_modo.currentData() or "auto"
@@ -1177,15 +1190,18 @@ class PestanaAjustes(QWidget):
         self.ocr_modo.currentIndexChanged.connect(cambiar_ocr_modo)
         etiqueta_ocr = EtiquetaC("", "normal")
         self._fijo(etiqueta_ocr.setText, "Lectura de pantalla (OCR)")
-        self.anadir_avanzado(self.ocr_modo, self._nota(
-            "Como lee Farmadex la pantalla del juego.\n"
-            "Automatico: lee rapido y, si el juego esta usando mucho el ordenador, lee con mas calma "
+        nota_ocr = self._nota(
+            "Cómo lee Farmadex la pantalla del juego.\n"
+            "Automático: lee rápido y, si el juego está usando mucho el ordenador, lee con más calma "
             "para no quitarle rendimiento.\n"
-            "Rapido: siempre a tope. Para ordenadores que van sobrados.\n"
-            "Ligero: siempre con calma. Tarda un poco mas, pero el juego casi no lo nota.\n"
-            "OCR de Windows: usa el lector de texto que trae Windows. Si tu Windows no lo tiene, "
-            "Farmadex usa el suyo."
-        ), etiqueta_ocr)
+            "Rápido: siempre a tope. Para ordenadores que van sobrados.\n"
+            "Ligero: siempre con calma. Tarda un poco más, pero el juego casi no lo nota."
+        )
+        if con_windows:
+            self._fijo(lambda s: nota_ocr.setText(nota_ocr.text() + "\n" + s),
+                       "OCR de Windows: usa el lector de texto que trae Windows. Si tu Windows no lo tiene, "
+                       "Farmadex usa el suyo.")
+        self.anadir_avanzado(self.ocr_modo, nota_ocr, etiqueta_ocr)
 
         self.avanzado.setVisible(False)
         self.panel_avanzado = PanelC(remate=False)
@@ -1223,11 +1239,11 @@ class PestanaAjustes(QWidget):
         ayuda.setHorizontalSpacing(px(12, False))
         ayuda.setVerticalSpacing(px(10, False))
         filas = (
-            (self.boton_bienvenida, "Que es Farmadex, lo basico paso a paso, si es seguro, preguntas "
+            (self.boton_bienvenida, "Qué es Farmadex, lo básico paso a paso, si es seguro, preguntas "
                                     "frecuentes y agradecimientos."),
-            (self.boton_guia, "Te ensena cada parte de la ventana en su sitio, paso a paso."),
-            (self.boton_acerca_ayuda, "Version, que dice Digital Extremes de los programas de terceros "
-                                      "y como comprobar que tu descarga es la buena."),
+            (self.boton_guia, "Te enseña cada parte de la ventana en su sitio, paso a paso."),
+            (self.boton_acerca_ayuda, "Versión, qué dice Digital Extremes de los programas de terceros "
+                                      "y cómo comprobar que tu descarga es la buena."),
         )
         for fila_n, (boton, texto) in enumerate(filas):
             ayuda.addWidget(boton, fila_n, 0, Qt.AlignTop | Qt.AlignLeft)
@@ -1331,11 +1347,11 @@ class PestanaAjustes(QWidget):
         self.boton_guardar_aspecto.setEnabled(cambios)
         self.boton_descartar_aspecto.setEnabled(cambios)
         if cambios:
-            texto = (t("Vista previa con lo de fabrica: pulsa Guardar para aplicarlo.")
+            texto = (t("Vista previa con lo de fábrica: pulsa Guardar para aplicarlo.")
                      if self._fabrica_todos else t("Hay cambios sin guardar."))
             tinta = "aviso"
         else:
-            texto, tinta = t("Es el aspecto que estas usando."), "suave"
+            texto, tinta = t("Es el aspecto que estás usando."), "suave"
         self.estado_aspecto.setText(texto)
         self.estado_aspecto.poner_tinta(tinta)
 
@@ -1382,6 +1398,7 @@ class PestanaAjustes(QWidget):
         self.aviso_parche.setStyleSheet(f"color: {p['aviso' if alerta else 'suave']};")
         self.aviso_version.setStyleSheet(f"color: {p[self._color_version]};")
         self.autor.setText(texto_autor())  # el enlace lleva el color de acento del tema
+        self.discord.setText(texto_discord_corto())
         if self._modo_pantalla is not None:
             self.mostrar_modo_pantalla(self._modo_pantalla)
         for i in range(self.tema.count()):
@@ -1399,12 +1416,12 @@ class PestanaAjustes(QWidget):
             poner(t(clave))
         for i, tema in enumerate(TEMAS.values()):
             self.tema.setItemText(i, t(tema["titulo"]))
-        self.idioma.setItemText(0, t("Automatico (el de Windows)"))
+        self.idioma.setItemText(0, t("Automático (el de Windows)"))
         for selector, pasos in ((self.escala_interfaz, ESCALAS_INTERFAZ), (self.escala_letra, ESCALAS_LETRA)):
             for i, (_factor, nombre) in enumerate(pasos):
                 selector.setItemText(i, t(nombre))
         self._textos_ritmo()
-        self.estilo_recompensas.setItemText(0, t("Etiquetas pequenas junto a cada tarjeta"))
+        self.estilo_recompensas.setItemText(0, t("Etiquetas pequeñas junto a cada tarjeta"))
         self.estilo_recompensas.setItemText(1, t("Panel con una tarjeta por recompensa"))
         self._textos_prioridad()
         self._plegar_avanzado(self.boton_avanzado.isChecked())
@@ -1412,7 +1429,7 @@ class PestanaAjustes(QWidget):
         self._pintar_aspecto()
         self._ajustar_ancho_secciones()
         self.aviso_hotkey.setText("")
-        self.estado_version(t("Estas en la ultima version"))
+        self.estado_version(t("Estás en la última versión"))
         self.refrescar_estado()
         if self._modo_pantalla is not None:
             self.mostrar_modo_pantalla(self._modo_pantalla)
@@ -1423,7 +1440,7 @@ class PestanaAjustes(QWidget):
         "ventana": "Ventana",
         "sin_bordes": "Ventana sin bordes",
         "exclusivo": "Pantalla completa exclusiva (el overlay no puede verse encima)",
-        "desconocido": "Warframe no esta abierto",
+        "desconocido": "Warframe no está abierto",
     }
 
     def mostrar_modo_pantalla(self, modo: str) -> None:
@@ -1449,11 +1466,14 @@ class PestanaAjustes(QWidget):
         """Donde quedo el .zip, o por que no se pudo escribir."""
         if error:
             self.estado_informe.setStyleSheet(f"color: {PALETA['aviso']}; font-size: {px(12)}px;")
-            self.estado_informe.setText(t("No se pudo guardar el informe: {error}", error=error))
+            self.estado_informe.setText(html.escape(t("No se pudo guardar el informe: {error}", error=error)))
         else:
             self.estado_informe.setStyleSheet(f"color: {PALETA['suave']}; font-size: {px(12)}px;")
             self.estado_informe.setText(
-                t("Informe guardado en {ruta}. Enviaselo a quien te ayude; no contiene EE.log.", ruta=ruta)
+                frase("Informe guardado en {ruta}. Envíaselo a quien te ayude; no contiene EE.log.",
+                      ruta=html.escape(str(ruta)))
+                + "<br>" + frase("Puedes enviarlo en el foro de ayuda del Discord de Farmadex: {enlace}",
+                                 enlace=enlace_discord())
             )
         self.estado_informe.show()
 
@@ -1517,7 +1537,7 @@ class PestanaAjustes(QWidget):
         self.idioma_cambiado.emit(codigo)
 
     RITMOS = {
-        "rapido": "Rapido: veterano con buen equipo (x{factor})",
+        "rapido": "Rápido: veterano con buen equipo (x{factor})",
         "normal": "Normal: jugador medio (x{factor})",
         "tranquilo": "Tranquilo: empezando o explorando (x{factor})",
     }
@@ -1549,10 +1569,10 @@ class PestanaAjustes(QWidget):
         from .. import arranque
 
         if arranque.comando_arranque() is None:
-            self.aviso_arranque.setText(t("Solo disponible en la version instalada o portable (.exe)."))
+            self.aviso_arranque.setText(t("Solo disponible en la versión instalada o portable (.exe)."))
         elif arranque.es_portable():
             self.aviso_arranque.setText(
-                t("Version portable: si mueves o borras el .exe, el arranque dejara de funcionar.")
+                t("Versión portable: si mueves o borras el .exe, el arranque dejará de funcionar.")
             )
         else:
             self.aviso_arranque.setText("")
@@ -1564,7 +1584,7 @@ class PestanaAjustes(QWidget):
             try:
                 parsear(texto)
             except ValueError as e:
-                self.aviso_hotkey.setText(f"{texto or t('(vacio)')}: {e}")
+                self.aviso_hotkey.setText(f"{texto or t('(vacío)')}: {e}")
                 return
             nuevas[nombre] = texto
         for nombre, texto in nuevas.items():
@@ -1597,13 +1617,13 @@ class PestanaAjustes(QWidget):
         `lista`: ya descargada y comprobada por la app; se instala al cerrar o con
         "Reiniciar y actualizar". Sin ninguna de las dos, solo el enlace de descarga.
         """
-        cabecera = t("Hay una version nueva: <b>{version}</b>.", version=version.etiqueta)
+        cabecera = t("Hay una versión nueva: <b>{version}</b>.", version=version.etiqueta)
         self.boton_reiniciar.setVisible(lista)
         if lista:
             self.aviso_version.setText(
                 cabecera + " " + t(
-                    "Ya esta descargada y comprobada: se instala sola al cerrar Farmadex, "
-                    "o ahora mismo con el boton. Tus objetivos y ajustes se conservan."
+                    "Ya está descargada y comprobada: se instala sola al cerrar Farmadex, "
+                    "o ahora mismo con el botón. Tus objetivos y ajustes se conservan."
                 )
             )
             self.boton_instalar.setVisible(False)
@@ -1634,7 +1654,7 @@ class PestanaAjustes(QWidget):
 
     def refrescar_estado(self) -> None:
         if not indice.hay_indice():
-            self.estado_datos.setText(t("Todavia no hay indice construido."))
+            self.estado_datos.setText(t("Todavía no hay índice construido."))
             return
         try:
             con = indice.conectar()
@@ -1642,13 +1662,13 @@ class PestanaAjustes(QWidget):
             objetos = con.execute("SELECT COUNT(*) FROM items").fetchone()[0]
             con.close()
         except sqlite3.Error as e:
-            self.estado_datos.setText(t("No se pudo leer el indice: {error}", error=e))
+            self.estado_datos.setText(t("No se pudo leer el índice: {error}", error=e))
             return
         self.estado_datos.setText(
-            t("<b>{n}</b> objetos en el catalogo", n=objetos) + "<br>"
-            + t("Catalogo del {fecha}", fecha=meta.get("items_fecha", "?")[:10]) + " &middot; "
+            t("<b>{n}</b> objetos en el catálogo", n=objetos) + "<br>"
+            + t("Catálogo del {fecha}", fecha=meta.get("items_fecha", "?")[:10]) + " &middot; "
             + t("tablas de drops del {fecha}", fecha=_fecha(meta.get("drops_modified"))) + "<br>"
-            + t("Indice construido el {fecha}",
+            + t("Índice construido el {fecha}",
                 fecha=meta.get("construido_en", "?")[:16].replace("T", " "))
         )
 

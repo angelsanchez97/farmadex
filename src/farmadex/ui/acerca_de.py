@@ -31,6 +31,8 @@ URL_RELEASES = URL_REPOSITORIO + "/releases"
 URL_AVISOS = URL_REPOSITORIO + "/issues"
 AUTOR = "vaas"
 URL_TWITCH = "https://www.twitch.tv/vaas1897"
+# Servidor de Discord de Farmadex: dudas, sugerencias y un foro de ayuda donde mandar el informe.
+URL_DISCORD = "https://discord.gg/7ezAmfqesS"
 CITA_NO_RESPALDO = "we do not endorse any use of third-party software"
 CITA_RIESGO = "at your own risk"
 ANCHO_IMAGEN = 560
@@ -43,13 +45,30 @@ def ruta_imagen_soporte() -> Path:
 
 
 def _enlace(url: str, texto: str) -> str:
-    return f'<a href="{html.escape(url)}" style="color: {PALETA["acento"]};">{html.escape(texto)}</a>'
+    # nowrap: en columnas estrechas (pie de Ajustes) el enlace no se parte por la barra.
+    return (f'<a href="{html.escape(url)}" style="color: {PALETA["acento"]}; white-space: nowrap;">'
+            f'{html.escape(texto)}</a>')
 
 
 def texto_autor() -> str:
     """"Creado por vaas · twitch.tv/vaas1897", con el canal enlazado (Acerca de y pie de Ajustes)."""
     return (html.escape(t("Creado por {autor}", autor=AUTOR)) + " · "
             + _enlace(URL_TWITCH, URL_TWITCH.removeprefix("https://www.")))
+
+
+def enlace_discord() -> str:
+    """El enlace de invitacion al Discord, con el color de acento del tema."""
+    return _enlace(URL_DISCORD, URL_DISCORD.removeprefix("https://"))
+
+
+def texto_discord() -> str:
+    """"Dudas y sugerencias en el Discord de Farmadex: discord.gg/..." (Acerca de, pie de Ajustes)."""
+    return frase("Dudas y sugerencias en el Discord de Farmadex: {enlace}", enlace=enlace_discord())
+
+
+def texto_discord_corto() -> str:
+    """"Dudas y sugerencias: Discord de Farmadex" (el pie estrecho de Ajustes)."""
+    return frase("Dudas y sugerencias: {enlace}", enlace=_enlace(URL_DISCORD, t("Discord de Farmadex")))
 
 
 def frase(clave: str, **huecos: str) -> str:
@@ -77,62 +96,62 @@ def secciones_seguridad(incluir_de: bool = True) -> list[tuple[str, str]]:
     como comprobar el fichero, que lee, que guarda, que no toca y (opcional) la postura
     de DE, que el dialogo Acerca de ya cuenta con su captura."""
     secciones = [
-        (t("Por que avisa Windows al instalarlo"), frase(
-            "Windows ensena un aviso azul (\"Windows protegio tu PC\") con los programas nuevos que "
-            "no llevan una firma digital de pago. Farmadex todavia no la lleva: es gratis, lo hace "
-            "una sola persona y esa firma cuesta mucho dinero cada ano. El aviso no quiere decir que "
-            "tenga un virus, solo que Windows aun no lo conoce. Para seguir, pulsa \"Mas "
-            "informacion\" y luego \"Ejecutar de todas formas\"."
+        (t("Por qué avisa Windows al instalarlo"), frase(
+            "Windows enseña un aviso azul (\"Windows protegió tu PC\") con los programas nuevos que "
+            "no llevan una firma digital de pago. Farmadex todavía no la lleva: es gratis, lo hace "
+            "una sola persona y esa firma cuesta mucho dinero cada año. El aviso no quiere decir que "
+            "tenga un virus, solo que Windows aún no lo conoce. Para seguir, pulsa \"Más "
+            "información\" y luego \"Ejecutar de todas formas\"."
         )),
-        (t("De donde descargarlo"), frase(
-            "Descargalo solo de la pagina de versiones del proyecto: {enlace}. Si te lo pasan por "
+        (t("De dónde descargarlo"), frase(
+            "Descárgalo solo de la página de versiones del proyecto: {enlace}. Si te lo pasan por "
             "otro sitio (un Discord, una web de descargas, un amigo), no puedes saber si alguien lo "
-            "ha cambiado. Todo el codigo esta ahi mismo, a la vista de quien quiera revisarlo.",
+            "ha cambiado. Todo el código está ahí mismo, a la vista de quien quiera revisarlo.",
             enlace=_enlace(URL_RELEASES, URL_RELEASES.removeprefix("https://")),
         )),
-        (t("Como comprobar que el fichero es el bueno"), frase(
-            "Junto a cada version hay un fichero {sumas} con la huella de cada descarga. Abre "
-            "PowerShell en la carpeta donde lo descargaste y escribe {orden}. Si el numero largo que "
-            "sale es exactamente el mismo que el de {sumas}, el fichero es el que se publico. Si "
+        (t("Cómo comprobar que el fichero es el bueno"), frase(
+            "Junto a cada versión hay un fichero {sumas} con la huella de cada descarga. Abre "
+            "PowerShell en la carpeta donde lo descargaste y escribe {orden}. Si el número largo que "
+            "sale es exactamente el mismo que el de {sumas}, el fichero es el que se publicó. Si "
             "cambia una sola letra, no lo abras.",
             sumas=_codigo("SHA256SUMS.txt"),
             orden=_codigo(f"Get-FileHash .\\Farmadex-{VERSION}-setup.exe"),
         )),
-        (t("Que lee Farmadex"), _lista([
+        (t("Qué lee Farmadex"), _lista([
             frase(
-                "El registro que escribe el propio juego (EE.log), solo para saber cuando abres "
-                "una reliquia o acabas una mision. Ese fichero lleva tu correo y tu IP: Farmadex "
-                "solo busca en el unos pocos mensajes del juego y no guarda ni envia nada de el."
+                "El registro que escribe el propio juego (EE.log), solo para saber cuándo abres "
+                "una reliquia o acabas una misión. Ese fichero lleva tu correo y tu IP: Farmadex "
+                "solo busca en él unos pocos mensajes del juego y no guarda ni envía nada de él."
             ),
             frase(
                 "La pantalla, solo cuando hace falta: las recompensas de una reliquia, el objeto "
-                "bajo el raton y, si lo activas, tu Perfil y tu Inventario. Esas capturas se leen "
-                "en tu PC y se tiran; no se guardan ni se envian a nadie."
+                "bajo el ratón y, si lo activas, tu Perfil y tu Inventario. Esas capturas se leen "
+                "en tu PC y se tiran; no se guardan ni se envían a nadie."
             ),
             frase(
-                "Datos publicos de internet: el catalogo de objetos y las tablas de drops (WFCD y "
+                "Datos públicos de internet: el catálogo de objetos y las tablas de drops (WFCD y "
                 "Digital Extremes), lo que pasa ahora en el juego, precios de warframe.market y si "
-                "hay una version nueva de Farmadex."
+                "hay una versión nueva de Farmadex."
             ),
         ])),
-        (t("Que guarda en tu PC"), frase(
-            "Solo en su propia carpeta ({carpeta}): tus ajustes, tus objetivos, el catalogo "
+        (t("Qué guarda en tu PC"), frase(
+            "Solo en su propia carpeta ({carpeta}): tus ajustes, tus objetivos, el catálogo "
             "descargado y un registro de errores para poder ayudarte si algo falla. Nada de eso "
-            "sale de tu PC, salvo el informe que tu decidas enviar.",
+            "sale de tu PC, salvo el informe que tú decidas enviar.",
             carpeta=_codigo("%LOCALAPPDATA%\\Farmadex"),
         )),
-        (t("Que NO toca"), frase(
-            "No lee ni escribe la memoria del juego, no mira ni cambia su conexion, no modifica sus "
-            "ficheros, no pulsa teclas por ti, no entra en tu cuenta y nunca te pide la contrasena."
+        (t("Qué NO toca"), frase(
+            "No lee ni escribe la memoria del juego, no mira ni cambia su conexión, no modifica sus "
+            "ficheros, no pulsa teclas por ti, no entra en tu cuenta y nunca te pide la contraseña."
         )),
     ]
     if incluir_de:
         secciones.append((t("Y que dice Digital Extremes"), frase(
-            "DE tiene una pagina sobre los programas de terceros ({enlace}). Dice que no respalda "
+            "DE tiene una página sobre los programas de terceros ({enlace}). Dice que no respalda "
             "ninguno (\"{cita1}\") y que quien los usa lo hace por su cuenta (\"{cita2}\"). "
-            "Farmadex no hace nada de lo que esa pagina persigue, pero no esta aprobado por DE y "
-            "nadie puede prometerte que no haya ningun riesgo: la decision es tuya.",
-            enlace=_enlace(URL_POLITICA_DE, t("Politica de DE sobre software de terceros")),
+            "Farmadex no hace nada de lo que esa página persigue, pero no está aprobado por DE y "
+            "nadie puede prometerte que no haya ningún riesgo: la decisión es tuya.",
+            enlace=_enlace(URL_POLITICA_DE, t("Política de DE sobre software de terceros")),
             cita1=html.escape(CITA_NO_RESPALDO),
             cita2=html.escape(CITA_RIESGO),
         )))
@@ -144,39 +163,41 @@ def preguntas_frecuentes(atajo: str = "Ctrl+Alt+W") -> list[tuple[str, str]]:
     return [
         (t("No sale nada encima del juego"), frase(
             "Warframe tiene que estar en Ventana sin bordes (o en ventana normal): en pantalla "
-            "completa exclusiva ningun programa puede dibujar encima. Se cambia en las opciones de "
-            "pantalla del juego. Si aun asi no sale, en Ajustes > Reliquias, \"Comprobar la lectura "
-            "de reliquias\" te dice que falla."
+            "completa exclusiva ningún programa puede dibujar encima. Se cambia en las opciones de "
+            "pantalla del juego. Si aun así no sale, en Ajustes > Reliquias, \"Comprobar la lectura "
+            "de reliquias\" te dice qué falla."
         )),
-        (t("Como lo abro y lo cierro?"), frase(
+        (t("¿Cómo lo abro y lo cierro?"), frase(
             "Con {atajo} se abre y se cierra encima del juego, y con Escape se esconde. Cuando no lo "
-            "ves sigue esperando en los iconos junto al reloj de Windows; con clic derecho ahi "
+            "ves sigue esperando en los iconos junto al reloj de Windows; con clic derecho ahí "
             "puedes salir del todo.",
             atajo=_codigo(atajo),
         )),
-        (t("Es seguro para mi cuenta?"), frase(
-            "Farmadex no toca el juego: ni su memoria, ni su conexion, ni sus ficheros. Solo mira la "
+        (t("¿Es seguro para mi cuenta?"), frase(
+            "Farmadex no toca el juego: ni su memoria, ni su conexión, ni sus ficheros. Solo mira la "
             "pantalla y el registro que escribe el propio juego, como otras herramientas que la "
-            "comunidad usa desde hace anos. Aun asi, DE no aprueba ningun programa de terceros, asi "
-            "que nadie puede garantizarte nada: lee su postura en Ajustes > Acerca de y decide tu."
+            "comunidad usa desde hace años. Aun así, DE no aprueba ningún programa de terceros, así "
+            "que nadie puede garantizarte nada: lee su postura en Ajustes > Acerca de y decide tú."
         )),
-        (t("Pierdo mis objetivos al actualizar?"), frase(
-            "No. Tus objetivos y tus ajustes (tambien los colores y tamanos que elijas) se guardan "
+        (t("¿Pierdo mis objetivos al actualizar?"), frase(
+            "No. Tus objetivos y tus ajustes (también los colores y tamaños que elijas) se guardan "
             "aparte del programa y se conservan al actualizar."
         )),
-        (t("Estan los datos al dia?"), frase(
-            "Farmadex descarga solo el catalogo y las tablas de drops cuando hay nuevas. Justo "
-            "despues de una actualizacion de Warframe, DE puede tardar unos dias en publicar sus "
+        (t("¿Están los datos al día?"), frase(
+            "Farmadex descarga solo el catálogo y las tablas de drops cuando hay nuevas. Justo "
+            "después de una actualización de Warframe, DE puede tardar unos días en publicar sus "
             "tablas: Farmadex te avisa cuando pasa."
         )),
-        (t("Es gratis?"), frase(
-            "Si, entero y sin anuncios. El codigo es publico en {enlace}.",
+        (t("¿Es gratis?"), frase(
+            "Sí, entero y sin anuncios. El código es público en {enlace}.",
             enlace=_enlace(URL_REPOSITORIO, URL_REPOSITORIO.removeprefix("https://")),
         )),
         (t("Tengo un problema o una idea"), frase(
-            "Cuentaselo a vaas, que es quien lo hace: en su canal de Twitch ({twitch}) o abriendo "
-            "un aviso en GitHub ({avisos}). Si es un fallo, \"Guardar informe para enviar\" (en "
-            "Ajustes > Reliquias) prepara un archivo con lo necesario, sin datos de tu cuenta.",
+            "Cuéntaselo a vaas, que es quien lo hace: en el Discord de Farmadex ({discord}), en su "
+            "canal de Twitch ({twitch}) o abriendo un aviso en GitHub ({avisos}). Si es un fallo, "
+            "\"Guardar informe para enviar\" (en Ajustes > Reliquias) prepara un archivo con lo "
+            "necesario, sin datos de tu cuenta, que puedes mandar en el foro de ayuda del Discord.",
+            discord=enlace_discord(),
             twitch=_enlace(URL_TWITCH, URL_TWITCH.removeprefix("https://www.")),
             avisos=_enlace(URL_AVISOS, "GitHub Issues"),
         )),
@@ -224,30 +245,31 @@ class DialogoAcercaDe(QDialog):
         titulo = EtiquetaC(f"{NOMBRE_APP.upper()} <span style='color: {p['texto']};'>{VERSION}</span>",
                            "titulo", tinta="acento")
         self.autor = _parrafo(texto_autor(), "suave")
+        self.discord = _parrafo(texto_discord())
 
         no_afiliado = _parrafo(html.escape(t(
-            "No esta afiliado a Digital Extremes ni tiene su respaldo. Warframe y todo su "
+            "No está afiliado a Digital Extremes ni tiene su respaldo. Warframe y todo su "
             "contenido son propiedad de Digital Extremes."
         )), "suave")
 
-        politica = PanelC(t("Farmadex y la politica de Digital Extremes"))
+        politica = PanelC(t("Farmadex y la política de Digital Extremes"))
         que_hace = _parrafo(html.escape(t(
-            "Farmadex no hace nada de lo que la politica de DE persigue: no lee ni escribe la "
+            "Farmadex no hace nada de lo que la política de DE persigue: no lee ni escribe la "
             "memoria del juego, no modifica sus ficheros, no inyecta nada, no pulsa teclas ni "
             "automatiza nada, y no toca tu cuenta. Solo mira la pantalla y el registro que "
-            "escribe el propio juego (EE.log), lo mismo que llevan anos haciendo WFInfo y "
+            "escribe el propio juego (EE.log), lo mismo que llevan años haciendo WFInfo y "
             "AlecaFrame."
         )))
         decision = _parrafo(html.escape(t(
-            "Hasta donde sabemos, no incumple el EULA. Aun asi, DE no garantiza nada a ningun "
-            "programa de terceros (\"{cita1}\", \"{cita2}\"), asi que la decision es tuya.",
+            "Hasta donde sabemos, no incumple el EULA. Aun así, DE no garantiza nada a ningún "
+            "programa de terceros (\"{cita1}\", \"{cita2}\"), así que la decisión es tuya.",
             cita1=CITA_NO_RESPALDO,
             cita2=CITA_RIESGO,
         )))
-        self.enlace_politica = _parrafo(_enlace(URL_POLITICA_DE, t("Politica de DE sobre software de terceros")))
+        self.enlace_politica = _parrafo(_enlace(URL_POLITICA_DE, t("Política de DE sobre software de terceros")))
 
         pie_imagen = _parrafo(html.escape(t(
-            "Respuesta del soporte de Digital Extremes cuando se les pregunto por programas de "
+            "Respuesta del soporte de Digital Extremes cuando se les preguntó por programas de "
             "terceros:"
         )), "suave")
         self.imagen = QLabel()
@@ -262,12 +284,12 @@ class DialogoAcercaDe(QDialog):
         for widget in (que_hace, decision, self.enlace_politica, pie_imagen, self.imagen):
             politica.capa.addWidget(widget)
 
-        seguridad = PanelC(t("Es seguro? Lo que hace y lo que no"))
+        seguridad = PanelC(t("¿Es seguro? Lo que hace y lo que no"))
         self.seguridad = _parrafo(html_secciones(secciones_seguridad(incluir_de=False), nivel="h4"))
         seguridad.capa.addWidget(self.seguridad)
 
         codigo = _parrafo(
-            html.escape(t("Codigo, cambios y descargas:")) + " " + _enlace(URL_REPOSITORIO, URL_REPOSITORIO),
+            html.escape(t("Código, cambios y descargas:")) + " " + _enlace(URL_REPOSITORIO, URL_REPOSITORIO),
             "suave",
         )
 
@@ -287,7 +309,7 @@ class DialogoAcercaDe(QDialog):
         cerrar.clicked.connect(self.accept)
         # La bienvenida vive en la ventana del overlay (una capa encima): solo si el padre la tiene.
         self.boton_bienvenida = BotonC(t("Ver la bienvenida"), tam=11)
-        self.boton_bienvenida.setToolTip(t("Que es Farmadex, lo basico, preguntas frecuentes y agradecimientos"))
+        self.boton_bienvenida.setToolTip(t("Qué es Farmadex, lo básico, preguntas frecuentes y agradecimientos"))
         self.boton_bienvenida.setVisible(hasattr(parent, "mostrar_bienvenida"))
         self.boton_bienvenida.clicked.connect(self._ver_bienvenida)
 
@@ -296,6 +318,7 @@ class DialogoAcercaDe(QDialog):
         caja.setSpacing(px(10, False))
         caja.addLayout(fila(Rombo(14, "acento", relleno=False), titulo, None, espacio=px(10, False)))
         caja.addWidget(self.autor)
+        caja.addWidget(self.discord)
         caja.addWidget(Filete())
         caja.addWidget(desplazable, 1)
         caja.addWidget(Filete())

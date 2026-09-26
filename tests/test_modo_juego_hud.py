@@ -88,7 +88,7 @@ def test_sin_fisura_util_o_sin_sitio_la_segunda_tarjeta_no_sale(vista):
 def test_sin_metas_la_tarjeta_explica_que_hacer(vista):
     vista.estado["pasos"] = []
     vista.refrescar_hud()
-    assert vista.tarjeta_pieza.nombre.texto_completo() == "Sin metas todavia"
+    assert vista.tarjeta_pieza.nombre.texto_completo() == "Sin metas todavía"
     assert "Mis metas" in vista.tarjeta_pieza.detalle.text()
     assert not vista.tarjeta_fisura.isVisibleTo(vista)
     # Sin nada que abrir, el clic no hace nada.
@@ -187,7 +187,7 @@ def test_el_pie_dice_el_total_y_la_prioridad_elegida_en_dorado(app):
     from farmadex.captura import prioridad as prio
 
     panel = _panel(prio.PLATINO)
-    assert panel.texto_total() == "Sin precios todavia"
+    assert panel.texto_total() == "Sin precios todavía"
     panel.recompensas[0].platino, panel.recompensas[1].platino = 45, 8
     assert panel.texto_total() == "Total en pantalla: 53 platino (2 de 4 con precio)"
     rect = panel.rectangulo_panel()
@@ -240,5 +240,5 @@ def test_la_mejor_lleva_estrella_en_la_cinta(app):
     pintor.end()
     con_estrella = [x for x in textos if x.startswith(modulo.ESTRELLA.strip())]
     assert len(con_estrella) == 1
-    assert "MEJOR OPCION" in textos
+    assert "MEJOR OPCIÓN" in textos
     assert "Lo que me falta" in textos

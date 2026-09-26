@@ -33,109 +33,109 @@ PREFIJO = "glosa:"
 TERMINOS_TIEMPO = ("tiempo_medio", "tiempo_pieza")
 # Terminos cuyo detalle trae su propio titulo en la primera linea.
 TERMINOS_TITULO_PROPIO = ("mision",)
-NOMBRES_RITMO = {"rapido": "Rapido", "normal": "Normal", "tranquilo": "Tranquilo"}
+NOMBRES_RITMO = {"rapido": "Rápido", "normal": "Normal", "tranquilo": "Tranquilo"}
 
 # clave -> (titulo, explicacion). Los dos pasan por t(); la explicacion, corta.
 TERMINOS: dict[str, tuple[str, str]] = {
     "reliquia": (
         "Reliquia",
-        "Objeto que se abre en una mision de fisura del Vacio y suelta una de sus seis "
+        "Objeto que se abre en una misión de fisura del Vacío y suelta una de sus seis "
         "piezas Prime al terminar. Las reliquias se consiguen jugando misiones normales.",
     ),
     "era": (
         "Era",
         "Familia de reliquias: Lith, Meso, Neo, Axi, Requiem y Omnia. Cada reliquia solo "
-        "se abre en una fisura de su misma era; cuanto mas alta la era, mas dificil la mision.",
+        "se abre en una fisura de su misma era; cuanto más alta la era, más difícil la misión.",
     ),
     "refinamiento": (
         "Refinamiento",
-        "Mejora de una reliquia pagada con Trazas del Vacio: Intacta, Excepcional, Impecable "
-        "o Radiante. A mas refinamiento, mas probabilidad de que salga la pieza rara.",
+        "Mejora de una reliquia pagada con Trazas del Vacío: Intacta, Excepcional, Impecable "
+        "o Radiante. A más refinamiento, más probabilidad de que salga la pieza rara.",
     ),
     "rotacion": (
-        "Rotacion",
+        "Rotación",
         "En las misiones sin fin (Supervivencia, Defensa...) las recompensas van en ciclos "
-        "A, A, B, C. La rotacion C es la cuarta recompensa: el minuto 20 o la oleada 20.",
+        "A, A, B, C. La rotación C es la cuarta recompensa: el minuto 20 o la oleada 20.",
     ),
     "mision": (
-        "Tipo de mision",
-        "Cada tipo de mision tiene su objetivo (aguantar, defender, capturar...) y su forma "
+        "Tipo de misión",
+        "Cada tipo de misión tiene su objetivo (aguantar, defender, capturar...) y su forma "
         "de dar recompensas: una sola al terminar o una cada cierto tiempo mientras sigas.",
     ),
     "tiempo_medio": (
         "Tiempo medio estimado",
-        "Lo que suele durar la mision dividido por la probabilidad: un 10 % en una mision "
+        "Lo que suele durar la misión dividido por la probabilidad: un 10 % en una misión "
         "de 10 minutos son ~100 minutos de media, mejor que un 20 % en una de 40 (~200). "
-        "En las misiones sin fin cuenta llegar a la rotacion. Las duraciones son una "
-        "estimacion para un jugador medio, no un dato del juego.",
+        "En las misiones sin fin cuenta llegar a la rotación. Las duraciones son una "
+        "estimación para un jugador medio, no un dato del juego.",
     ),
     "boveda": (
-        "Boveda",
-        "Lo que esta en boveda ya no sale en ninguna reliquia que se pueda farmear: "
-        "solo se consigue comprandolo, o comprando su reliquia, a otro jugador.",
+        "Bóveda",
+        "Lo que está en bóveda ya no sale en ninguna reliquia que se pueda farmear: "
+        "solo se consigue comprándolo, o comprando su reliquia, a otro jugador.",
     ),
     "fisura": (
-        "Fisura del Vacio",
-        "Mision normal en la que ademas puedes abrir una reliquia de su misma era. "
+        "Fisura del Vacío",
+        "Misión normal en la que además puedes abrir una reliquia de su misma era. "
         "Salen en el mapa con un icono de fisura y cambian cada pocas horas.",
     ),
     "tormenta": (
-        "Tormenta del Vacio",
-        "Fisura en una mision de Railjack (la nave): hace falta tener Railjack y, ademas "
+        "Tormenta del Vacío",
+        "Fisura en una misión de Railjack (la nave): hace falta tener Railjack y, además "
         "de la pieza, dan holoclaves.",
     ),
     "camino_de_acero": (
         "Camino de Acero",
-        "Version dificil del mapa estelar, con enemigos mucho mas fuertes a cambio de "
+        "Versión difícil del mapa estelar, con enemigos mucho más fuertes a cambio de "
         "mejores recompensas. Se desbloquea al completar todos los nodos normales.",
     ),
     "inventario": (
         "Tienes",
-        "Cantidad leida en pantalla la ultima vez que abriste el Inventario o la Fundicion "
+        "Cantidad leída en pantalla la última vez que abriste el Inventario o la Fundición "
         "con Farmadex mirando. Puede quedarse vieja hasta que vuelvas a abrirlos.",
     ),
     "dominado": (
         "Dominado",
-        "Cada warframe, arma o companero subido a rango 30 (40 en algunos) da puntos de "
-        "maestria una sola vez. 'Sin dominar' quiere decir que todavia te los daria.",
+        "Cada warframe, arma o compañero subido a rango 30 (40 en algunos) da puntos de "
+        "maestría una sola vez. 'Sin dominar' quiere decir que todavía te los daría.",
     ),
     "maestria": (
-        "Rango de maestria",
+        "Rango de maestría",
         "El nivel de tu cuenta (MR). Sube dominando equipo y desbloquea armas, mods, "
         "comercio y modos de juego.",
     ),
     "prime": (
         "Prime",
-        "Version mejorada y dorada de un warframe o un arma. Sus piezas solo salen de "
+        "Versión mejorada y dorada de un warframe o un arma. Sus piezas solo salen de "
         "reliquias o de otros jugadores.",
     ),
     "pieza": (
         "Pieza",
         "Parte de un warframe o de un arma (plano, chasis, sistemas, neuroptica...). "
-        "Con todas las piezas se construye el objeto completo en la Fundicion.",
+        "Con todas las piezas se construye el objeto completo en la Fundición.",
     ),
     "disposicion": (
-        "Disposicion de riven",
-        "Cuanto mejoran los mods Agrietados (rivens) de esta arma: de 1 punto (poco) a 5 "
-        "(mucho). DE la sube en las armas que casi nadie usa y la baja en las mas usadas.",
+        "Disposición de riven",
+        "Cuánto mejoran los mods Agrietados (rivens) de esta arma: de 1 punto (poco) a 5 "
+        "(mucho). DE la sube en las armas que casi nadie usa y la baja en las más usadas.",
     ),
     "ducados": (
         "Ducados",
         "Moneda que da Baro Ki'Teer a cambio de piezas Prime que te sobren. Con ella se "
-        "compran los objetos que solo vende el.",
+        "compran los objetos que solo vende él.",
     ),
     "baro": (
         "Baro Ki'Teer",
-        "El Comerciante del Vacio: aparece cada dos semanas en un relevo con objetos que no "
-        "se consiguen de otra forma, a cambio de ducados y creditos.",
+        "El Comerciante del Vacío: aparece cada dos semanas en un relevo con objetos que no "
+        "se consiguen de otra forma, a cambio de ducados y créditos.",
     ),
     "rareza": (
         "Rareza",
-        "Lo comun sale mas veces y lo raro, menos. En una reliquia sin refinar: tres piezas "
+        "Lo común sale más veces y lo raro, menos. En una reliquia sin refinar: tres piezas "
         "comunes (25 % cada una), dos poco comunes (11 %) y una rara (2 %).",
     ),
     "reputacion": (
-        "Reputacion",
+        "Reputación",
         "Puntos que ganas con un sindicato haciendo sus misiones o entregando objetos; se "
         "gastan en su tienda.",
     ),
@@ -143,13 +143,13 @@ TERMINOS: dict[str, tuple[str, str]] = {
         "Escuadra compartiendo reliquia",
         "Los cuatro abren la misma reliquia con el mismo refinamiento y cada uno elige entre "
         "las cuatro recompensas: cada fisura gasta una reliquia tuya y te da cuatro tiradas. "
-        "Una pieza al 10 % sale asi en una de cada 2,9 fisuras en vez de una de cada 10.",
+        "Una pieza al 10 % sale así en una de cada 2,9 fisuras en vez de una de cada 10.",
     ),
     "tiempo_pieza": (
         "Tiempo hasta la pieza",
-        "Minutos de media hasta tenerla: lo que tarda en caer una reliquia util en esa mision "
-        "mas una fisura para abrirla, por las reliquias que hay que abrir segun el refinamiento "
-        "y si vas solo o en escuadra. No cuenta refinar (Trazas del Vacio). Es una estimacion "
+        "Minutos de media hasta tenerla: lo que tarda en caer una reliquia útil en esa misión "
+        "más una fisura para abrirla, por las reliquias que hay que abrir según el refinamiento "
+        "y si vas solo o en escuadra. No cuenta refinar (Trazas del Vacío). Es una estimación "
         "para un jugador medio.",
     ),
 }

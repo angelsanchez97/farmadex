@@ -70,7 +70,7 @@ def test_un_mensaje_nuevo_de_la_pantalla_de_reliquias_se_anota_una_vez(caplog):
 def test_desfase_avisa_de_las_fuentes_anteriores_al_parche():
     meta = {"items_fecha": "2026-08-10T12:00:00Z", "drops_modified": "1755561600000"}  # 2025-08-19
     atrasadas = indice.desfase_con_el_juego(meta, date(2026, 8, 19))
-    assert [f for f, _ in atrasadas] == ["catalogo de objetos", "tablas de drops"]
+    assert [f for f, _ in atrasadas] == ["catálogo de objetos", "tablas de drops"]
     assert atrasadas[0][1] == "2026-08-10"
 
     # Con datos posteriores al parche no hay aviso; sin build tampoco.

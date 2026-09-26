@@ -135,7 +135,7 @@ def test_fisuras_para_tus_metas_ensena_las_mas_rapidas(mundo):
 def test_sin_metas_se_explica_y_sin_fisura_util_se_dice_que_hace_falta(mundo):
     mundo._eras_necesarias = {}
     mundo.pintar()
-    assert "Anade objetivos en Mis metas" in _plano(mundo.metas)
+    assert "Añade objetivos en Mis metas" in _plano(mundo.metas)
     assert not any(c.util for c in _tarjetas(mundo.fisuras_todo))
     mundo._eras_necesarias = {"Requiem": ["Reliquia Requiem I"]}
     mundo.pintar()
@@ -167,7 +167,7 @@ def test_todo_limita_las_columnas_y_fisuras_ensena_todas(app):
     datos.fisuras = [ws.Fisura("Meso", f"Nodo{i}, Marte", "Captura", "Grineer", _en(60 + i)) for i in range(6)]
     pestana.actualizar(datos)
     assert len(_tarjetas(pestana.fisuras_todo, "Meso")) == pestana_mundo.MAX_POR_COLUMNA
-    assert "y 2 mas" in _plano(pestana.fisuras_todo)
+    assert "y 2 más" in _plano(pestana.fisuras_todo)
     assert len(_tarjetas(pestana.fisuras_completo, "Meso")) == 6
     pestana._enlace("sub:fisuras")
     assert pestana.diseno == "fisuras"
@@ -222,7 +222,7 @@ def test_las_sub_pestanas_se_recuerdan_y_lista_o_tablero_abren_todo(app, config)
 
 
 def test_cambia_de_idioma(mundo):
-    assert mundo.fisuras_todo.title() == "Fisuras del Vacio"
+    assert mundo.fisuras_todo.title() == "Fisuras del Vacío"
     idiomas.cargar("en")
     mundo.retraducir()
     assert mundo.fisuras_todo.title() == "Void Fissures"
@@ -260,7 +260,7 @@ def test_baro_ausente_cuenta_atras_y_boton_de_avisar(mundo, config):
     mundo.actualizar(_mundo(baro_activo=False))
     textos = _textos(mundo.baro_todo)
     assert any(x.startswith("LLEGA EN 2 D") for x in textos)
-    assert any("se queda 2 dias" in x for x in textos)
+    assert any("se queda 2 días" in x for x in textos)
     boton = next(b for b in mundo.baro_todo.findChildren(pestana_mundo.BotonC) if b.property("clave_aviso") == "baro")
     boton.setChecked(True)
     assert config.cargar()[avisos_mundo.CLAVE_CONFIG]["baro"] is True
@@ -286,7 +286,7 @@ def test_los_enlaces_de_baro_abren_la_ficha(mundo):
 def test_teshin_de_la_api_con_su_coste_y_las_proximas_semanas(mundo):
     textos = _plano(mundo.teshin_tienda)
     assert "50.000 de Kuva" in textos and "55 de esencia" in textos
-    assert "rotacion semanal fija" not in textos  # lo ha publicado la API: dato seguro
+    assert "rotación semanal fija" not in textos  # lo ha publicado la API: dato seguro
     # Despues de la Kuva viene el mod agrietado de kitgun (orden fijo del juego).
     assert "Mod Agrietado de kitgun" in textos and "3 Formas" in textos
     assert "Palladino" in textos
@@ -297,7 +297,7 @@ def test_teshin_sin_dato_de_la_api_lo_dice(mundo):
     datos = _mundo()
     datos.acero = []
     mundo.actualizar(datos)
-    assert "rotacion semanal fija" in _plano(mundo.teshin_todo)
+    assert "rotación semanal fija" in _plano(mundo.teshin_todo)
 
 
 def test_teshin_desconocido_no_inventa_las_semanas_siguientes():
@@ -317,7 +317,7 @@ def test_teshin_desconocido_no_inventa_las_semanas_siguientes():
 
 def test_hoy_resume_incursion_arcontes_onda_nocturna_y_arbitraje(mundo):
     textos = _plano(mundo.hoy)
-    assert "Hyf, Deimos y 1 mas" in textos
+    assert "Hyf, Deimos y 1 más" in textos
     assert "1 diario · 2 semanales" in textos
     assert textos.count("sin publicar ahora") == 2  # arcontes y arbitraje
     mundo._enlace("sub:eventos")
@@ -327,7 +327,7 @@ def test_hoy_resume_incursion_arcontes_onda_nocturna_y_arbitraje(mundo):
 def test_las_invasiones_se_resumen_en_todo_y_salen_enteras_en_su_pestana(mundo):
     todo = _textos(mundo.invasiones_todo)
     assert sum("Marid" in x for x in todo) == pestana_mundo.MAX_INVASIONES
-    assert "y 3 invasiones mas" in _plano(mundo.invasiones_todo)
+    assert "y 3 invasiones más" in _plano(mundo.invasiones_todo)
     assert sum("Marid" in x for x in _textos(mundo.invasiones_eventos)) == 7
     assert mundo.invasiones_todo.findChildren(pestana_mundo.BarraBandos)
 
@@ -412,7 +412,7 @@ def test_si_la_consulta_fallo_y_no_hay_nada_se_dice_el_motivo(app):
 def test_si_la_consulta_falla_con_datos_frescos_se_ensena_lo_ultimo(mundo):
     mundo.marcar_desactualizado("HTTP 502")
     assert mundo.estado_datos() == "fresco"
-    assert "lo ultimo conocido" in mundo.aviso.text()
+    assert "lo último conocido" in mundo.aviso.text()
     assert _tarjetas(mundo.fisuras_todo, "Lith")
 
 

@@ -401,7 +401,7 @@ def test_sin_auto_o_en_portable_solo_se_avisa_con_enlace(monkeypatch):
         falso, avisos, ajustes, descargas, _ = _ventana_falsa(monkeypatch, auto=auto, instalado=instalado)
         falso._hay_version_nueva(version())
         assert descargas == []
-        assert URL in avisos["version"] and "Descargala" in avisos["version"]
+        assert URL in avisos["version"] and "Descárgala" in avisos["version"]
         assert ajustes == [{}]
 
 
@@ -558,7 +558,7 @@ def test_si_el_setup_se_rindio_por_otro_farmadex_no_se_gasta_el_intento(rutas_in
     setup = _apunte(rutas_instalacion, momento)
     _log_instalador(
         rutas_instalacion / "logs" / "instalador.log", momento,
-        "Log opened.", f"{instalacion.MARCA_OTRA_INSTANCIA}: no se puede actualizar. Se reintentara al cerrar el ultimo Farmadex.",
+        "Log opened.", f"{instalacion.MARCA_OTRA_INSTANCIA}: no se puede actualizar. Se reintentara al cerrar el último Farmadex.",
         "Log closed.",
     )
     assert instalacion.resultado_instalacion_anterior() == ("aplazada", "v9.9.9")
@@ -591,7 +591,7 @@ def test_la_ventana_cuenta_el_motivo_del_fallo_y_el_aplazamiento(monkeypatch):
     monkeypatch.setattr(instalacion, "resultado_instalacion_anterior", lambda: ("fallida", "v9.9.9"))
     monkeypatch.setattr(instalacion, "motivo_fallida", lambda: instalacion.MOTIVO_SIN_RASTRO)
     VentanaOverlay._contar_instalacion_anterior(falso)
-    assert "v9.9.9" in avisos["version"] and "no llego a arrancar" in avisos["version"]
+    assert "v9.9.9" in avisos["version"] and "no llegó a arrancar" in avisos["version"]
 
     monkeypatch.setattr(instalacion, "motivo_fallida", lambda: "el instalador se detuvo: Fatal exception: disk full")
     VentanaOverlay._contar_instalacion_anterior(falso)
@@ -599,4 +599,4 @@ def test_la_ventana_cuenta_el_motivo_del_fallo_y_el_aplazamiento(monkeypatch):
 
     monkeypatch.setattr(instalacion, "resultado_instalacion_anterior", lambda: ("aplazada", "v9.9.9"))
     VentanaOverlay._contar_instalacion_anterior(falso)
-    assert "otro Farmadex abierto" in avisos["version"] and "al cerrar el ultimo" in avisos["version"]
+    assert "otro Farmadex abierto" in avisos["version"] and "al cerrar el último" in avisos["version"]

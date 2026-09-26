@@ -114,12 +114,12 @@ MAX_RELIQUIAS_SET = 8
 
 CATEGORIAS_ES = {
     "Warframes": "Warframe", "Primary": "Arma primaria", "Secondary": "Arma secundaria",
-    "Melee": "Cuerpo a cuerpo", "Archwing": "Archwing", "Arch-Gun": "Archcanon",
+    "Melee": "Cuerpo a cuerpo", "Archwing": "Archwing", "Arch-Gun": "Archcañón",
     "Arch-Melee": "Arch-melee", "Sentinels": "Centinela", "SentinelWeapons": "Arma de centinela",
-    "Pets": "Companero", "Mods": "Mod", "Arcanes": "Arcano", "Relics": "Reliquia",
+    "Pets": "Compañero", "Mods": "Mod", "Arcanes": "Arcano", "Relics": "Reliquia",
     "Resources": "Recurso", "Misc": "Objeto", "Gear": "Equipo", "Railjack": "Railjack",
     "Skins": "Aspecto", "Glyphs": "Glifo", "Sigils": "Sigilo", "Fish": "Pez",
-    "Quests": "Mision", "Honoria": "Honoria",
+    "Quests": "Misión", "Honoria": "Honoria",
 }
 # Categorias de arma: el rotulo de la ficha anade su tipo ("Arma primaria · Rifle").
 CATEGORIAS_ARMA = {"Primary", "Secondary", "Melee", "Arch-Gun", "Arch-Melee", "SentinelWeapons"}
@@ -509,20 +509,20 @@ class PestanaBuscador(QWidget):
 
     def retraducir(self) -> None:
         """Tras cambiar de idioma: textos fijos, lista de resultados y ficha abierta."""
-        self.caja.setPlaceholderText(t("Busca un objeto, una mision o pregunta  (p. ej. sistemas ash prime, hepit, el ultimo warframe)"))
-        self.texto_ocultar.setText(t("Ocultar boveda"))
-        self.texto_ocultar.setToolTip(t("Ocultar reliquias en boveda"))
-        self.atras.setText(t("‹ Atras"))
+        self.caja.setPlaceholderText(t("Busca un objeto, una misión o pregunta  (p. ej. sistemas ash prime, hepit, el último warframe)"))
+        self.texto_ocultar.setText(t("Ocultar bóveda"))
+        self.texto_ocultar.setToolTip(t("Ocultar reliquias en bóveda"))
+        self.atras.setText(t("‹ Atrás"))
         self.boton_objetivo.setText(t("+ Objetivo"))
         self.boton_set.setText(t("+ Set completo"))
         self.boton_wiki.setText(t("Wiki"))
         self.boton_youtube.setText(t("YouTube"))
-        self.boton_youtube.setToolTip(t("Busca guias en YouTube de la mision o el objeto abierto, "
+        self.boton_youtube.setToolTip(t("Busca guías en YouTube de la misión o el objeto abierto, "
                                         "ordenadas por visitas, y las abre en el reproductor de Farmadex."))
         self.boton_overframe.setToolTip(t("Abre Overframe, la web de builds de la comunidad, con este "
-                                          "warframe o arma, dentro de Farmadex (pestana Web)."))
-        self.boton_wiki.setToolTip(t("Abre la wiki oficial de Warframe en el navegador: la pagina "
-                                     "del objeto abierto o, si no hay ninguno, la busqueda de lo escrito."))
+                                          "warframe o arma, dentro de Farmadex (pestaña Web)."))
+        self.boton_wiki.setToolTip(t("Abre la wiki oficial de Warframe en el navegador: la página "
+                                     "del objeto abierto o, si no hay ninguno, la búsqueda de lo escrito."))
         if self._resultados:
             self._pintar_resultados()
         self.repintar()
@@ -621,7 +621,7 @@ class PestanaBuscador(QWidget):
             return
         pares = []
         if self.boton_objetivo.isEnabled():
-            pares.append(("+", t("Anadir a mis metas")))
+            pares.append(("+", t("Añadir a mis metas")))
         if self.boton_wiki.isEnabled():
             pares.append(("W", t("Wiki")))
         if not self.boton_overframe.isHidden():
@@ -895,7 +895,7 @@ class PestanaBuscador(QWidget):
             self._vaciar_ficha()
             self._poner_ficha(
                 f"<p style='color:{PALETA['suave']};margin-top:8px'>"
-                + html.escape(t("No hay datos de fecha de salida en el indice. Se anaden al "
+                + html.escape(t("No hay datos de fecha de salida en el índice. Se añaden al "
                                 "actualizar los datos del juego."))
                 + "</p>"
             )
@@ -972,7 +972,7 @@ class PestanaBuscador(QWidget):
                 f"<b>{html.escape(nombre_idioma(f))}</b></a></td>"
                 f"<td style='color:{p['suave']}'>{html.escape(categoria_es(f['categoria'], f.get('tipo')))}</td>"
                 f"<td align='right'><a style='color:{p['acento']};text-decoration:none' href='item:{f['item_id']}'>"
-                f"{html.escape(t('Como conseguirlo'))} &rarr;</a></td></tr>"
+                f"{html.escape(t('Cómo conseguirlo'))} &rarr;</a></td></tr>"
             )
         return _envolver(filas)
 
@@ -982,7 +982,7 @@ class PestanaBuscador(QWidget):
         if not nota:
             return ""
         p = PALETA
-        texto = html.escape(t("Lo mas nuevo: {actualizacion} ({fecha}).", actualizacion=novedades.titulo(nota),
+        texto = html.escape(t("Lo más nuevo: {actualizacion} ({fecha}).", actualizacion=novedades.titulo(nota),
                               fecha=novedades.fecha_legible(nota["fecha"])))
         if nota["items"]:
             otros = ", ".join(
@@ -990,7 +990,7 @@ class PestanaBuscador(QWidget):
                 f"{html.escape(nombre_idioma(f))}</a>"
                 for f in nota["items"]
             )
-            texto += f" {html.escape(t('Tambien salio:'))} {otros}."
+            texto += f" {html.escape(t('También salió:'))} {otros}."
         return f"<div style='color:{p['suave']};margin-top:6px'>{texto}</div>"
 
     def _vaciar_ficha(self) -> None:
@@ -1048,7 +1048,7 @@ class PestanaBuscador(QWidget):
             )
             partes.append(
                 f"<div style='color:{p['suave']};margin-top:10px'>"
-                f"{html.escape(t('Quiza buscabas:'))}</div><ul>{enlaces}</ul>"
+                f"{html.escape(t('Quizá buscabas:'))}</div><ul>{enlaces}</ul>"
             )
         partes.append(
             f"<p style='color:{p['suave']};margin-top:10px'>"
@@ -1111,7 +1111,7 @@ class PestanaBuscador(QWidget):
         if r["tipo_resultado"] == "modo":
             elemento = QListWidgetItem(modos_mision.nombre(r["modo"]))
             n = len(misiones.nodos_de_modo(self.con, r["modo"])) if self.con else 0
-            subtitulo = t("Tipo de mision") + (" · " + t("{n} nodos", n=n) if n else "")
+            subtitulo = t("Tipo de misión") + (" · " + t("{n} nodos", n=n) if n else "")
         else:
             elemento = QListWidgetItem(misiones.titulo_nodo(r))
             subtitulo = " · ".join(
@@ -1218,7 +1218,7 @@ class PestanaBuscador(QWidget):
     def _detalle_modo(self, modo: str) -> str:
         nombre = modos_mision.nombre(modo)
         otro = modos_mision.MODOS[modo][1] if es_castellano() else ""
-        detalle = html.escape(t("Tipo de mision"))
+        detalle = html.escape(t("Tipo de misión"))
         if otro and otro != nombre:
             detalle += " &middot; " + html.escape(otro)
         return detalle
@@ -1272,8 +1272,8 @@ class PestanaBuscador(QWidget):
             return ""
         _, _, que, recompensas = modos_mision.MODOS[modo]
         return (
-            _seccion(t("Como se juega"), "mision")
-            + f"<p style='margin:2px 0 6px 0'><b>{html.escape(t('Que hacer:'))}</b> {html.escape(t(que))}</p>"
+            _seccion(t("Cómo se juega"), "mision")
+            + f"<p style='margin:2px 0 6px 0'><b>{html.escape(t('Qué hacer:'))}</b> {html.escape(t(que))}</p>"
             + f"<p style='margin:2px 0 6px 0'><b>{html.escape(t('Recompensas:'))}</b> "
               f"{html.escape(t(recompensas))}</p>"
             + (self._tabla_disrupcion() if modo == "Disruption" else "")
@@ -1304,7 +1304,7 @@ class PestanaBuscador(QWidget):
         for era in ERAS:
             donde = eras.get(era)
             if donde and len(donde) < len(letras):
-                trozos.append(t("Aqui las reliquias {era} solo salen en: {letras}.", era=era,
+                trozos.append(t("Aquí las reliquias {era} solo salen en: {letras}.", era=era,
                                 letras=", ".join(sorted(donde))))
         return " ".join(trozos)
 
@@ -1359,7 +1359,7 @@ class PestanaBuscador(QWidget):
         sobran = len(premios) - len(visibles)
         if sobran > 0:
             salida += (f"<div style='margin-top:4px'><a style='color:{p['suave']};text-decoration:none' "
-                       f"href='mas:{letra}'>{html.escape(t('y {n} mas', n=sobran))}</a></div>")
+                       f"href='mas:{letra}'>{html.escape(t('y {n} más', n=sobran))}</a></div>")
         elif todas and len(premios) > MAX_FILAS_ROTACION:
             salida += (f"<div style='margin-top:4px'><a style='color:{p['suave']};text-decoration:none' "
                        f"href='mas:{letra}'>{html.escape(t('ver menos'))}</a></div>")
@@ -1378,7 +1378,7 @@ class PestanaBuscador(QWidget):
             if rot:
                 titulo = _rotacion(self.con, rot, p["acento"], n["modo"])
             else:
-                titulo = html.escape(t("Al terminar la mision"))
+                titulo = html.escape(t("Al terminar la misión"))
             partes.append(f"<div style='margin:6px 0 2px 4px;font-weight:bold'>{titulo}</div>")
             filas = []
             for r in premios[rot]:
@@ -1400,7 +1400,7 @@ class PestanaBuscador(QWidget):
         linea = enlaces_wiki.linea(nodos or [{"modo": modo}], p["suave"], p["acento"])
         video = (
             f"<p style='margin-top:6px;margin-bottom:0'><a style='color:{p['acento']};text-decoration:none' "
-            f"href='video:'>{html.escape(t('Guias en YouTube'))} &rarr;</a></p>"
+            f"href='video:'>{html.escape(t('Guías en YouTube'))} &rarr;</a></p>"
         )
         return linea + video
 
@@ -1498,9 +1498,9 @@ class PestanaBuscador(QWidget):
             if not modo:
                 f.terminar()
                 return
-            f.anadir(self._cabecera(t("Mision||nodo"), modos_mision.nombre(modo), self._detalle_modo(modo)))
+            f.anadir(self._cabecera(t("Misión||nodo"), modos_mision.nombre(modo), self._detalle_modo(modo)))
             self._paneles_modo(modo, None)
-            f.anadir(self._panel_html(t("Que hacer"), self._html_que_hacer(modo) + self._pie_mision([], modo)))
+            f.anadir(self._panel_html(t("Qué hacer"), self._html_que_hacer(modo) + self._pie_mision([], modo)))
             f.anadir(self._panel_html(t("Nodos de este tipo ({n})", n=len(misiones.nodos_de_modo(self.con, modo))),
                                       self._bloque_nodos_modo(modo, titulo=False)))
             f.terminar()
@@ -1513,7 +1513,7 @@ class PestanaBuscador(QWidget):
         titulo = misiones.titulo_nodo(n)
         otro = n["nodo_en"] if es_castellano() else (n["nodo_es"] or "")
         planeta = nombre_idioma(n, "planeta")
-        rotulo = " · ".join(x for x in (t("Mision||nodo"), planeta) if x)
+        rotulo = " · ".join(x for x in (t("Misión||nodo"), planeta) if x)
         # El planeta ya va en el rotulo; debajo, el nombre en el otro idioma del indice.
         sub = html.escape(otro) if otro and otro != titulo else ""
         f.anadir(self._cabecera(rotulo, titulo, sub, self._etiquetas_nodo(n)))
@@ -1528,7 +1528,7 @@ class PestanaBuscador(QWidget):
             rejilla.setVerticalSpacing(px(12, False))
             for i, rot in enumerate(letras):
                 if rot:
-                    visible = t("Rotacion {rot}", rot=rot)
+                    visible = t("Rotación {rot}", rot=rot)
                     html_titulo = glosario.enlace("rotacion", visible.upper(), p["acento"],
                                                   detalle=modos_mision.explicacion_rotacion(modo, rot))
                     panel = self._panel(visible, html_titulo=html_titulo)
@@ -1536,7 +1536,7 @@ class PestanaBuscador(QWidget):
                     if corta and panel.cabecera is not None:
                         panel.cabecera.addWidget(etiqueta(corta, "pequeno", tinta="suave"))
                 else:
-                    panel = self._panel(t("Al terminar la mision"))
+                    panel = self._panel(t("Al terminar la misión"))
                 panel.capa.addWidget(f.bloque(self._filas_rotacion(premios[rot], rot in self._rotaciones_abiertas,
                                                                    rot)))
                 panel.capa.addStretch(1)
@@ -1547,7 +1547,7 @@ class PestanaBuscador(QWidget):
         else:
             f.anadir(self._panel_html(t("Recompensas"), f"<p style='color:{p['suave']};margin:0'>"
                                       f"{html.escape(t('Este nodo no trae tabla de recompensas en los datos.'))}</p>"))
-        f.anadir(self._panel_html(t("Que hacer"), self._html_que_hacer(modo) + self._pie_mision([n], modo)))
+        f.anadir(self._panel_html(t("Qué hacer"), self._html_que_hacer(modo) + self._pie_mision([n], modo)))
         f.terminar()
 
     def _paneles_modo(self, modo: str, premios: dict | None) -> None:
@@ -1555,7 +1555,7 @@ class PestanaBuscador(QWidget):
         contenido = self._html_que_te_dan(modo, premios)
         if not contenido:
             return
-        panel = self._panel(t("Que te dan y cuando"), "rotacion")
+        panel = self._panel(t("Qué te dan y cuándo"), "rotacion")
         celdas = self._celdas_tira(modo)
         if celdas:
             panel.capa.addWidget(TiraRondas(celdas))
@@ -1589,7 +1589,7 @@ class PestanaBuscador(QWidget):
         if item["es_prime"]:
             salida.append(("Prime", color_rareza("Rare"), "prime"))
         if item["vaulted"]:
-            salida.append((t("En boveda"), COLOR_BOVEDA, "boveda"))
+            salida.append((t("En bóveda"), COLOR_BOVEDA, "boveda"))
         elif item["vaulted"] == 0 and es_reliquia:
             salida.append((t("Disponible"), COLOR_DISPONIBLE, "boveda"))
         elif item["vaulted"] == 0 and item["es_prime"]:
@@ -1597,7 +1597,7 @@ class PestanaBuscador(QWidget):
         if item["ducados"]:
             salida.append((t("{n} ducados", n=item["ducados"]), "suave", "ducados"))
         if detalles_arma and detalles_arma.get("maestria"):
-            salida.append((t("Maestria {n}", n=ficha_detalles.numero(detalles_arma["maestria"], 0)), "suave",
+            salida.append((t("Maestría {n}", n=ficha_detalles.numero(detalles_arma["maestria"], 0)), "suave",
                            "maestria"))
         return salida
 
@@ -1666,20 +1666,20 @@ class PestanaBuscador(QWidget):
         # Orden: lo que se busca primero arriba (el codigo de un glifo es la ficha entera),
         # luego como y donde conseguirlo, y lo largo (habilidades, efecto rango a rango) al final.
         if extra.get("glifo"):
-            der.addWidget(self._panel_html(t("Codigo de canje"), extra["glifo"]))
+            der.addWidget(self._panel_html(t("Código de canje"), extra["glifo"]))
         if pasos:
-            panel = self._panel(t("Como conseguirlo"))
+            panel = self._panel(t("Cómo conseguirlo"))
             panel.capa.addWidget(hitos(pasos, self._enlace))
             der.addWidget(panel)
         elif partes["como"]:
-            der.addWidget(self._panel_html(t("Como conseguirlo"), partes["como"]))
+            der.addWidget(self._panel_html(t("Cómo conseguirlo"), partes["como"]))
         if arma:
             der.addWidget(self._panel_estadisticas_arma(arma))
         if extra.get("warframe"):
-            der.addWidget(self._panel_html(t("Estadisticas"), extra["warframe"]))
+            der.addWidget(self._panel_html(t("Estadísticas"), extra["warframe"]))
         donde = partes["componentes"] or (partes["planeta"] + partes["fuentes"] + partes["sin_fuentes"])
         if donde:
-            der.addWidget(self._panel_html(t("Donde se consigue"), donde))
+            der.addWidget(self._panel_html(t("Dónde se consigue"), donde))
         if partes["reliquias"]:
             der.addWidget(self._panel_html(t("Reliquias"), partes["reliquias"], "reliquia"))
         if partes["contenido"]:
@@ -1717,7 +1717,7 @@ class PestanaBuscador(QWidget):
             return None
         if not 1 <= n <= 5:
             return None
-        panel = self._panel(t("Disposicion de agrietado"), "disposicion")
+        panel = self._panel(t("Disposición de agrietado"), "disposicion")
         rombos = RombosDisposicion(n)
         rombos.setToolTip(glosario.texto("disposicion"))
         exacta = etiqueta(f"×{ficha_detalles.numero(arma['riven'], 2)}" if arma.get("riven") else "", "seccion")
@@ -1726,11 +1726,11 @@ class PestanaBuscador(QWidget):
         boton.clicked.connect(self._ver_agrietados)
         panel.capa.addLayout(fila(rombos, exacta, None, boton, espacio=px(14, False)))
         if n <= 2:
-            nota = t("Cuantos mas rombos, mas fuertes salen sus agrietados. Este sale flojo: es de las mas usadas.")
+            nota = t("Cuantos más rombos, más fuertes salen sus agrietados. Este sale flojo: es de las más usadas.")
         elif n == 3:
-            nota = t("Cuantos mas rombos, mas fuertes salen sus agrietados. Este va en la media.")
+            nota = t("Cuantos más rombos, más fuertes salen sus agrietados. Este va en la media.")
         else:
-            nota = t("Cuantos mas rombos, mas fuertes salen sus agrietados. Este sale fuerte: casi nadie la usa.")
+            nota = t("Cuantos más rombos, más fuertes salen sus agrietados. Este sale fuerte: casi nadie la usa.")
         panel.capa.addWidget(etiqueta(nota, "pequeno", envolver=True))
         return panel
 
@@ -1746,7 +1746,7 @@ class PestanaBuscador(QWidget):
             valor.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
             valor.setStyleSheet(f"color: {PALETA['acento'] if estado.estado == SIN_TOCAR else color};")
             glosario.aplicar(valor, "dominado")
-            pares.append((t("Maestria"), valor))
+            pares.append((t("Maestría"), valor))
         tienes = self._texto_tienes(datos)
         if tienes:
             pares.append((t("Tienes"), tienes))
@@ -1777,13 +1777,13 @@ class PestanaBuscador(QWidget):
         return t("Tienes {n}", n=lectura.cantidad)
 
     def _panel_estadisticas_arma(self, arma: dict) -> PanelC:
-        panel = self._panel(t("Estadisticas"))
+        panel = self._panel(t("Estadísticas"))
         filas = ficha_detalles.estadisticas_arma(arma)
         panel.capa.addWidget(estadisticas(filas, 1 if self.ficha.estrecha() and len(filas) > 4 else 2))
         dano = ficha_detalles.dano_arma(arma)
         if arma.get("dano_total") or dano:
             total = arma.get("dano_total") or sum(v for _c, _n, v, _col in dano)
-            rotulo = etiqueta(t("Dano {n}", n=ficha_detalles.numero(total)), "rotulo", mayus=True)
+            rotulo = etiqueta(t("Daño {n}", n=ficha_detalles.numero(total)), "rotulo", mayus=True)
             linea = QHBoxLayout()
             linea.setSpacing(px(12, False))
             linea.addWidget(rotulo)
@@ -1819,7 +1819,7 @@ class PestanaBuscador(QWidget):
                 lectura = estado_inventario.cantidad_de(self.usuario, c["unique_name"])
                 if lectura is not None:
                     progreso = min(1.0, lectura.cantidad / (c["item_count"] or 1))
-            casilla = CasillaC(nombre_idioma(c), t("tu estas aqui") if c["id"] == actual else "", progreso,
+            casilla = CasillaC(nombre_idioma(c), t("tú estás aquí") if c["id"] == actual else "", progreso,
                                marcada=c["id"] == actual, lado_imagen=46)
             casilla.nombre.setProperty("fuenteC", nombre_idioma(c))
             casilla.poner_imagen(self._pedir_imagen(c.get("imagen"), px(46, False)))
@@ -1852,7 +1852,7 @@ class PestanaBuscador(QWidget):
             ref_txt = glosario.enlace("refinamiento", pestana_primes.texto_refinamiento(refinamiento), p["suave"])
             if ruta["solo_en_boveda"]:
                 paso1 = (t("Consigue la reliquia {reliquia}", reliquia=nombres),
-                         glosario.enlace("boveda", t("En boveda: solo por intercambio, Baro Ki'Teer o Prime Resurgence"),
+                         glosario.enlace("boveda", t("En bóveda: solo por intercambio, Baro Ki'Teer o Prime Resurgence"),
                                          COLOR_BOVEDA))
             elif m:
                 sitio = " &middot; ".join(x for x in (
@@ -1867,12 +1867,12 @@ class PestanaBuscador(QWidget):
                          sitio + (f" &middot; {html.escape(t('unos {tiempo}', tiempo=tiempo))}" if tiempo else ""))
             else:
                 paso1 = (t("Consigue la reliquia {reliquia}", reliquia=nombres),
-                         html.escape(t("Ninguna de sus reliquias cae en una mision que se pueda estimar.")))
+                         html.escape(t("Ninguna de sus reliquias cae en una misión que se pueda estimar.")))
             fisura = glosario.enlace("fisura", t("fisura {era}", era=era) if era else t("fisura"), p["texto"])
             detalle2 = (html.escape(t("Refinada a {refinamiento}: {prob}% de que salga", refinamiento="@@R@@",
                                       prob=f"{prob:.1f}")).replace("@@R@@", ref_txt)
                         if prob else ref_txt)
-            paso2 = (t("Abrela en una {fisura}", fisura=fisura), detalle2)
+            paso2 = (t("Ábrela en una {fisura}", fisura=fisura), detalle2)
             if m and ruta.get("minutos"):
                 clave_modo = "radshare" if escuadra > 1 else "refinamiento"
                 tiempo_total = glosario.enlace(
@@ -1935,7 +1935,7 @@ class PestanaBuscador(QWidget):
             # Una reliquia sin mision no "puede venir de una mision de historia": esta en
             # boveda (o acaba de salir de ella) y se compra a otro jugador. Lo mismo que
             # dicen la vista compacta y Objetivos de esa misma reliquia.
-            texto = t("No cae en ninguna mision activa")
+            texto = t("No cae en ninguna misión activa")
             if item["vaulted"]:
                 texto += ". " + t("Hay que comprarla a otro jugador.")
             partes["sin_fuentes"] = (
@@ -1944,7 +1944,7 @@ class PestanaBuscador(QWidget):
         elif not datos["fuentes"] and not datos["componentes"]:
             partes["sin_fuentes"] = (
                 f"<p style='color:{p['suave']}'>"
-                + html.escape(t("Sin fuentes registradas: puede venir de una mision de historia, "
+                + html.escape(t("Sin fuentes registradas: puede venir de una misión de historia, "
                                 "del mercado, de un evento o de un sindicato."))
                 + "</p>"
             )
@@ -1999,7 +1999,7 @@ class PestanaBuscador(QWidget):
         salida.append(partes["como"])
         salida.append(ficha_detalles.html_detalles(self.con, item))
         if partes["componentes"]:
-            salida.append(_seccion(t("Donde se consigue")) + partes["componentes"])
+            salida.append(_seccion(t("Dónde se consigue")) + partes["componentes"])
         if partes["reliquias"]:
             salida.append(_seccion(t("Reliquias"), "reliquia") + partes["reliquias"])
         if partes["contenido"]:
@@ -2037,7 +2037,7 @@ class PestanaBuscador(QWidget):
                 m = ruta_p["mision"]
                 if ruta_p["solo_en_boveda"]:
                     donde = rombo + enlace_rel + " " + glosario.enlace(
-                        "boveda", t("Solo en boveda: intercambio o Baro"), COLOR_BOVEDA)
+                        "boveda", t("Solo en bóveda: intercambio o Baro"), COLOR_BOVEDA)
                 elif m:
                     sitio = " ".join(x for x in (
                         glosario.enlace_mision(m.get("modo"), m["mision"], p["suave"], m.get("rotacion"))
@@ -2089,7 +2089,7 @@ class PestanaBuscador(QWidget):
             era = era_de(r.get("nombre_en"))
             color = COLOR_ERA.get(era, p["acento"])
             if r["vaulted"]:
-                estado = glosario.enlace("boveda", t("en boveda").upper(), COLOR_BOVEDA)
+                estado = glosario.enlace("boveda", t("en bóveda").upper(), COLOR_BOVEDA)
             else:
                 prob = r["probabilidades"].get("Radiant")
                 estado = (glosario.enlace("refinamiento", t("{prob}% en Radiante", prob=f"{prob:.0f}"), p["suave"])
@@ -2112,7 +2112,7 @@ class PestanaBuscador(QWidget):
         if resto:
             en_boveda = sum(1 for r, _c in resto if r["vaulted"])
             salida += (f"<div style='color:{p['suave']};margin-top:4px'>"
-                       + html.escape(t("y {n} reliquias mas ({boveda} en boveda)", n=len(resto), boveda=en_boveda))
+                       + html.escape(t("y {n} reliquias más ({boveda} en bóveda)", n=len(resto), boveda=en_boveda))
                        + "</div>")
         return salida
 
@@ -2135,7 +2135,7 @@ class PestanaBuscador(QWidget):
         radiante = glosario.enlace("refinamiento", t("{prob}% en Radiante", prob=f"{prob:.1f}"), p["suave"])
         cuerpo = [
             f"<div style='color:{p['acento']};font-size:12px;font-weight:bold'>"
-            f"{html.escape(t('Por donde empezar')).upper()}</div>",
+            f"{html.escape(t('Por dónde empezar')).upper()}</div>",
             f"<div style='font-size:16px;margin-top:2px'><a style='color:{p['texto']};"
             f"text-decoration:none' href='item:{reliquia['reliquia_id']}'><b>{html.escape(nombre)}</b></a>"
             f" <span style='color:{p['suave']}'>&middot; {radiante}</span></div>",
@@ -2143,7 +2143,7 @@ class PestanaBuscador(QWidget):
         if ruta["solo_en_boveda"]:
             cuerpo.append(
                 "<div style='margin-top:2px'>"
-                + glosario.enlace("boveda", t("Solo en boveda: hay que comprarla a otro jugador"), COLOR_BOVEDA)
+                + glosario.enlace("boveda", t("Solo en bóveda: hay que comprarla a otro jugador"), COLOR_BOVEDA)
                 + "</div>"
             )
             color = COLOR_BOVEDA
@@ -2191,7 +2191,7 @@ class PestanaBuscador(QWidget):
             tipo = t("Jefe: suelta un recurso del planeta al morir")
         cuerpo = [
             f"<div style='color:{p['acento']};font-size:12px;font-weight:bold'>"
-            f"{html.escape(t('Por donde empezar')).upper()}</div>",
+            f"{html.escape(t('Por dónde empezar')).upper()}</div>",
             f"<div style='font-size:16px;margin-top:2px'>{' &middot; '.join(trozos)}</div>",
         ]
         if tipo:
@@ -2214,10 +2214,11 @@ class PestanaBuscador(QWidget):
             era = era_de(r.get("nombre_en"))
             nombre = html.escape(nombre_idioma(r))
             color = COLOR_BOVEDA if r["vaulted"] else COLOR_DISPONIBLE
-            estado = t("en boveda") if r["vaulted"] else t("disponible")
+            estado = t("en bóveda") if r["vaulted"] else t("disponible")
             probs = " &nbsp; ".join(
                 glosario.enlace("refinamiento", _glosa(self.con, "refinamiento", ref)[:3], p["suave"])
-                + f" <b>{r['probabilidades'][ref]:.1f}%</b>"
+                # &nbsp;: la abreviatura y su cifra no se separan al partir la linea.
+                + f"&nbsp;<b>{r['probabilidades'][ref]:.1f}%</b>"
                 for ref in REFINAMIENTOS
                 if ref in r["probabilidades"]
             )
@@ -2231,7 +2232,7 @@ class PestanaBuscador(QWidget):
                 + (f" &middot; {_tiempo(m['minutos_medios'], p['suave'], fila=m)}" if m["minutos_medios"] is not None else "")
                 + "</div>"
                 for m in misiones_r
-            ) or f"<div style='color:{p['suave']}'>{html.escape(t('No cae en ninguna mision activa'))}</div>"
+            ) or f"<div style='color:{p['suave']}'>{html.escape(t('No cae en ninguna misión activa'))}</div>"
             cuerpo = (
                 "<table cellpadding='0' cellspacing='0' width='100%'><tr>"
                 f"<td><span style='color:{COLOR_ERA.get(era, p['acento'])}'>◆</span> "
@@ -2248,8 +2249,8 @@ class PestanaBuscador(QWidget):
             disponibles = sum(1 for r in resto if not r["vaulted"])
             tarjetas.append(
                 f"<div style='color:{p['suave']};margin:4px 0 8px 4px'>"
-                + html.escape(t("y {n} reliquias mas ({disponibles} fuera de boveda), todas con "
-                                "probabilidades mas bajas", n=len(resto), disponibles=disponibles))
+                + html.escape(t("y {n} reliquias más ({disponibles} fuera de bóveda), todas con "
+                                "probabilidades más bajas", n=len(resto), disponibles=disponibles))
                 + "</div>"
             )
         cabecera = _seccion(t("Reliquias"), "reliquia") if titulo else ""
@@ -2299,10 +2300,10 @@ class PestanaBuscador(QWidget):
         if hay_estimacion:
             partes.append(
                 f"<div style='color:{p['suave']};font-size:12px;margin:2px 0 0 4px'>"
-                + html.escape(t("Los tiempos son una estimacion para un jugador medio: lo que suele "
-                                "durar la mision dividido por la probabilidad. Los enemigos comunes "
+                + html.escape(t("Los tiempos son una estimación para un jugador medio: lo que suele "
+                                "durar la misión dividido por la probabilidad. Los enemigos comunes "
                                 "(probabilidad por muerte), los sindicatos y las incursiones no se "
-                                "pueden estimar asi."))
+                                "pueden estimar así."))
                 + "</div>"
             )
         return "".join(partes)
@@ -2351,7 +2352,7 @@ class PestanaBuscador(QWidget):
                 extra.append(html.escape(etapa_bonita(f["etapa"])))
             if f["standing"]:
                 extra.append(glosario.enlace(
-                    "reputacion", t("{standing} de reputacion", standing=f["standing"]), p["suave"]
+                    "reputacion", t("{standing} de reputación", standing=f["standing"]), p["suave"]
                 ))
             if f["probabilidad_enemigo"]:
                 extra.append(html.escape(t("tabla {prob}%", prob=f"{f['probabilidad_enemigo']:.1f}")))
@@ -2374,7 +2375,7 @@ class PestanaBuscador(QWidget):
         if sobran:
             filas.append(
                 f"<tr><td colspan='6' style='color:{p['suave']}'>"
-                f"{html.escape(t('y {n} sitios mas, con mas tiempo o menos probabilidad', n=sobran))}</td></tr>"
+                f"{html.escape(t('y {n} sitios más, con más tiempo o menos probabilidad', n=sobran))}</td></tr>"
             )
         if pvp:
             maxima = max((f["probabilidad"] or 0) for f in pvp)
@@ -2396,7 +2397,7 @@ class PestanaBuscador(QWidget):
         cuerpo = [
             f"<div style='color:{p['acento']};font-size:12px;font-weight:bold'>"
             f"{html.escape(t('Recurso de planeta')).upper()}</div>",
-            f"<div style='margin-top:2px'>{html.escape(t('Cae en cualquier mision de'))} "
+            f"<div style='margin-top:2px'>{html.escape(t('Cae en cualquier misión de'))} "
             f"<b>{planetas}</b>: {html.escape(t('lo sueltan los enemigos y los contenedores, sin porcentaje conocido.'))}</div>",
         ]
         if datos["nodos"]:
@@ -2406,7 +2407,7 @@ class PestanaBuscador(QWidget):
                 for n in datos["nodos"]
             )
             cuerpo.append(f"<div style='color:{p['suave']};margin-top:2px'>"
-                          f"{html.escape(t('Misiones rapidas para farmearlo:'))} {rapidas}</div>")
+                          f"{html.escape(t('Misiones rápidas para farmearlo:'))} {rapidas}</div>")
         return _tarjeta("".join(cuerpo), p["acento"])
 
 
@@ -2446,7 +2447,7 @@ def _enlace_reliquia(reliquia: dict, color: str) -> str:
 def _rotacion_prime(mision: dict, color: str) -> str:
     if mision.get("rotacion"):
         return glosario.enlace_rotacion(mision.get("modo"), mision["rotacion"],
-                                        t("rotacion {rot}", rot=mision["rotacion"]), color)
+                                        t("rotación {rot}", rot=mision["rotacion"]), color)
     return html.escape(mision.get("etapa") or "")
 
 
@@ -2484,8 +2485,8 @@ def _tiempo(minutos: float | None, color: str, negrita: bool = False, fila: dict
 
 MOTIVOS_SIN_ESTIMACION = {
     "por_muerte": "por muerte",
-    "reputacion": "reputacion",
-    "diaria": "1 al dia",
+    "reputacion": "reputación",
+    "diaria": "1 al día",
     "semanal": "1 a la semana",
     "pvp": "PvP",
     "evento": "solo en evento",

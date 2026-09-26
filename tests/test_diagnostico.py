@@ -38,7 +38,7 @@ def test_con_todo_bien_no_hay_ningun_problema():
     d = _todo_bien()
     assert d.problemas == []
     assert any("EE.log encontrado" in t for t in _textos(d, OK))
-    assert any("120 lineas" in t and "hace 5 s" in t for t in _textos(d, OK))
+    assert any("120 líneas" in t and "hace 5 s" in t for t in _textos(d, OK))
     assert any("reliquia_recompensas" in t and "hace 2 min" in t for t in _textos(d, OK))
     assert any("2560x1440" in t for t in _textos(d, OK))
     assert "[OK]" in d.texto() and "[MAL]" not in d.texto()
@@ -78,9 +78,9 @@ def test_motor_ocr_caido_lectura_apagada_y_datos_sin_descargar_son_problemas():
 
 def test_se_distingue_no_leido_de_leido_pero_no_pintado():
     d = _todo_bien(ultima_lectura=None, ultima_pintada=None)
-    assert any("no se leyo nada" in t for t in _textos(d, MAL))
+    assert any("no se leyó nada" in t for t in _textos(d, MAL))
     d = _todo_bien(ultima_lectura=(AHORA - 59, 0), ultima_pintada=None)
-    assert any("no se reconocio ninguna" in t for t in _textos(d, MAL))
+    assert any("no se reconoció ninguna" in t for t in _textos(d, MAL))
     d = _todo_bien(ultima_pintada=None)
     assert any("no se pintaron" in t for t in _textos(d, MAL))
     # Sin ninguna pantalla vista, no es un problema: es que aun no se abrio ninguna reliquia.

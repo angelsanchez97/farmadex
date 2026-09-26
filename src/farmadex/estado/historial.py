@@ -365,7 +365,7 @@ def texto_resumen(resumen: ResumenDia) -> str:
     else:
         valor = t("Valor: {n} platino, {d} ducados", n=platino, d=ducados)
     lineas = [
-        t("Dia {fecha}", fecha=resumen.fecha.isoformat()),
+        t("Día {fecha}", fecha=resumen.fecha.isoformat()),
         reliquias,
         t("Misiones completadas: {n}", n=resumen.misiones),
         valor,
@@ -373,7 +373,7 @@ def texto_resumen(resumen: ResumenDia) -> str:
     if resumen.sin_valorar:
         lineas.append(t("Lecturas sin valorar: {n}", n=resumen.sin_valorar))
     if resumen.caidas:
-        lineas.append(t("Ha caido:"))
+        lineas.append(t("Ha caído:"))
         for c in resumen.caidas:
             lineas.append(f"  {c.nombre} x{c.veces} (~{c.valor:.0f}p)")
     if resumen.objetivos:
