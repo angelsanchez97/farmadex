@@ -12,259 +12,195 @@ dice adónde ir y cuánto vas a tardar, más o menos.
 
 **[Descargar la última versión](https://github.com/angelsanchez97/farmadex/releases/latest)**
 · Windows 10/11 · [Manual](docs/MANUAL.md) · [Guía de instalación](docs/INSTALACION.md)
-· [¿Es seguro?](docs/SEGURIDAD.md)
+· [¿Es seguro?](docs/SEGURIDAD.md) · [Discord](https://discord.gg/7ezAmfqesS)
 
-![Ficha de los Sensores neuronales con Alad V en primer lugar](herramientas/capturas/ficha_sensores_neuronales_barras.png)
+![Tablero de Farmadex con tu siguiente paso, las fisuras que te sirven y tus metas](herramientas/capturas/tablero_es.png)
+
+## Abres Farmadex y ya sabes qué hacer
+
+Lo primero que ves ya no es una pantalla en blanco esperando a que escribas
+algo: es el **Tablero**. Ahí tienes tu siguiente paso de verdad, la pieza más
+rápida de conseguir de todo lo que llevas apuntado, con su reliquia, dónde
+farmearla y en qué fisura de las que hay abiertas ahora mismo puedes abrirla.
+Debajo, las fisuras que te sirven, un resumen de tus metas con su progreso, los
+ciclos de Cetus, el Valle del Orbe y Cambion, y lo último que ha salido en el
+juego.
+
+Si no llevas nada apuntado todavía, el Tablero te lo dice claro y te lleva
+directo al buscador. En cuanto marcas tu primer objetivo, empieza a decirte
+qué hacer.
 
 ## Buscas algo y te dice adónde ir
 
-Escribes «sensores neuronales» y lo primero que sale es Alad V, en Júpiter.
-Debajo, que también caen en cualquier misión del planeta y cuáles son las más
-cortas, y luego el resto de sitios donde puedes conseguirlos.
+Escribes «braton prime» y te sale la ficha con todo lo que hace falta: sus
+estadísticas, su disposición de riven con los puntitos de siempre, y debajo,
+de dónde sale cada pieza y en qué reliquias, con lo que vas a tardar en
+conseguirlas. Los botones de arriba abren la wiki, YouTube o sus builds en
+Overframe sin salir de Farmadex.
 
-Lo importante es el orden: no va por probabilidad, va por lo que vas a tardar
-de verdad. Una rotación C con buena pinta sobre el papel puede ser una hora de
-partida; un jefe que suelta la pieza casi siempre, diez minutos. La barra de
-cada fila te lo enseña de un vistazo, y si pasas el ratón por encima del
-tiempo te explica de dónde sale la cuenta.
+![Ficha de la Braton Prime con sus estadísticas, la disposición de riven y dónde se consigue cada pieza](herramientas/capturas/ficha_estadisticas_es.png)
 
-![Desglose del tiempo al pasar el ratón por encima](herramientas/capturas/ficha_sensores_neuronales_desglose.png)
+Lo importante sigue siendo el orden: no va por probabilidad, va por lo que
+vas a tardar de verdad. Una rotación con buena pinta sobre el papel puede ser
+una hora de partida; un jefe que suelta la pieza casi siempre, mucho menos.
+Entiende erratas, nombres en inglés y cosas como «chasis de mesa prime» o «el
+plano del rhino».
 
-Los tiempos son para alguien que juega a un ritmo normal. Si vas más rápido o
-más tranquilo, lo cambias en Ajustes > Ritmo de juego y todo se recalcula.
+## Una ficha de Prime cuenta toda la historia
 
-Entiende erratas, nombres en inglés y cosas como «chasis de mesa prime» o
-«plano del rhino». Si es una pieza Prime, te dice en qué reliquias cae, cuáles
-están en bóveda y cuánto piden por ella en warframe.market.
+Si buscas una pieza Prime, la ficha no se queda en «dónde sale»: te dice qué
+reliquia la lleva, en qué paso vas (conseguir la reliquia, abrirla en una
+fisura, elegir la pieza), si esa reliquia está en bóveda y cuánto piden por
+la pieza y por el set entero en warframe.market, todo en un único sitio.
+
+![Ficha del Chasis de Citrine Prime con los pasos para conseguirlo y sus reliquias](herramientas/capturas/ficha_objeto_prime.png)
 
 ## Cada cosa con su color
 
-Busca «sierra» y te salen el mod Sierra, la Sierra espectral, un aspecto con
-«sierra» en el nombre... Antes tenías que leer cada línea para saber qué era
-cada cosa. Ahora cada tipo lleva su color (los recursos en amarillo, los mods
-en azul, las armas en naranja...) y encima de la lista tienes la leyenda.
-Pensado sobre todo para quien empieza y todavía no sabe si algo es un mod o
-un arma.
+Busca «sierra» y te salen el mod Sierra, un aspecto con «sierra» en el
+nombre y algún objeto más. Antes tenías que leer cada línea para saber qué
+era cada cosa; ahora cada tipo lleva su color (armas, mods, warframes,
+recursos...) con su leyenda debajo de la lista, pensado sobre todo para quien
+empieza y todavía no sabe si algo es un mod o un arma.
 
-![Resultados de «sierra» con un color por tipo de objeto](herramientas/capturas/buscar_colores_es.png)
-
-## Lo que antes tenías que mirar en la wiki
-
-La ficha ya no se queda en «dónde sale». Si buscas un arma, ves sus
-estadísticas (daño, crítico, estado, cadencia...) y su disposición de riven,
-con los puntitos de siempre. Un mod te enseña lo que hace en cada rango, un
-arcano su efecto, y un warframe lo básico y sus habilidades.
-
-![Ficha del Rubico con sus estadísticas y la disposición de riven](herramientas/capturas/ficha_estadisticas_es.png)
-
-Los glifos de creadores de contenido traen su código y un botón **Copiar**:
-lo pegas en el Mercado del juego o en la web de Warframe y listo.
-
-![Glifo con su código de canje y el botón Copiar](herramientas/capturas/ficha_glifo_es.png)
-
-Y los nombres son los del juego en castellano: Interrupción, Interceptación,
-Usurpación... Si escribes el nombre antiguo o el inglés, te lo encuentra
-igual.
+![Resultados de «sierra»: el mod, con dónde farmearlo y su probabilidad por misión](herramientas/capturas/buscar_colores_es.png)
 
 ## Y cuándo cae, sin tener que mirar la wiki
 
 Lo que más me hacía salir del juego no era saber la misión, era saber
-*cuándo*: ¿esto es rotación C?, ¿y eso cuánto rato de Supervivencia es?, ¿en
-Interrupción cómo iba lo de los conductos? Por eso cada fila lo lleva al lado.
+*cuándo*: ¿esto es rotación B?, ¿y eso cuántas oleadas de Defensa son?
+Busca una misión por su nombre («Hidrón») o por su tipo («defensa»,
+«interrupción») y la ficha te lo explica: qué hay que hacer, en qué rotación
+sale cada recompensa y, si tiene truco como la Interrupción, la tabla de
+rondas y conductos.
 
-![Ficha de la reliquia Lith S19 con la rotación junto a cada misión](herramientas/capturas/ficha_lith_s19_rotaciones.png)
+![Ficha de la misión Hidrón con sus rotaciones A, B y C](herramientas/capturas/ficha_mision_es.png)
 
-En una Supervivencia te dice a partir de qué minuto sale; en una Defensa, tras
-qué oleadas; en una Interrupción, en qué ronda y cuántos conductos tienes que
-salvar. Y el nombre de cada nodo y de cada tipo de misión lleva a su página de
-la wiki oficial por si quieres leer más.
+Bajando en la misma ficha tienes el detalle de cada rotación y, si lo que
+buscas no está ahí, el enlace a la wiki y a guías en YouTube para leer más.
 
-## Misiones: escribes el nodo y te cuenta cómo va
-
-También puedes buscar una misión por su nombre («Olimpo», «Hepit») o por su
-tipo («supervivencia», «interrupción»). La ficha te explica qué hay que hacer,
-cómo van las recompensas y qué suelta cada rotación. En las que tienen
-truco, como la Interrupción, viene también la tabla de rondas y conductos.
-
-![Ficha de la misión Olimpo: cómo se juega, tabla de rotaciones y recompensas](herramientas/capturas/ficha_mision_olimpo.png)
-
-La idea es que alguien que acaba de empezar pueda entrar en una Interrupción
-sabiendo a qué va, y que quien ya la conoce sepa en qué ronda salir con lo
-que quiere.
+![Detalle de rotaciones de Hidrón, con qué hay que hacer y enlaces a la wiki](herramientas/capturas/ficha_mision_rotaciones_es.png)
 
 ## Pregúntale como hablas
 
-No hace falta escribir el nombre exacto. «Cómo sacar citrine prime» te abre
-la Citrine con por dónde empezar pieza a pieza, y «el último warframe» o
-«novedades» te enseñan lo que ha salido en la última actualización.
+No hace falta escribir el nombre exacto. Puedes preguntar por un nodo
+(«hepit»), por una pieza a medio escribir o directamente por «el último
+warframe» para ver lo que ha traído la última actualización. Con el buscador
+vacío, arriba tienes siempre una línea con las novedades, para que lo recién
+salido no se te pase.
 
-![Lo nuevo de la última actualización al escribir «el último warframe»](herramientas/capturas/novedades_ultimo_warframe.png)
+![Buscador vacío con ejemplos de qué escribir y la línea de novedades](herramientas/capturas/buscar_portada_novedades_es.png)
 
-Con el buscador vacío, arriba de la ficha tienes una línea con las
-novedades, para que lo recién salido no se te pase.
+## Mis metas: tu lista de farmeo, ordenada
 
-![Línea de Novedades con el buscador vacío](herramientas/capturas/buscar_portada_novedades.png)
+**Mis metas** junta en una sola pestaña, con sub-pestañas, lo que llevas
+apuntado (Objetivos), tus Primes (Primes) y lo que ya tienes dominado
+(Perfil).
 
-## La wiki y las guías de YouTube, a un botón
+En Objetivos apuntas lo que estás farmeando y cada cosa te dice la mejor
+forma de conseguirla ahora mismo, con un aviso de **«para esto te sirve
+hoy»**: qué fisuras abiertas en este momento te dan justo lo que necesitas.
+Si abres una reliquia en solitario, lo que te toca se descuenta solo.
 
-![Botones «Buscar en la wiki» y «Guías en YouTube»](herramientas/capturas/botones_wiki_youtube.png)
+![Pestaña Objetivos con un set abierto, sus recursos y el aviso de qué fisuras te sirven hoy](herramientas/capturas/objetivos_nuevos_es.png)
 
-Hay cosas que Farmadex no cuenta y no va a contar: las habilidades de un
-warframe, cómo se construye algo, la historia de una misión. Para eso está
-**Buscar en la wiki**, que abre la página de la wiki oficial de lo que tengas
-en pantalla.
+- **Cuántos quieres, de verdad.** Si quieres farmear quinientas de Criótica,
+  pones quinientas, y puedes sumar de golpe lo que has sacado en una partida
+  en vez de ir de uno en uno.
+- **Sin empezar, En progreso y Completados**, en pestañas. Lo terminado no
+  desaparece, por si quieres corregirlo.
+- **Un set es un solo panel**: lo abres con un clic y dentro están sus
+  piezas; un arma con receta puedes marcarla entera o abrir sus recursos y
+  apuntar cada uno por separado.
+- **Nada se borra sin querer**: antes de quitar algo te pregunta, y si
+  quieres limpiar la lista puedes marcar varios y borrarlos juntos.
 
-Y **Guías en YouTube** busca vídeos de esa misión u objeto y los pone en la
-pestaña Vídeo, dentro de Farmadex. Si juegas con un solo monitor, como yo
-muchas veces, el **modo vídeo** deja la ventana solo con el vídeo encima del
-juego: vas siguiendo la guía mientras juegas y con el atajo lo escondes y lo
-vuelves a sacar. Si en tu equipo no se puede ver ahí, te ofrece abrirlo en el
-navegador.
+En Primes tienes una caja por cada set, al estilo del Relicario de
+wf.xuerian.net: marcas lo que te falta y Farmadex te dice qué reliquias lo
+llevan y dónde conseguirlas antes.
 
-## Primes: marcas lo que te falta
+![Pestaña Primes con la cuadrícula de sets, cada uno con sus piezas](herramientas/capturas/metas_primes_es.png)
 
-![Pestaña Primes con el Plano de Caliban Prime marcado](herramientas/capturas/primes_rejilla_orokin.png)
-
-Una caja por cada Prime y una casilla por pieza, al estilo del Relicario de
-wf.xuerian.net. Marcas lo que te falta, pulsas «Dónde farmear» y te dice qué
-reliquias lo llevan y dónde conseguirlas antes, contando también el tiempo de
-hacer las fisuras para abrirlas.
-
-Las cajas van en una cuadrícula ordenada, todas del mismo ancho, como las
-celdas de una hoja de cálculo. Las Formas y los Adaptadores Exilus, que no son
-de ningún set, van aparte al final. Y arriba eliges cómo ordenarlo: por
-nombre, lo que tienes marcado primero, los que tienen más piezas en búsqueda,
-los más nuevos o lo que acabas de conseguir.
-
-![Dónde farmear el Plano de Caliban Prime](herramientas/capturas/primes_resultado_orokin.png)
-
-Las reliquias en bóveda se enseñan pero no cuentan. Arriba eliges el
-refinamiento y si vas solo o en escuadra, y el orden se ajusta. Lo que marcas
-se queda apuntado como objetivo. Si activas «Incluir lo que está en bóveda»,
-el botón se queda quieto mientras carga, para que no lo pulses dos veces
-pensando que no ha hecho caso.
-
-Qué está en bóveda lo decide mirando dónde cae cada reliquia en las tablas
-oficiales: si todavía se puede farmear, no está en bóveda. Así lo recién
-salido, como las reliquias de la Citrine Prime, no se te esconde, y la
-búsqueda, Primes, Objetivos y las recompensas dicen siempre lo mismo.
+Arriba eliges el refinamiento de tus reliquias y si vas solo o en escuadra, y
+el orden se ajusta solo. Las reliquias en bóveda se enseñan pero no cuentan
+para lo que se puede farmear todavía.
 
 ## Al abrir una reliquia, cuál coger
-
-![Panel de recompensas debajo de las cuatro tarjetas de una reliquia](herramientas/capturas/panel_recompensas_es.png)
 
 Cuando sale la pantalla de recompensas de una fisura, Farmadex pone debajo de
 cada tarjeta lo que necesitas para decidir: cuánto platino vale, cuántos
 ducados da, si está en bóveda, si te sirve para algo que estés farmeando y si
-ya la tienes. Arriba de cada tarjeta, en grande y de color, el motivo que
-importa: «TE FALTA», «COMPLETA SET», el platino o los ducados. La mejor lleva
-una estrella y el borde dorado, y el resto se apaga un poco para que no
-distraiga. No hay que pulsar nada y aparece al momento.
+ya la tienes. La mejor lleva la etiqueta «TE FALTA» o «MEJOR OPCIÓN» y el
+borde dorado, y el resto se apaga un poco para que no distraiga. No hay que
+pulsar nada y aparece al momento.
 
-Lo que se considera «mejor» lo eliges tú en Ajustes, con un solo desplegable:
-lo que te falta para tus Primes, más platino, más ducados o un equilibrio
-entre todo.
+![Panel de Farmadex debajo de las cuatro tarjetas de una reliquia, con la mejor recompensa destacada](herramientas/capturas/panel_recompensas_es.png)
 
-En la captura, las tarjetas grises de arriba imitan las del juego; lo de abajo
-es Farmadex. Si te parece mucho, en Ajustes lo puedes dejar en una etiqueta
-pequeña encima de cada recompensa.
-
-## Objetivos: tu lista de farmeo, ordenada
-
-![Pestaña Objetivos con la Magistar y sus recursos abiertos y el set de Rhino Prime desplegado](herramientas/capturas/objetivos_nuevos_es.png)
-
-En Objetivos tienes apuntado lo que estás farmeando, cada cosa con la mejor
-forma de conseguirla ahora mismo. Si abres una reliquia en solitario, lo que
-te toca se descuenta solo.
-
-- **Cuántos quieres, de verdad.** Si quieres farmear quinientas de Criótica,
-  pones quinientas. Puedes sumar de golpe lo que has sacado en una partida en
-  vez de ir de uno en uno, y el contador no se pasa de la meta.
-- **Sin empezar, En progreso y Completados**, en pestañas. Lo terminado no
-  desaparece, por si te equivocaste y quieres corregirlo.
-- **Un set es un solo panel**: lo abres con un clic y dentro están sus piezas.
-- **Armas con receta**: puedes marcar el arma entera o abrir sus recursos y
-  apuntar cada uno por separado. Muy útil con esas armas que se comen montañas
-  de un material concreto.
-- **Filtro por categoría y de diez en diez**, con lo último que añadiste
-  arriba, para no hacer scroll infinito.
-- **Nada se borra sin querer**: antes de quitar algo te pregunta, y si quieres
-  limpiar la lista puedes marcar varios y borrarlos juntos.
+Lo que se considera «mejor» lo eliges tú en Ajustes: lo que te falta para tus
+Primes, más platino, más ducados o un equilibrio entre todo. El panel es
+ahora más grande y se lee mejor si juegas en una pantalla grande.
 
 ## Mundo: lo que hay ahora, y que te avise
 
-![Pestaña Mundo con fisuras, ciclos y Baro Ki'Teer](herramientas/capturas/mundo_tablero_es.png)
+Mundo va ahora por sub-pestañas: **Todo**, **Fisuras**, **Baro y Teshin** e
+**Invasiones y alertas**. Arriba del todo te dice qué fisuras abiertas te
+sirven para lo que tienes apuntado, y lo que está a punto de acabar sale
+resaltado. Cada facción lleva su color, y si pulsas una recompensa se abre su
+ficha. El panel de Teshin, nuevo, te dice qué trae el Camino de Acero esta
+semana.
 
-Mundo es lo que hay abierto en este momento: fisuras con su cuenta atrás, los
-ciclos de Cetus, el Valle del Orbe y Cambion, Baro Ki'Teer, la incursión y
-demás. Arriba del todo te dice qué fisuras abiertas te sirven para lo que
-tienes apuntado, y lo que está a punto de acabar sale en naranja. Cada
-facción lleva su color y puedes quedarte solo con las que te interesen, y si
-pulsas una recompensa se abre su ficha.
-
-![Personalizar Mundo: qué bloques enseñar y qué avisos de Windows quieres](herramientas/capturas/mundo_avisos_es.png)
+![Pestaña Mundo con las fisuras del vacío, Baro Ki'Teer, Teshin y los ciclos](herramientas/capturas/mundo_tablero_es.png)
 
 Pero lo mejor es que ya no tienes que ir a mirarlo. En **Personalizar y
 avisos** eliges qué te interesa y Windows te avisa aunque tengas la ventana
 escondida: «ha llegado Baro», «Baro trae algo que tienes en tus objetivos»,
 «hay una fisura Axi de Supervivencia», «esta semana Teshin tiene Forma
-Umbra», «se hace de noche en Cetus»... También hay avisos para las invasiones,
-las alertas, los arbitrajes, la incursión y los arcontes. Todo viene apagado
-y cada aviso sale una sola vez. Desde ahí también escondes los bloques que no
-uses, y eliges si lo quieres en lista o en tablero sin salir de la pestaña.
+Umbra»... Todo viene apagado y cada aviso sale una sola vez.
+
+![Personalizar Mundo: qué bloques enseñar y qué avisos de Windows quieres](herramientas/capturas/mundo_avisos_es.png)
 
 ## Build: los mods de una build, con un atajo
-
-![Pestaña Build con los mods y arcanos leídos de un Rhino Prime](herramientas/capturas/build_es.png)
 
 ¿Estás viendo la build de alguien y no sabes de dónde sale medio mod? Abre en
 el juego la pantalla de mejoras de ese warframe o esa arma y pulsa
 `Ctrl+Alt+B`. Farmadex lee los mods y los arcanos que se ven, te los lista y
 al pulsar uno te abre su ficha con dónde conseguirlo. Lo que no reconoce con
-seguridad lo pone aparte, sin inventárselo.
+seguridad lo pone aparte, sin inventárselo, y desde ahí mismo puedes abrir
+sus builds en Overframe.
 
-¿Quieres ver cómo la lleva otra gente? El botón «Builds en Overframe» te abre
-las builds de ese warframe o esa arma dentro de Farmadex, en la pestaña Web.
-El mismo botón está en la ficha de cualquier warframe o arma en Buscar.
+![Pestaña Build con los mods y arcanos leídos de un Citrine Prime](herramientas/capturas/build_es.png)
 
 ## Agrietados: ¿es bueno este riven?
-
-![Pestaña Agrietados evaluando un riven de Rubico, con el grado de cada estadística y el precio de referencia](herramientas/capturas/agrietados_es.png)
 
 Te ha salido un mod agrietado y no sabes si es una joya o para disolver. Pon
 el ratón encima de la tarjeta en el juego y pulsa `Ctrl+Alt+G`, o apunta las
 estadísticas a mano. Farmadex te dice, para cada una, entre qué valores puede
-salir en esa arma y qué nota tiene la tuya, de S (lo mejor) a F. Y con
-«Consultar precio» te da una referencia de lo que se pide en warframe.market
-por rivens parecidos.
+salir en esa arma y qué nota tiene la tuya, de S (lo mejor) a F, con un
+veredicto en una frase y una referencia de precio de warframe.market.
 
-Si lo que lee de la pantalla no le cuadra, no se lo inventa: te avisa para
-que lo revises antes de evaluar.
+![Pestaña Agrietados evaluando un riven de Braton, con la nota de cada estadística y el veredicto](herramientas/capturas/agrietados_es.png)
 
-## Para jugar o para directo: modo compacto
+## Para jugar: Modo juego
 
-![Modo compacto con los resultados de «sierra» y el primero desplegado](herramientas/capturas/compacto_desplegado_es.png)
+`Ctrl+M` cambia a **Modo juego**: unas tarjetas flotantes con tu siguiente
+pieza y una fisura que te sirve, encima del juego, que apenas ocupan sitio. Y
+si necesitas mirar algo más, el buscador rápido se despliega desde ahí mismo
+y con la chincheta **Fijar** se queda siempre encima, para consultarlo sin
+cambiar de ventana.
 
-Con `Ctrl+M` la ventana se queda en una cajita con la búsqueda y lo justo. No
-te tapa medio juego ni media escena de OBS.
-
-Salen todos los resultados en lista, cada uno con su color, y al pulsar uno
-se despliegan sus detalles justo debajo: dónde se consigue, con qué suerte, el
-precio, lo que hace... sin perder la búsqueda. Y con la chincheta **Fijar** se
-queda siempre encima del juego, para consultarla sin cambiar de ventana.
+![Modo juego con las tarjetas flotantes y el buscador rápido desplegado](herramientas/capturas/modo_juego_es.png)
 
 ## A tu gusto
 
-![Ajustes > Apariencia con los tamaños, los colores y la vista previa](herramientas/capturas/ajustes_aspecto_es.png)
+![Ajustes > Apariencia con los temas, los tamaños y los colores](herramientas/capturas/ajustes_aspecto_es.png)
 
-Ajustes va ahora por secciones, en una columna a la izquierda, y cada opción
-explica para qué sirve. Lo que casi nadie necesita está en un apartado
-«Avanzado» plegado, para que no estorbe.
-
-En Apariencia puedes hacer la ventana y la letra más grandes (o más
-pequeñas) y cambiar cualquier color del tema. Lo ves antes en la vista
-previa, y no se aplica hasta que pulsas Guardar. Si te lías, «Volver a lo de
-fábrica» lo deja como estaba.
+La primera vez que abras Farmadex viene con el tema nuevo, **Lua**, dorado y
+turquesa; si ya lo tenías instalado y usabas otro tema, sigues con el tuyo,
+no cambia solo. En Apariencia puedes hacer la ventana y la letra más grandes
+(o más pequeñas), elegir entre Lua, Vacío, Orokin, Tenno o Cherry, y cambiar
+cualquier color a tu gusto. Lo ves antes en la vista previa, y no se aplica
+hasta que pulsas Guardar. Si te lías, «Volver a lo de fábrica» lo deja como
+estaba.
 
 ## La primera vez
 
@@ -273,9 +209,9 @@ fábrica» lo deja como estaba.
 Al abrirlo por primera vez te recibe una bienvenida que te cuenta qué es
 Farmadex, lo básico para empezar, si es seguro y las dudas más típicas.
 Después te ofrece un recorrido por la ventana que te señala cada parte en su
-sitio, también las nuevas: Build, Agrietados, los avisos de Mundo y cómo
-cambiar el aspecto. Las dos se pueden volver a ver cuando quieras desde
-Ajustes > Ayuda o con el botón «Guía».
+sitio, también las nuevas: el Tablero, Mis metas, Mundo, Herramientas y Modo
+juego. Las dos se pueden volver a ver cuando quieras desde Ajustes > Ayuda o
+con el botón «Guía».
 
 ## Lo demás
 
@@ -284,12 +220,18 @@ Ajustes > Ayuda o con el botón «Guía».
   las recompensas.
 - **`Ctrl+Alt+Q`** lee el nombre que tengas bajo el cursor (inventario,
   mercado, donde sea) y te abre su ficha.
+- **Los glifos de creadores de contenido** traen su código de canje y un
+  botón para copiarlo, listo para pegar en el Mercado del juego.
 - **Glosario.** Palabras como «rotación», «refinamiento» o «bóveda» salen
   subrayadas; pasas el ratón y te lo explica en una línea. Pensado para quien
   empieza.
 - **Misiones explicadas al pasar el ratón.** Pasas el ratón por
   «Supervivencia», «Defensa» o «Interrupción» y te dice qué hay que hacer y
   cómo van sus recompensas, estés en la pestaña que estés.
+- **El lector de pantalla se adapta a tu equipo.** Si notas el PC cargado
+  (jugando y con OBS abierto, por ejemplo), Farmadex usa menos procesador
+  para leer la pantalla del juego, para no ir a peor mientras juegas. Se
+  puede dejar fijo en Ajustes > Avanzado.
 - **Una ventana de verdad.** La mueves y le cambias el tamaño arrastrando
   desde cualquier borde, como cualquier programa. Y si le das otra vez al
   acceso directo con Farmadex ya abierto, te saca el que ya tenías en vez de
@@ -298,8 +240,9 @@ Ajustes > Ayuda o con el botón «Guía».
   de reliquias» que comprueba paso a paso si Farmadex ve el juego y te dice
   qué falla. Si no das con ello, te guarda un informe para mandármelo, sin
   nada de tu cuenta.
-- **Idiomas y colores.** Español, inglés, francés, alemán y portugués, y cuatro
-  temas de color: Vacío, Orokin, Tenno y Cherry, que puedes retocar a tu gusto.
+- **Idiomas y colores.** Español, inglés, francés, alemán y portugués, y
+  cinco temas de color: Lua, Vacío, Orokin, Tenno y Cherry, que puedes
+  retocar a tu gusto.
 - **Se actualiza solo.** Baja la versión nueva por detrás y se instala cuando
   cierras Farmadex, nunca en mitad de una partida. La versión vieja se cierra
   del todo y no deja restos. Se puede desactivar.
@@ -384,8 +327,9 @@ capturas de pantalla se leen en tu equipo y no se guardan. Más detalle en
 Lo he hecho yo, jugando, para mí y para quien le sirva, con ayuda de Claude,
 que ha escrito buena parte del código conmigo. Mucho de lo nuevo sale de los
 comentarios de quienes lo prueban, así que si algo falla o echas algo en
-falta, abre un [issue](https://github.com/angelsanchez97/farmadex/issues) o
-pásate por el chat de [mi canal](https://www.twitch.tv/vaas1897).
+falta, abre un [issue](https://github.com/angelsanchez97/farmadex/issues),
+pásate por el [Discord de Farmadex](https://discord.gg/7ezAmfqesS) o por el
+chat de [mi canal](https://www.twitch.tv/vaas1897).
 
 Para compilarlo o trastear con el código, mira el final de la
 [guía de instalación](docs/INSTALACION.md).

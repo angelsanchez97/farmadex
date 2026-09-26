@@ -1,5 +1,55 @@
 # Cambios
 
+## 0.6.0
+
+Rediseño completo de la ventana, con el estilo de un menú del juego.
+
+**Ventana nueva**
+- Menú de arriba: Tablero, Buscar, Mis metas, Mundo, Herramientas y Ajustes, con
+  Modo juego a la derecha en vez de Compacta.
+- **Tablero**, pestaña nueva: nada más abrir ves tu siguiente paso (la pieza que
+  antes puedes conseguir de lo que estás farmeando, con su reliquia, su misión y
+  en qué fisura abrirla), las fisuras abiertas que te sirven, tus metas con su
+  progreso y los ciclos del mundo, todo de un vistazo.
+- **Mis metas** junta en un solo sitio, con pestañas, lo que antes iba suelto:
+  Objetivos, Primes y Perfil.
+- **Herramientas** hace lo mismo con Build, Agrietados, Vídeo y Web.
+- **Mundo** ahora tiene pestañas (Todo, Fisuras, Baro y Teshin, Invasiones y
+  alertas) en vez de elegir entre lista o tablero, y suma un panel de Teshin
+  con lo que ofrece esta semana.
+- En Objetivos, cada cosa que estás farmeando enseña ahora "Para esto te sirve
+  hoy": qué fisuras abiertas ahora mismo te dan esa pieza.
+- Las fichas llevan al pie una fila de atajos de teclado (añadir a metas, wiki,
+  Overframe, volver), para no tener que ir al ratón.
+- **Modo juego** sustituye al modo compacto: tarjetas flotantes con tu siguiente
+  pieza y una fisura que te sirve, más un buscador rápido que se abre encima
+  del juego y se puede fijar con la chincheta.
+- El panel de recompensas de una reliquia es más grande y se lee mejor en
+  pantallas grandes, con el mismo estilo que el resto de la ventana.
+- Tema nuevo, **Lua**, dorado y turquesa: es el que trae Farmadex de fábrica
+  para quien lo instala por primera vez. Si ya tenías otro tema (Vacío, Orokin,
+  Tenno, Cherry) o colores propios, sigues con el tuyo, no cambia solo.
+- Ajustes y la bienvenida están renovados para explicar las pestañas nuevas.
+
+**Rendimiento**
+- El lector de pantalla (OCR) ahora nota si el PC va cargado y, si es así, usa
+  menos procesador para no ir a peor mientras juegas. Se puede dejar fijo en
+  Ajustes > Avanzado si lo prefieres siempre rápido o siempre ligero.
+
+**Arreglos**
+- Varios ajustes se perdían al reiniciar Farmadex (qué facciones te interesan
+  en Mundo, los avisos activados, la chincheta, el orden de tus Primes...): ya
+  se guardan todos.
+- Algunos nombres salían a medias, como "Sistemas" en vez de "Ash Prime:
+  Sistemas".
+- Corregidas tildes que faltaban en varios textos de la ventana.
+- El icono del acceso directo del Escritorio se actualiza solo al instalar,
+  sin esperar a que Windows refresque su caché.
+
+**Y también**
+- Enlace al [Discord de Farmadex](https://discord.gg/7ezAmfqesS) para dudas y
+  sugerencias, en Ajustes > Acerca de y en la bienvenida.
+
 ## 0.5.1
 
 - Icono nuevo: un libro de consulta dorado con una gema, en vez de la F. Sale
