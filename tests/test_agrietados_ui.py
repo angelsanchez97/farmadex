@@ -2,6 +2,7 @@
 
 import json
 import os
+from pathlib import Path
 
 import pytest
 
@@ -210,3 +211,25 @@ def test_build_vacia(builds):
     assert "No se ha reconocido nada" in p.estado.text()
     p.retraducir()
     assert "Leer la pantalla de mejoras" in p.boton.text()
+
+
+def test_destruir_la_pestana_con_red_no_mata_el_proceso(tmp_path):
+    """Un QThread vivo al destruir la pestana hacia que Qt cortase el proceso (codigo 127)."""
+    import subprocess
+    import sys
+
+    codigo = (
+        "from PySide6.QtWidgets import QApplication\n"
+        "import shiboken6\n"
+        "from farmadex.agrietados import mercado\n"
+        "mercado.MercadoAgrietados.armas = lambda self, forzar_red=False: []\n"
+        "app = QApplication([])\n"
+        "from farmadex.ui.pestana_agrietados import PestanaAgrietados\n"
+        "p = PestanaAgrietados()\n"
+        "shiboken6.delete(p)\n"
+        "print('OK')\n"
+    )
+    entorno = dict(os.environ, QT_QPA_PLATFORM="offscreen", FARMADEX_DATOS=str(tmp_path),
+                   PYTHONPATH=str(Path(__file__).resolve().parents[1] / "src"))
+    r = subprocess.run([sys.executable, "-c", codigo], env=entorno, capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0 and "OK" in r.stdout, r.stderr[-500:]

@@ -57,6 +57,16 @@ def puntos_disposicion(disposicion: float) -> str:
     return "●" * n + "○" * (5 - n)
 
 
+
+def _parar_hilo(hilo) -> None:
+    """Para el hilo de red y espera a que acabe (sin fallar si Qt ya lo ha borrado)."""
+    try:
+        if hilo.isRunning():
+            hilo.quit()
+            hilo.wait(2000)
+    except RuntimeError:  # objeto de Qt ya destruido
+        pass
+
 class _Trabajador(QObject):
     """Red en su hilo: lista de armas (con disposicion), subastas y medias de DE."""
 
@@ -223,6 +233,11 @@ class PestanaAgrietados(QWidget):
             app = QCoreApplication.instance()
             if app is not None:
                 app.aboutToQuit.connect(self.cerrar)
+            # Si la pestana se destruye sin pasar por aboutToQuit (tests, cierre sin exec), Qt
+            # mataria el proceso al destruir un QThread vivo ("Destroyed while thread is still
+            # running"). `destroyed` llega antes de borrar los hijos: se para aqui el hilo.
+            hilo = self.hilo
+            self.destroyed.connect(lambda *_: _parar_hilo(hilo))
         self.retraducir()
 
     # -- ciclo de vida ---------------------------------------------------------------------
@@ -237,9 +252,8 @@ class PestanaAgrietados(QWidget):
             self.poner_armas(self.armas)
 
     def cerrar(self) -> None:
-        if self.hilo is not None and self.hilo.isRunning():
-            self.hilo.quit()
-            self.hilo.wait(2000)
+        if self.hilo is not None:
+            _parar_hilo(self.hilo)
             self.hilo = None
 
     def retraducir(self) -> None:
