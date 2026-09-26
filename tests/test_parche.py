@@ -349,6 +349,7 @@ def test_ajustes_ensena_el_modo_de_pantalla_y_el_aviso_de_parche(tmp_path, monke
     ajustes.mostrar_modo_pantalla("sin_bordes")
     assert "sin bordes" in ajustes.estado_juego.text()
 
+    ajustes.ir_a("datos")  # Ajustes va por secciones: el aviso vive en Datos del juego
     assert not ajustes.aviso_parche.isVisibleTo(ajustes)
     ajustes.avisar_parche("Warframe se ha actualizado y los datos van por detras")
     assert ajustes.aviso_parche.isVisibleTo(ajustes)

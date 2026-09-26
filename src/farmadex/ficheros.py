@@ -22,6 +22,13 @@ REINTENTOS = 10
 ESPERA_S = 0.1
 
 
+def temporal_de(destino: Path) -> Path:
+    """Temporal al lado de `destino`, propio de este proceso: si dos Farmadex descargan
+    a la vez, cada uno escribe el suyo y no se pisan (WinError 32 al renombrar)."""
+    destino = Path(destino)
+    return destino.with_name(f"{destino.name}.{os.getpid()}.tmp")
+
+
 def reemplazar(tmp: Path, destino: Path) -> None:
     """`tmp` pasa a ser `destino`, aunque `destino` este abierto un momento por otro."""
     for intento in range(REINTENTOS):

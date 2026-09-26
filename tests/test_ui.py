@@ -75,15 +75,9 @@ def test_cambiar_el_tema_lo_guarda_y_lo_avisa(ajustes):
     assert cargar()["tema"] == "orokin"
 
 
-def test_cambiar_el_diseno_de_mundo_lo_guarda_y_lo_avisa(ajustes):
-    from farmadex.config import cargar
-
-    ajustes.diseno_mundo.setCurrentIndex(ajustes.diseno_mundo.findData("lista"))
-    disenos = []
-    ajustes.diseno_mundo_cambiado.connect(disenos.append)
-    ajustes.diseno_mundo.setCurrentIndex(ajustes.diseno_mundo.findData("tablero"))
-    assert disenos == ["tablero"]
-    assert cargar()["diseno_mundo"] == "tablero"
+def test_la_disposicion_de_mundo_ya_no_esta_en_ajustes(ajustes):
+    """Se elige en la propia pestana Mundo (feedback del tester, 4.2)."""
+    assert not hasattr(ajustes, "diseno_mundo")
 
 
 def test_elegir_tema_cambia_la_paleta_y_la_hoja(monkeypatch):

@@ -19,9 +19,10 @@ from __future__ import annotations
 import html
 import sqlite3
 
-from PySide6.QtCore import QEvent, QPoint, QRect, QSize, Qt, QTimer, QUrl, Signal
+from PySide6.QtCore import QEvent, QEventLoop, QPoint, QRect, QSize, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QCursor, QDesktopServices
 from PySide6.QtWidgets import (
+    QApplication,
     QButtonGroup,
     QCheckBox,
     QComboBox,
@@ -37,6 +38,7 @@ from PySide6.QtWidgets import (
     QToolTip,
     QVBoxLayout,
     QWidget,
+    QWidgetItem,
 )
 
 from .. import perfil
@@ -65,6 +67,26 @@ ANCHO_DOBLE = 1360
 MAX_MISIONES = 40
 MAX_RELIQUIAS = 30
 CLAVE_BOVEDA = "primes_incluir_boveda"
+CLAVE_ORDEN = "primes_orden"
+# Como se pueden ordenar los sets (clave -> texto). Los genericos van siempre aparte, al final.
+ORDENES = (
+    ("nombre", "Por nombre"),
+    ("marcados", "Marcados primero"),
+    ("buscadas", "Mas piezas en busqueda"),
+    ("recientes", "Mas recientes"),
+    ("conseguidos", "Recien conseguidos"),
+)
+# Ancho de las tarjetas: el del texto mas largo, pero dentro de estos limites, para que
+# la rejilla sea como una hoja de calculo y no cada caja de un tamano.
+ANCHO_CAJA_MIN = 230
+ANCHO_CAJA_MAX = 360
+# Cuanto se queda desactivado "Incluir lo que esta en boveda" tras cargar, como minimo.
+MS_ESPERA_BOVEDA = 400
+
+
+def es_generico(nombre_en: str) -> bool:
+    """Forma, Adaptadores Exilus y demas: salen de reliquias pero no son de un set Prime."""
+    return "prime" not in (nombre_en or "").lower()
 
 
 def _corto(reliquia: dict) -> str:
@@ -270,7 +292,25 @@ class DisposicionFluida(QLayout):
         super().__init__(parent)
         self._items = []
         self._espacio = espacio
+        # Con ancho de celda, todas las cajas miden lo mismo y forman columnas; a 0,
+        # cada una mide lo que pida (como antes).
+        self.ancho_min = 0
+        self.ancho_max = 0
         self.setContentsMargins(0, 0, 0, 0)
+
+    def reordenar(self, widgets) -> None:
+        """Cambia el orden sin rehacer los widgets (que ya son hijos del contenedor)."""
+        self._items = [QWidgetItem(w) for w in widgets]
+        self.invalidate()
+
+    def celda(self, ancho_zona: int) -> tuple[int, int]:
+        """(columnas, ancho de cada celda) para un ancho disponible."""
+        if not self.ancho_min:
+            return 0, 0
+        columnas = max(1, (ancho_zona + self._espacio) // (self.ancho_min + self._espacio))
+        ancho = (ancho_zona - (columnas - 1) * self._espacio) // columnas
+        tope = self.ancho_max or ancho
+        return columnas, max(min(ancho, tope), min(self.ancho_min, ancho_zona))
 
     def addItem(self, item):  # noqa: N802 - firma de Qt
         self._items.append(item)
@@ -309,6 +349,8 @@ class DisposicionFluida(QLayout):
         return tam + QSize(m.left() + m.right(), m.top() + m.bottom())
 
     def _colocar(self, rect: QRect, prueba: bool) -> int:
+        if self.ancho_min:
+            return self._colocar_en_rejilla(rect, prueba)
         m = self.contentsMargins()
         zona = rect.adjusted(m.left(), m.top(), -m.right(), -m.bottom())
         x, y, alto_fila = zona.x(), zona.y(), 0
@@ -326,17 +368,64 @@ class DisposicionFluida(QLayout):
             alto_fila = max(alto_fila, tam.height())
         return y + alto_fila - rect.y() + m.bottom()
 
+    def _colocar_en_rejilla(self, rect: QRect, prueba: bool) -> int:
+        """Celdas del mismo ancho en columnas; las de una fila, todas de la misma altura.
+
+        Un widget con la propiedad `fila_entera` (las cabeceras) ocupa una fila el solo.
+        """
+        m = self.contentsMargins()
+        zona = rect.adjusted(m.left(), m.top(), -m.right(), -m.bottom())
+        columnas, ancho = self.celda(zona.width())
+        filas: list[tuple[bool, list]] = []
+        actual: list = []
+        for item in self._items:
+            if item.isEmpty():
+                continue
+            widget = item.widget()
+            if widget is not None and widget.property("fila_entera"):
+                if actual:
+                    filas.append((False, actual))
+                    actual = []
+                filas.append((True, [item]))
+                continue
+            actual.append(item)
+            if len(actual) == columnas:
+                filas.append((False, actual))
+                actual = []
+        if actual:
+            filas.append((False, actual))
+        y = zona.y()
+        for entera, items in filas:
+            if entera:
+                item = items[0]
+                alto = item.heightForWidth(zona.width()) if item.hasHeightForWidth() else item.sizeHint().height()
+                if not prueba:
+                    item.setGeometry(QRect(zona.x(), y, zona.width(), alto))
+            else:
+                alto = max(item.sizeHint().height() for item in items)
+                if not prueba:
+                    for i, item in enumerate(items):
+                        item.setGeometry(QRect(zona.x() + i * (ancho + self._espacio), y, ancho, alto))
+            y += alto + self._espacio
+        if filas:
+            y -= self._espacio
+        return y - rect.y() + m.bottom()
+
 
 class CajaPrime(QFrame):
     """Un objeto prime (o los sueltos) con una casilla por pieza."""
 
     marcada = Signal(dict, bool)
 
-    def __init__(self, titulo: str, piezas: list[dict], objeto: dict | None = None, columnas: int = 1, parent=None):
+    def __init__(self, titulo: str, piezas: list[dict], objeto: dict | None = None, columnas: int = 1,
+                 parent=None, nombres: dict[str, str] | None = None):
         super().__init__(parent)
         self.setObjectName("cajaPrime")
         self.objeto = objeto
         self.piezas = piezas
+        # unique_name -> texto de la casilla, cuando no basta con el nombre de la pieza
+        # (en los genericos, "Plano" solo no dice de que es).
+        self.nombres = nombres or {}
         self.titulo = QLabel()
         self.titulo.setTextFormat(Qt.RichText)
         self._titulo = titulo
@@ -356,12 +445,15 @@ class CajaPrime(QFrame):
             filas = (len(piezas) + columnas - 1) // columnas
             rejilla.addWidget(casilla, i % filas, i // filas)
         caja.addLayout(rejilla)
+        # En una fila todas las cajas miden lo mismo: lo que sobra, abajo.
+        caja.addStretch(1)
         # Texto para el filtro: el objeto y sus piezas en los dos idiomas del indice.
         partes = [titulo]
         if objeto:
             partes += [objeto["nombre_en"], objeto["nombre_es"] or ""]
         for pieza in piezas:
             partes += [pieza["nombre_en"], pieza["nombre_es"] or ""]
+        partes += list(self.nombres.values())
         self.texto_filtro = normalizar(" ".join(partes))
 
     def pintar(self, estados: dict[str, tuple[bool, str | None, str]], maestria: str = "") -> None:
@@ -372,7 +464,7 @@ class CajaPrime(QFrame):
             pieza = next(x for x in self.piezas if x["unique_name"] == unico)
             marcada, estado, pista = estados.get(unico, (False, None, ""))
             alguna = alguna or marcada
-            texto = nombre_idioma(pieza)
+            texto = self.nombres.get(unico) or nombre_idioma(pieza)
             if (pieza.get("item_count") or 1) > 1:
                 texto += f" ×{pieza['item_count']}"
             color = p["texto"]
@@ -482,16 +574,22 @@ class PestanaPrimes(QWidget):
         self.incluir_boveda.setChecked(bool(self.config.get(CLAVE_BOVEDA, False)))
         self.incluir_boveda.toggled.connect(self._cambiar_boveda)
         glosario.aplicar(self.incluir_boveda, "boveda")
+        self._cargando_boveda = False
+        self.orden = QComboBox()
+        self.orden.currentIndexChanged.connect(self._cambiar_orden)
         self.limpiar = QPushButton()
         self.limpiar.clicked.connect(self._desmarcar_todo)
         barra_rejilla = QHBoxLayout()
         barra_rejilla.setSpacing(6)
         barra_rejilla.addWidget(self.filtro, 1)
+        barra_rejilla.addWidget(self.orden)
         barra_rejilla.addWidget(self.incluir_boveda)
         barra_rejilla.addWidget(self.limpiar)
 
         self.contenido = QWidget()
         self.fluida = DisposicionFluida(self.contenido)
+        self._cabeceras: dict[str, QLabel] = {}
+        self._fechas: dict[int, str] | None = None
         self.desplazable = QScrollArea()
         self.desplazable.setWidgetResizable(True)
         self.desplazable.setWidget(self.contenido)
@@ -533,6 +631,7 @@ class PestanaPrimes(QWidget):
 
     def conectar_indice(self, con: sqlite3.Connection) -> None:
         self.indice = con
+        self._fechas = None
         self._cache_misiones.clear()
         self._objetos, self._sueltos = ruta_prime.catalogo(con)
         self._piezas = {}
@@ -545,8 +644,10 @@ class PestanaPrimes(QWidget):
 
     def retraducir(self) -> None:
         self.filtro.setPlaceholderText(t("Filtra por nombre (p. ej. caliban, forma)"))
-        self.incluir_boveda.setText(t("Incluir lo que esta en boveda"))
+        if not self._cargando_boveda:
+            self.incluir_boveda.setText(t("Incluir lo que esta en boveda"))
         self.limpiar.setText(t("Desmarcar todo"))
+        self._rellenar_orden()
         self._rellenar_combos()
         self._construir_rejilla()
 
@@ -601,40 +702,243 @@ class PestanaPrimes(QWidget):
         while self.fluida.count():
             elemento = self.fluida.takeAt(0)
             viejo = elemento.widget()
-            if viejo:
+            # Las cabeceras se reutilizan: fuera de la rejilla, pero vivas.
+            if viejo and viejo not in self._cabeceras.values():
                 # Fuera ya, no al volver al bucle de eventos: si no, se pintan encima.
                 viejo.hide()
                 viejo.setParent(None)
                 viejo.deleteLater()
         self._cajas = []
+        self._cajas_sets: list[CajaPrime] = []
+        self._cajas_genericas: list[CajaPrime] = []
         incluir = self.incluir_boveda.isChecked()
+        genericos: list[dict] = []  # objetos que no son un set Prime (Adaptador Exilus...)
         for o in self._objetos:
             if o["en_boveda"] and not incluir:
                 continue
             piezas = [p for p in o["piezas"] if incluir or not p["en_boveda"]]
+            if es_generico(o["nombre_en"]):
+                genericos.append({**o, "piezas": piezas})
+                continue
             caja = CajaPrime(nombre_idioma(o), piezas, o)
             caja.marcada.connect(self._marcar)
-            self._cajas.append(caja)
+            self._cajas_sets.append(caja)
+        # Genericos: Formas y Adaptadores Exilus juntos, y lo demas (Kuva, mods de Requiem...)
+        # en "Otros objetos de reliquia". Ninguno es de un set: van aparte, al final.
         sueltos = [p for p in self._sueltos if incluir or not p["en_boveda"]]
-        if sueltos:
-            caja = CajaPrime(t("Otros objetos de reliquia"), sueltos, None, columnas=2)
+        formas = [p for p in sueltos if "forma" in p["nombre_en"].lower()]
+        otros = [p for p in sueltos if p not in formas]
+        nombres: dict[str, str] = {}
+        piezas_formas = list(formas)
+        for o in genericos:
+            if "exilus" in o["nombre_en"].lower() or "forma" in o["nombre_en"].lower():
+                for pieza in o["piezas"]:
+                    nombres[pieza["unique_name"]] = f"{nombre_idioma(o)}: {nombre_idioma(pieza)}"
+                    piezas_formas.append(pieza)
+            else:
+                caja = CajaPrime(nombre_idioma(o), o["piezas"], o)
+                caja.marcada.connect(self._marcar)
+                self._cajas_genericas.append(caja)
+        if piezas_formas:
+            caja = CajaPrime(t("Formas y Adaptadores Exilus"), piezas_formas, None, nombres=nombres)
             caja.marcada.connect(self._marcar)
-            self._cajas.append(caja)
-        for caja in self._cajas:
-            self.fluida.addWidget(caja)
+            self._cajas_genericas.insert(0, caja)
+        if otros:
+            caja = CajaPrime(t("Otros objetos de reliquia"), otros, None, columnas=4)
+            # Muchas cosas sueltas: ocupa la fila entera en vez de ensanchar todas las celdas.
+            caja.setProperty("fila_entera", True)
+            caja.marcada.connect(self._marcar)
+            self._cajas_genericas.append(caja)
+        # Los genericos primero en la lista (los busca quien quiera "los sueltos"), aunque
+        # en pantalla vayan al final.
+        self._cajas = self._cajas_genericas + self._cajas_sets
+        for clave in ("sets", "genericos"):
+            if clave not in self._cabeceras:
+                cabecera = QLabel()
+                cabecera.setProperty("fila_entera", True)
+                cabecera.setTextFormat(Qt.RichText)
+                self._cabeceras[clave] = cabecera
+        self._pintar_cabeceras()
+        self._colocar_cajas()
         self._aplicar_filtro()
         self.refrescar_marcas()
+        self._ajustar_celdas()
+
+    def _pintar_cabeceras(self) -> None:
+        p = PALETA
+        textos = {
+            "sets": t("Sets Prime ({n})", n=len(getattr(self, "_cajas_sets", []))),
+            "genericos": t("Objetos genericos: no son de ningun set"),
+        }
+        for clave, cabecera in self._cabeceras.items():
+            cabecera.setText(
+                f"<span style='color:{p['acento']};font-size:12px;font-weight:bold;letter-spacing:1px'>"
+                f"{html.escape(textos[clave].upper())}</span>"
+            )
+
+    def _colocar_cajas(self) -> None:
+        """Pone las cajas en la rejilla en el orden elegido; los genericos, aparte y al final."""
+        if not hasattr(self, "_cajas_sets"):
+            return
+        orden = self._orden_sets()
+        widgets: list[QWidget] = []
+        if self._cajas_sets:
+            widgets.append(self._cabeceras["sets"])
+            widgets += orden
+        if self._cajas_genericas:
+            widgets.append(self._cabeceras["genericos"])
+            widgets += self._cajas_genericas
+        for clave, cabecera in self._cabeceras.items():
+            if cabecera not in widgets:
+                cabecera.hide()
+        self.fluida.reordenar(widgets)
+        for w in widgets:
+            if w.parent() is not self.contenido:
+                w.setParent(self.contenido)
+        self._aplicar_filtro()
+
+    def _ajustar_celdas(self) -> None:
+        """Ancho de celda: el de la caja mas ancha, entre un minimo y un maximo."""
+        if not self._cajas:
+            return
+        normales = [c for c in self._cajas if not c.property("fila_entera")]
+        if not normales:
+            return
+        ancho = max(c.sizeHint().width() for c in normales)
+        self.fluida.ancho_min = max(ANCHO_CAJA_MIN, min(ANCHO_CAJA_MAX, ancho))
+        self.fluida.ancho_max = int(self.fluida.ancho_min * 1.3)
+        self.fluida.invalidate()
+
+    # -- orden de los sets ------------------------------------------------------------
+
+    def _rellenar_orden(self) -> None:
+        actual = self.orden.currentData() or self.config.get(CLAVE_ORDEN) or "nombre"
+        self.orden.blockSignals(True)
+        self.orden.clear()
+        for clave, texto in ORDENES:
+            self.orden.addItem(t(texto), clave)
+        self.orden.setCurrentIndex(max(0, self.orden.findData(actual)))
+        self.orden.setToolTip(t("Como ordenar los sets. Los objetos genericos van siempre al final."))
+        self.orden.blockSignals(False)
+
+    def _cambiar_orden(self, *_):
+        self.config[CLAVE_ORDEN] = self.orden.currentData() or "nombre"
+        guardar(self.config)
+        self._colocar_cajas()
+
+    def showEvent(self, evento):  # noqa: N802 - firma de Qt
+        super().showEvent(evento)
+        # Lo marcado o conseguido desde otra pestana cambia el orden: se aplica al volver
+        # (no mientras se marca aqui, para que la caja no salte debajo del raton).
+        if (self.orden.currentData() or "nombre") != "nombre":
+            self._colocar_cajas()
+
+    def fechas_salida(self) -> dict[int, str]:
+        """id del objeto -> fecha de salida ('2026-09-23'); vacio con un indice sin esas fechas."""
+        if self._fechas is None:
+            self._fechas = {}
+            if self.indice is not None:
+                try:
+                    self._fechas = {
+                        fila[0]: fila[1]
+                        for fila in self.indice.execute(
+                            "SELECT id, fecha_salida FROM items WHERE fecha_salida IS NOT NULL")
+                    }
+                except sqlite3.Error:
+                    # Indice de antes de guardar fechas: se ordena por nombre.
+                    self._fechas = {}
+        return self._fechas
+
+    def _conseguidos(self) -> dict[str, str]:
+        """unique_name -> cuando se consiguio por ultima vez (objetivo completado o reliquia)."""
+        salida: dict[str, str] = {}
+        consultas = (
+            "SELECT item_unique_name, completado_en FROM objetivos WHERE completado_en IS NOT NULL",
+            "SELECT elegido_unique_name, MAX(leido_en) FROM historial_recompensas "
+            "WHERE elegido_unique_name IS NOT NULL GROUP BY elegido_unique_name",
+        )
+        for consulta in consultas:
+            try:
+                for unico, cuando in self.usuario.execute(consulta):
+                    if unico and cuando and cuando > salida.get(unico, ""):
+                        salida[unico] = cuando
+            except sqlite3.Error:
+                continue
+        return salida
+
+    def _orden_sets(self) -> list[CajaPrime]:
+        cajas = sorted(self._cajas_sets, key=lambda c: normalizar(c._titulo))
+        orden = self.orden.currentData() or "nombre"
+        if orden == "nombre":
+            return cajas
+        if orden in ("marcados", "buscadas"):
+            objetivos = self._objetivos()
+
+            def cuenta(caja: CajaPrime) -> tuple[int, int]:
+                marcadas = [objetivos[p["unique_name"]] for p in caja.piezas if p["unique_name"] in objetivos]
+                return len(marcadas), sum(1 for o in marcadas if not o.completado)
+
+            if orden == "marcados":
+                return sorted(cajas, key=lambda c: cuenta(c)[0] == 0)
+            return sorted(cajas, key=lambda c: -cuenta(c)[1])
+        if orden == "recientes":
+            fechas = self.fechas_salida()
+            con_fecha = [c for c in cajas if fechas.get(c.objeto["id"])]
+            sin_fecha = [c for c in cajas if not fechas.get(c.objeto["id"])]
+            return sorted(con_fecha, key=lambda c: fechas[c.objeto["id"]], reverse=True) + sin_fecha
+        if orden == "conseguidos":
+            cuando = self._conseguidos()
+
+            def ultimo(caja: CajaPrime) -> str:
+                return max((cuando.get(p["unique_name"], "") for p in caja.piezas), default="")
+
+            con = [c for c in cajas if ultimo(c)]
+            return sorted(con, key=ultimo, reverse=True) + [c for c in cajas if not ultimo(c)]
+        return cajas
 
     def _aplicar_filtro(self) -> None:
         texto = normalizar(self.filtro.text())
         for caja in self._cajas:
             caja.setVisible(not texto or all(palabra in caja.texto_filtro for palabra in texto.split()))
+        # Una cabecera sin ninguna caja debajo sobra.
+        for clave, cajas in (("sets", getattr(self, "_cajas_sets", [])),
+                             ("genericos", getattr(self, "_cajas_genericas", []))):
+            if clave in self._cabeceras:
+                self._cabeceras[clave].setVisible(any(not c.isHidden() for c in cajas))
         self.fluida.invalidate()
 
     def _cambiar_boveda(self, marcado: bool) -> None:
+        """Rehace la rejilla con (o sin) lo de boveda, sin dejar que se lance dos veces.
+
+        En un equipo lento tarda: si el usuario vuelve a pulsar porque parece que no
+        responde, esos clics llegan con la casilla desactivada y Qt los descarta.
+        """
+        if self._cargando_boveda:
+            return
+        self._cargando_boveda = True
         self.config[CLAVE_BOVEDA] = marcado
         guardar(self.config)
-        self._construir_rejilla()
+        self.incluir_boveda.setEnabled(False)
+        self.incluir_boveda.setText(t("Cargando, espera..."))
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            # Que se vea el "Cargando" antes de ponerse a trabajar.
+            self.incluir_boveda.repaint()
+            QApplication.processEvents(QEventLoop.ExcludeUserInputEvents)
+            self._construir_rejilla()
+            # Los clics que se hayan acumulado mientras tanto llegan ahora, con la
+            # casilla todavia desactivada: se pierden, que es lo que se quiere.
+            QApplication.processEvents()
+        finally:
+            QApplication.restoreOverrideCursor()
+            self._cargando_boveda = False
+        QTimer.singleShot(MS_ESPERA_BOVEDA, self._boveda_lista)
+
+    def _boveda_lista(self) -> None:
+        if self._cargando_boveda:
+            return
+        self.incluir_boveda.setText(t("Incluir lo que esta en boveda"))
+        self.incluir_boveda.setEnabled(True)
 
     def _cambiar_modo(self, *_):
         self.config[ruta_prime.CLAVE_REFINAMIENTO] = self.refinamiento.currentData() or ruta_prime.REFINAMIENTO_POR_DEFECTO

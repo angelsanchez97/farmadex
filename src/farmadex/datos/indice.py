@@ -17,9 +17,9 @@ from .descargas import (
     CATALOGO_PIEZAS, CATEGORIAS_ESENCIALES, CATEGORIAS_ITEMS, IDIOMAS_EXTRA, Descargador,
     FuenteCambiada,
 )
-from . import nodos, tabla_oficial
+from . import glifos, nodos, tabla_oficial
 from .drops import UMBRAL_SIN_CASAR, ImportadorDrops
-from .items import ImportadorItems, normalizar
+from .items import ImportadorItems, es_variante_menor, normalizar
 
 log = obtener("indice")
 
@@ -37,7 +37,13 @@ log = obtener("indice")
 # 9: formato nuevo de WFCD (2026-09-24): piezas por referencia a Components.json y
 #    traducciones por idioma. El indice queda igual, pero los que tengan uno construido con
 #    un volcado a medias (la descarga fallaba con un 404) lo rehacen entero.
-VERSION_ESQUEMA = "13"  # 13: nombres de piezas del juego (WFCD i18n), no del glosario
+VERSION_ESQUEMA = "14"
+# 14: tabla recetas (recursos de fabricacion para Objetivos); tabla `detalles`
+#     (estadisticas de armas, efecto por rango de mods y arcanos, habilidades de
+#     warframes, codigo de canje de los glifos) y nombres oficiales en castellano de modos
+#     de mision, facciones y planetas en el glosario. Solo AÑADE tablas: quien las lee
+#     (estado/objetivos.py, datos/detalles.py) tolera que falten.
+# 13: nombres de piezas del juego (WFCD i18n), no del glosario
 # 12: fecha de salida y actualizacion de cada objeto (items.fecha_salida, items.actualizacion),
 #     para "lo nuevo" del buscador. Un indice de antes se sigue pudiendo leer: el codigo
 #     que usa esas columnas (datos/novedades.py) tolera que falten y lo dice.
@@ -45,7 +51,8 @@ VERSION_ESQUEMA = "13"  # 13: nombres de piezas del juego (WFCD i18n), no del gl
 # reconstruccion falla (sin red, la fuente cambio de formato...), con un indice de estas
 # se sigue trabajando en vez de enseñar "Error preparando los datos". Al cambiar la
 # ESTRUCTURA de las tablas, dejar aqui solo la version nueva.
-ESQUEMAS_COMPATIBLES = {"8", "9", "10", "11", "12", "13"}
+# 14 solo AÑADE las tablas recetas y detalles; quien las lee tolera que falten.
+ESQUEMAS_COMPATIBLES = {"8", "9", "10", "11", "12", "13", "14"}
 
 # Piezas de receta que pueden quedarse sin completar (referencias a objetos que no estan en
 # ningun catalogo) antes de dar el volcado por roto. Con el de hoy son un punado de
@@ -607,6 +614,13 @@ def construir(progreso=None, forzar: bool = False) -> dict:
             log.exception("No se pudo sincronizar el mapa estelar de DE")
         con.commit()
 
+        avisar("Buscando los codigos de los glifos", 0, 0)
+        try:
+            glifos.aplicar(con, glifos.descargar())
+        except Exception:  # noqa: BLE001 - sin codigos los glifos salen como siempre
+            log.exception("No se pudieron poner los codigos de los glifos")
+        con.commit()
+
         rutas_drops = {
             f.stem: f for f in (DIR_DATOS / "drops").glob("*.json")
         }
@@ -809,7 +823,7 @@ def buscar(con: sqlite3.Connection, texto: str, limite: int = 40) -> list[dict]:
     filas = con.execute(
         f"""
         SELECT i.id, i.nombre_en, i.nombre_es, i.categoria, i.tipo, i.vaulted, i.padre_id,
-               p.nombre_en, p.nombre_es, i.imagen
+               p.nombre_en, p.nombre_es, i.imagen, i.unique_name
           FROM items i LEFT JOIN items p ON p.id = i.padre_id
          WHERE i.id IN ({marcas})
         """,
@@ -818,7 +832,7 @@ def buscar(con: sqlite3.Connection, texto: str, limite: int = 40) -> list[dict]:
 
     salida = []
     for (iid, nombre_en, nombre_es, categoria, tipo, vaulted, padre_id, padre_en, padre_es,
-         imagen) in filas:
+         imagen, unico) in filas:
         nivel, parecido, texto_indexado, idioma = candidatos[iid]
         grupo = GRUPO_CATEGORIA.get(categoria, 1)
         tiene_fuentes = iid in con_fuentes or (padre_id in con_fuentes if padre_id else False)
@@ -831,7 +845,12 @@ def buscar(con: sqlite3.Connection, texto: str, limite: int = 40) -> list[dict]:
             nivel = min(nivel + 2, 4)
         salida.append({
             "item_id": iid,
-            "peso": (nivel, grupo, 0 if tiene_fuentes else 1, ORDEN_CATEGORIA.get(categoria, 4),
+            # La version "defectuosa" de un mod (Beginner/Intermediate, "Flawed Serration" en el
+            # juego) se llama igual en WFCD que el mod de verdad: con el mismo nombre gana el
+            # de verdad, o la ficha ensenaba el efecto de la Sierra defectuosa (+40 %).
+            # (peso[2] sigue siendo "tiene fuentes": el buscador lo lee.)
+            "peso": (nivel, grupo, 0 if tiene_fuentes else 1, 1 if es_variante_menor(unico) else 0,
+                     ORDEN_CATEGORIA.get(categoria, 4),
                      -parecido, 0 if idioma == "es" else 1, len(texto_indexado)),
             "nivel": nivel,
             "parecido": parecido,

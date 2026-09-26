@@ -67,10 +67,10 @@ def test_la_linea_de_la_wiki_junta_modos_y_nodos_sin_repetir():
     ]
     linea = enlaces_wiki.linea(filas, "#111", "#222")
     assert linea.count(f"{WIKI}/w/Capture") == 1
-    assert ">Captura</a>" in linea and ">Disrupcion</a>" in linea and ">Olimpo</a>" in linea
+    assert ">Captura</a>" in linea and ">Interrupción</a>" in linea and ">Olimpo</a>" in linea
     assert f"{WIKI}/w/Olympus" in linea and "En la wiki:" in linea
     # Modos primero, luego nodos.
-    assert linea.index("Disrupcion") < linea.index("Hepit")
+    assert linea.index("Interrupción") < linea.index("Hepit")
     assert enlaces_wiki.linea([{"modo": "", "nodo_en": None}], "#1", "#2") == ""
 
 

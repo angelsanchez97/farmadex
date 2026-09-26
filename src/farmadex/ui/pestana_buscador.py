@@ -6,7 +6,7 @@ import html
 import sqlite3
 
 from PySide6.QtCore import QRect, QSize, Qt, QTimer, QUrl, Signal
-from PySide6.QtGui import QColor, QDesktopServices, QFont, QPainter, QPen
+from PySide6.QtGui import QColor, QDesktopServices, QFont, QGuiApplication, QPainter, QPen
 from PySide6.QtWidgets import (
     QCheckBox,
     QHBoxLayout,
@@ -28,7 +28,10 @@ from ..estado import inventario as estado_inventario
 from ..datos import consultas, eficiencia, indice, items, misiones, modos_mision, novedades, relaciones
 from ..datos.nodos import etapa_bonita, nombre_bonito
 from ..idiomas import es_castellano, glosa, nombre as nombre_idioma, t
-from . import desglose_tiempo, enlaces_wiki, glosario, guias_youtube, pestana_primes, relleno_filas
+from . import (
+    builds_overframe, colores_tipo, desglose_tiempo, enlaces_wiki, ficha_detalles, glosario, guias_youtube,
+    pestana_primes, relleno_filas,
+)
 from .maestria import colores_maestria, estado_con_padre, texto_maestria
 from .widgets import COLOR_BOVEDA, COLOR_DISPONIBLE, PALETA, color_rareza, imagenes
 
@@ -79,6 +82,8 @@ CATEGORIAS_ES = {
 ROL_SUBTITULO = Qt.UserRole + 1
 ROL_IMAGEN = Qt.UserRole + 2
 ROL_RAREZA = Qt.UserRole + 3
+# Tipo de objeto (clave de colores_tipo.TIPOS): el color de su punto y de su categoria.
+ROL_TIPO = Qt.UserRole + 4
 
 # Lo que se pone al lado del nombre: categoria y, si es pieza, "Componente".
 def categoria_es(categoria: str, tipo: str | None = None) -> str:
@@ -135,11 +140,25 @@ class DelegadoResultado(QStyledItemDelegate):
         fuente.setPointSize(9)
         fuente.setBold(False)
         pintor.setFont(fuente)
-        pintor.setPen(QColor(p["suave"]))
+        # Debajo, un punto y la categoria en el color de su tipo (mod, arma, recurso...) y el
+        # resto en gris: se sabe que es cada cosa sin leer la linea entera.
+        color_tipo = QColor(colores_tipo.color(indice.data(ROL_TIPO) or "otro", p["panel"]))
+        pintor.setPen(Qt.NoPen)
+        pintor.setBrush(color_tipo)
+        pintor.drawEllipse(x, rect.top() + 34, 8, 8)
+        x_texto, ancho_texto = x + 13, ancho - 13
         subtitulo = pintor.fontMetrics().elidedText(
-            indice.data(ROL_SUBTITULO) or "", Qt.ElideRight, ancho
+            indice.data(ROL_SUBTITULO) or "", Qt.ElideRight, ancho_texto
         )
-        pintor.drawText(QRect(x, rect.top() + 29, ancho, 18), Qt.AlignVCenter | Qt.AlignLeft, subtitulo)
+        categoria, separador, resto = subtitulo.partition(" · ")
+        caja_texto = QRect(x_texto, rect.top() + 29, ancho_texto, 18)
+        pintor.setPen(color_tipo)
+        pintor.drawText(caja_texto, Qt.AlignVCenter | Qt.AlignLeft, categoria)
+        if separador:
+            desplazado = pintor.fontMetrics().horizontalAdvance(categoria)
+            pintor.setPen(QColor(p["suave"]))
+            pintor.drawText(caja_texto.adjusted(desplazado, 0, 0, 0), Qt.AlignVCenter | Qt.AlignLeft,
+                            separador + resto)
         pintor.restore()
 
 
@@ -168,6 +187,9 @@ class PestanaBuscador(QWidget):
         # Quien reproduce las guias de YouTube dentro de Farmadex (la ventana lo pone);
         # sin el, el navegador del sistema.
         self.reproductor = None
+        # Quien ensena paginas web dentro de Farmadex (la pestana Web; la ventana lo pone);
+        # sin el, el navegador del sistema.
+        self.navegador_web = None
         # "Lo mas nuevo" cuando se abrio una ficha de objeto por "el ultimo warframe": la
         # nota con los demas objetos de esa actualizacion, que va debajo del nombre.
         self._nota_novedad: dict | None = None
@@ -209,6 +231,13 @@ class PestanaBuscador(QWidget):
         self.boton_youtube = QPushButton()
         self.boton_youtube.setEnabled(False)
         self.boton_youtube.clicked.connect(self._abrir_youtube)
+        # Builds de la comunidad en Overframe del warframe/arma/companero abierto, dentro
+        # de Farmadex (pestana Web). Solo se abre su web: no se lee nada de ella. Texto
+        # corto y escondido si la ficha no tiene builds: la fila ya va justa en el ancho
+        # minimo de la ventana. La ficha lleva ademas "Builds en Overframe" con todas las letras.
+        self.boton_overframe = QPushButton("Overframe")
+        self.boton_overframe.hide()
+        self.boton_overframe.clicked.connect(self._abrir_overframe)
 
         self.lista = QListWidget()
         self.lista.setMinimumWidth(300)
@@ -238,6 +267,11 @@ class PestanaBuscador(QWidget):
         )
         self.precios.hide()
         self._slug_actual = ""
+        # Que color es cada tipo, solo con los tipos que hay en la lista y en letra pequena.
+        self.leyenda = QLabel("")
+        self.leyenda.setTextFormat(Qt.RichText)
+        self.leyenda.setStyleSheet(f"color: {p['suave']}; font-size: 11px;")
+        self.leyenda.hide()
 
         caja = QVBoxLayout(self)
         caja.setContentsMargins(4, 8, 4, 4)
@@ -249,11 +283,13 @@ class PestanaBuscador(QWidget):
         fila.addWidget(self.ocultar_vaulted)
         fila.addWidget(self.boton_wiki)
         fila.addWidget(self.boton_youtube)
+        fila.addWidget(self.boton_overframe)
         fila.addWidget(self.boton_set)
         fila.addWidget(self.boton_objetivo)
         caja.addLayout(fila)
         caja.addWidget(self.aviso)
         caja.addWidget(self.precios)
+        caja.addWidget(self.leyenda)
         caja.addWidget(divisor, 1)
 
         self._temporizador = QTimer(self)
@@ -334,6 +370,8 @@ class PestanaBuscador(QWidget):
             f"color: {p['texto']}; background: {p['panel2']}; border: 1px solid {p['borde']};"
             " border-radius: 8px; padding: 6px 10px;"
         )
+        self.leyenda.setStyleSheet(f"color: {p['suave']}; font-size: 11px;")
+        self._poner_leyenda()
         self.lista.viewport().update()
         if self._datos_actuales:
             self._poner_ficha(self._html(self._datos_actuales))
@@ -361,6 +399,8 @@ class PestanaBuscador(QWidget):
         self.boton_youtube.setText(t("Guias en YouTube"))
         self.boton_youtube.setToolTip(t("Busca guias en YouTube de la mision o el objeto abierto, "
                                         "ordenadas por visitas, y las abre en el reproductor de Farmadex."))
+        self.boton_overframe.setToolTip(t("Abre Overframe, la web de builds de la comunidad, con este "
+                                          "warframe o arma, dentro de Farmadex (pestana Web)."))
         self.boton_wiki.setToolTip(t("Abre la wiki oficial de Warframe en el navegador: la pagina "
                                      "del objeto abierto o, si no hay ninguno, la busqueda de lo escrito."))
         if self._resultados:
@@ -386,16 +426,25 @@ class PestanaBuscador(QWidget):
         texto = url.toString()
         if glosario.mostrar(texto, self.ficha):
             return
-        if texto.startswith("item:"):
+        if texto.startswith(ficha_detalles.PREFIJO_COPIAR):
+            self.copiar(texto.removeprefix(ficha_detalles.PREFIJO_COPIAR))
+        elif texto.startswith("item:"):
             self.abrir(int(texto.removeprefix("item:")))
         elif texto.startswith(("nodo:", "modo:", "novedades:")):
             self.abrir_mision(texto)
         elif texto == "video:":
             self._abrir_youtube()
+        elif texto == "overframe:":
+            self._abrir_overframe()
         elif texto.startswith("buscar:"):
             self.caja.setText(texto.removeprefix("buscar:"))
         elif texto.startswith("http"):
             QDesktopServices.openUrl(QUrl(texto))
+
+    def copiar(self, texto: str) -> None:
+        """Copia al portapapeles (el codigo de un glifo) y lo dice en la barra de estado."""
+        QGuiApplication.clipboard().setText(texto)
+        self.estado.emit(t("Copiado: {codigo}", codigo=texto))
 
     def url_wiki(self) -> str:
         """Lo que abre "Buscar en la wiki": la pagina del objeto abierto o la busqueda.
@@ -427,6 +476,7 @@ class PestanaBuscador(QWidget):
         hay_ficha = bool(self._datos_actuales or self._mision_actual)
         self.boton_wiki.setEnabled(hay_ficha or bool(self.caja.text().strip()))
         self.boton_youtube.setEnabled(hay_ficha)
+        self.boton_overframe.setVisible(bool(self.url_overframe()))
 
     def tema_video(self) -> str:
         """De que se buscan guias: 'Hepit Captura', 'Supervivencia' o el objeto abierto."""
@@ -453,6 +503,22 @@ class PestanaBuscador(QWidget):
             return
         if self.reproductor is not None:
             self.reproductor(url)
+        else:
+            QDesktopServices.openUrl(QUrl(url))
+
+    def url_overframe(self) -> str:
+        """Builds en Overframe del objeto abierto (o de su padre si es una pieza); vacio si no tiene."""
+        if not self._datos_actuales:
+            return ""
+        datos = self._datos_actuales
+        return builds_overframe.url_builds(builds_overframe.nombre_con_builds(datos["item"], datos.get("padre")))
+
+    def _abrir_overframe(self) -> None:
+        url = self.url_overframe()
+        if not url:
+            return
+        if self.navegador_web is not None:
+            self.navegador_web(url)
         else:
             QDesktopServices.openUrl(QUrl(url))
 
@@ -538,6 +604,7 @@ class PestanaBuscador(QWidget):
         self.lista.clear()
         if len(texto) < 2:
             self._resultados = []
+            self._poner_leyenda()
             self._vaciar_ficha()
             self._poner_portada()
             return
@@ -743,11 +810,20 @@ class PestanaBuscador(QWidget):
                 subtitulo += f" · {otro}"
             elemento.setData(ROL_SUBTITULO, subtitulo)
             elemento.setData(ROL_IMAGEN, r.get("imagen"))
+            elemento.setData(ROL_TIPO, colores_tipo.tipo_de(r))
             elemento.setToolTip(r["categoria"])
             self.lista.addItem(elemento)
         if 0 <= fila_actual < self.lista.count():
             self.lista.setCurrentRow(fila_actual)
         self.lista.blockSignals(False)
+        self._poner_leyenda()
+
+    def _poner_leyenda(self) -> None:
+        texto = colores_tipo.leyenda_html(
+            (colores_tipo.tipo_de(r) for r in self._resultados), PALETA["fondo"]
+        )
+        self.leyenda.setText(texto)
+        self.leyenda.setVisible(bool(texto))
 
     def _elegir_resultado(self, fila: int) -> None:
         # Moverse por la lista tambien cuenta como navegar: antes se borraba el
@@ -772,6 +848,7 @@ class PestanaBuscador(QWidget):
             )
         elemento.setData(ROL_SUBTITULO, subtitulo)
         elemento.setData(ROL_IMAGEN, None)
+        elemento.setData(ROL_TIPO, "mision")
         return elemento
 
     # -- fichas de mision -------------------------------------------------
@@ -1028,6 +1105,8 @@ class PestanaBuscador(QWidget):
             partes.append(_seccion(t("Se construye con")) + f"<ul>{filas}</ul>")
 
         partes.append(self._bloque_ruta(item["id"]))
+        # Estadisticas, efecto por rango, habilidades, codigo del glifo (datos/detalles.py).
+        partes.append(ficha_detalles.html_detalles(con, item))
         partes.append(self._bloque_reliquias(item["id"]))
         if item["categoria"] == "Relics":
             partes.append(self._bloque_contenido(item["id"]))
@@ -1081,6 +1160,12 @@ class PestanaBuscador(QWidget):
             partes.append(
                 f"<p style='margin-top:10px'><a style='color:{p['acento']}' "
                 f"href='{html.escape(url_wiki)}'>{html.escape(t('Abrir en la wiki'))} &rarr;</a></p>"
+            )
+        # Builds de la comunidad (warframes, armas, companeros): se abren en la pestana Web.
+        if builds_overframe.nombre_con_builds(item, datos.get("padre")):
+            partes.append(
+                f"<p style='margin-top:4px'><a style='color:{p['acento']}' href='overframe:'>"
+                f"{html.escape(t('Builds en Overframe'))} &rarr;</a></p>"
             )
         return "".join(partes)
 

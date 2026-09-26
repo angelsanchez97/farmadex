@@ -50,7 +50,7 @@ def test_boton_guia_la_lanza_desde_el_principio(ventana):
     ventana.mostrar_guia()
     assert ventana._guia is not None
     assert ventana._guia._indice == 0
-    assert ventana._guia.contador.text() == "Paso 1 de 14"
+    assert ventana._guia.contador.text() == "Paso 1 de 19"
 
 
 def test_avanza_y_retrocede(ventana):
@@ -212,3 +212,32 @@ def test_desde_modo_compacto_pasa_a_completo(ventana):
     assert ventana.modo == "compacto"
     ventana.mostrar_guia()
     assert ventana.modo == "completo"
+
+
+def test_la_guia_ensena_lo_nuevo_de_la_0_5(ventana):
+    """Build, Agrietados, los avisos de Mundo, el aspecto y como ordenar objetivos tienen su paso,
+    y cada uno abre su pestana y resalta su boton o su zona."""
+    ventana.resize(1180, 760)
+    ventana.mostrar_guia()
+    guia = ventana._guia
+    esperados = {
+        "Build": (ventana.builds, ventana.builds.boton),
+        "Agrietados": (ventana.agrietados, ventana.agrietados.boton_leer),
+        "Avisos del mundo": (ventana.mundo, ventana.mundo.boton_personalizar),
+        "A tu gusto": (ventana.ajustes, ventana.ajustes.escala_interfaz),
+        "Ordenar tus objetivos": (ventana.objetivos, ventana.objetivos.estados),
+    }
+    from PySide6.QtCore import QPoint, QRect
+
+    titulos = [p.titulo for p in guia._pasos]
+    for titulo, (pestana, widget) in esperados.items():
+        assert titulo in titulos, titulo
+        guia._ir_a_paso(titulos.index(titulo))
+        assert ventana.pestanas.currentWidget() is pestana, titulo
+        rect = QRect(widget.mapTo(ventana, QPoint(0, 0)), widget.size())
+        assert guia._rect_resalte is not None and guia._rect_resalte.intersects(rect), titulo
+    # Los atajos que salen en el texto son los que tiene configurados el usuario.
+    guia._ir_a_paso(titulos.index("Build"))
+    assert ventana.config.get("hotkey_build", "Ctrl+Alt+B") in guia.cuerpo.text()
+    compacto = guia._pasos[titulos.index("Modo compacto")].cuerpo
+    assert "Fijar" in compacto

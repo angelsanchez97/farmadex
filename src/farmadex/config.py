@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import os
 import threading
@@ -40,6 +41,10 @@ POR_DEFECTO = {
     "hotkey_overlay": "Ctrl+Alt+W",
     "hotkey_cursor": "Ctrl+Alt+Q",
     "hotkey_reliquias": "Ctrl+Alt+R",
+    # Leer la pantalla de mejoras del arsenal (pestana Build) y la tarjeta de un
+    # agrietado bajo el cursor (pestana Agrietados).
+    "hotkey_build": "Ctrl+Alt+B",
+    "hotkey_agrietado": "Ctrl+Alt+G",
     "overlay_opacidad": 0.94,
     "tema": "orokin",
     "diseno_mundo": "lista",
@@ -70,6 +75,17 @@ POR_DEFECTO = {
     # Aviso discreto ("Nuevo: guia de uso") para quien ya tenia Farmadex instalado antes
     # de esta funcion: se ensena una sola vez y no vuelve, aunque no haga la guia.
     "guia_aviso_visto": False,
+    # Bienvenida (ui/bienvenida.py): que es Farmadex, lo basico, si es seguro, preguntas
+    # frecuentes y agradecimientos. Obligatoria la primera vez, tambien para quien
+    # actualiza desde una version sin ella; luego se abre desde Ajustes > Ayuda.
+    "bienvenida_vista": False,
+    # Aspecto personalizado (Ajustes > Aspecto), encima del tema elegido. Vive en
+    # config.json, fuera de la carpeta del programa, asi que sobrevive a las
+    # actualizaciones. Escalas: 1.0 = como viene. Colores: {tema: {categoria: "#rrggbb"}},
+    # solo lo que se ha cambiado; lo que falta sale del tema.
+    "escala_interfaz": 1.0,
+    "escala_letra": 1.0,
+    "colores_personalizados": {},
     # "auto" = el idioma de Windows si lo tenemos traducido; si no, espanol.
     "idioma_ui": "auto",
     # Ritmo de juego: multiplica las duraciones estimadas de las misiones (no las
@@ -125,7 +141,9 @@ def cargar(recargar: bool = False) -> dict:
                 datos = {}
         if not isinstance(datos, dict):
             datos = {}
-        config = dict(POR_DEFECTO)
+        # Copia profunda: los valores por defecto que son diccionarios (los colores
+        # personalizados) no pueden compartirse con POR_DEFECTO o un cambio lo ensuciaria.
+        config = copy.deepcopy(POR_DEFECTO)
         config.update({c: v for c, v in datos.items() if c in POR_DEFECTO})
         _compartida = (RUTA_CONFIG, config)
         if datos != config:

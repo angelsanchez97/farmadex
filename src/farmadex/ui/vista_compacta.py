@@ -15,7 +15,8 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QVBoxLayout, QWidg
 
 from ..datos import indice, items, relaciones
 from ..idiomas import es_castellano, glosa, nombre as nombre_idioma, t
-from . import glosario
+from . import ficha_detalles, glosario
+from .resultados_desplegables import ResultadosDesplegables
 from .pestana_buscador import PestanaBuscador, _con_padre, _etiqueta, categoria_es, era_de
 from .widgets import COLOR_BOVEDA, COLOR_DISPONIBLE, PALETA, color_rareza
 
@@ -58,6 +59,13 @@ class VistaCompacta(QWidget):
         self.resumen.setTextInteractionFlags(Qt.LinksAccessibleByMouse)
         self.resumen.linkActivated.connect(self._enlace)
         glosario.conectar_etiqueta(self.resumen)
+        # Los resultados en lista: al pulsar uno se despliegan sus detalles debajo, sin
+        # cambiar de vista (resultados_desplegables.py). El resumen de arriba queda para
+        # los avisos y para lo que se abre desde fuera (lector del cursor, un enlace).
+        self.lista = ResultadosDesplegables()
+        self.lista.elegida.connect(self._mostrar)
+        self.lista.enlace.connect(self._enlace)
+        self.lista.hide()
 
         self.pie = QLabel()
         self.pie.setStyleSheet(f"color: {p['suave']}; font-size: 12px;")
@@ -72,6 +80,7 @@ class VistaCompacta(QWidget):
         caja.setSpacing(6)
         caja.addWidget(self.caja)
         caja.addWidget(self.resumen, 1)
+        caja.addWidget(self.lista, 1)
         caja.addLayout(pie)
 
         # Misma espera que la pestana Buscar: sin ella cada tecla buscaba y pedia precio al
@@ -95,7 +104,19 @@ class VistaCompacta(QWidget):
         p = PALETA
         self.pie.setStyleSheet(f"color: {p['suave']}; font-size: 12px;")
         self.posicion.setStyleSheet(f"color: {p['suave']}; font-size: 12px;")
-        if self._datos:
+        en_lista = self._en_lista()
+        self.lista.setVisible(en_lista)
+        self.resumen.setVisible(not en_lista)
+        if en_lista:
+            self.lista.repintar()
+            item = self._datos["item"]
+            self.lista.desplegar(
+                self._indice_actual,
+                self._html(self._datos, con_nombre=False)
+                + ficha_detalles.html_detalles(self.con, item, compacto=True)
+                + ficha_detalles.bloque_fuentes_compacto(self.con, item["id"]),
+            )
+        elif self._datos:
             self.resumen.setText(self._html(self._datos))
         elif self._sin_resultados is not None:
             self.resumen.setText(self._html_sin_resultados(self._sin_resultados))
@@ -105,6 +126,13 @@ class VistaCompacta(QWidget):
                 + html.escape(t("Escribe el nombre de un objeto, una pieza, un mod o una reliquia."))
                 + "</span>"
             )
+
+    def _en_lista(self) -> bool:
+        """Si lo abierto es uno de los resultados de la lista (y no algo abierto desde fuera)."""
+        return bool(
+            self._datos and 0 <= self._indice_actual < len(self._resultados)
+            and self._resultados[self._indice_actual].get("item_id") == self._datos["item"]["id"]
+        )
 
     # -- teclas ----------------------------------------------------------------
 
@@ -145,6 +173,7 @@ class VistaCompacta(QWidget):
             self.repintar()
             return
         self._resultados = indice.buscar(self.con, texto)
+        self.lista.poner(self._resultados)
         if self._resultados:
             self._mostrar(0)
         else:
@@ -203,7 +232,7 @@ class VistaCompacta(QWidget):
 
     # -- pintado ------------------------------------------------------------------
 
-    def _html(self, datos: dict) -> str:
+    def _html(self, datos: dict, con_nombre: bool = True) -> str:
         p = PALETA
         item, padre = datos["item"], datos["padre"]
         nombre = html.escape(nombre_idioma(item))
@@ -237,6 +266,8 @@ class VistaCompacta(QWidget):
             f"<div style='margin-top:3px'>{' '.join(etiquetas)}</div>",
             f"<div style='margin-top:6px'>{self._donde(datos)}</div>",
         ]
+        if not con_nombre:  # desplegado en la lista: el nombre ya esta en su cabecera
+            lineas.pop(0)
         if self._precio_html:
             lineas.append(f"<div style='margin-top:4px'>{self._precio_html}</div>")
         return "".join(lineas)

@@ -1,0 +1,365 @@
+{
+ "payload": {
+  "auctions": [
+   {
+    "visible": true,
+    "starting_price": 10,
+    "minimal_reputation": 0,
+    "buyout_price": 10,
+    "note": "",
+    "platform": "pc",
+    "crossplay": true,
+    "closed": false,
+    "top_bid": null,
+    "is_marked_for": null,
+    "marked_operation_at": null,
+    "created": "2026-09-24T03:17:02.000+00:00",
+    "updated": "2026-09-24T03:17:02.000+00:00",
+    "note_raw": "",
+    "is_direct_sell": true,
+    "id": "x",
+    "owner": {
+     "reputation": 1,
+     "platform": "pc",
+     "crossplay": true,
+     "locale": "en",
+     "avatar": null,
+     "last_seen": "2026-09-26T14:51:03.532+00:00",
+     "ingame_name": "vendedor_fb31",
+     "slug": "vendedor_fb31",
+     "status": "ingame",
+     "id": "x",
+     "region": "en"
+    },
+    "winner": null,
+    "item": {
+     "type": "riven",
+     "attributes": [
+      {
+       "value": 7.7,
+       "positive": true,
+       "url_name": "zoom"
+      },
+      {
+       "value": 0.4,
+       "positive": true,
+       "url_name": "punch_through"
+      },
+      {
+       "value": -2.4,
+       "positive": false,
+       "url_name": "magazine_capacity"
+      }
+     ],
+     "re_rolls": 0,
+     "mod_rank": 0,
+     "weapon_url_name": "rubico",
+     "mastery_level": 11,
+     "polarity": "vazarin",
+     "name": "heranok"
+    },
+    "private": false
+   },
+   {
+    "minimal_reputation": 0,
+    "starting_price": 10,
+    "buyout_price": 10,
+    "visible": true,
+    "note": "",
+    "platform": "pc",
+    "crossplay": true,
+    "closed": false,
+    "top_bid": null,
+    "is_marked_for": null,
+    "marked_operation_at": null,
+    "created": "2026-09-23T18:32:51.000+00:00",
+    "updated": "2026-09-23T18:32:51.000+00:00",
+    "note_raw": "",
+    "is_direct_sell": true,
+    "id": "x",
+    "owner": {
+     "reputation": 2,
+     "platform": "pc",
+     "crossplay": true,
+     "locale": "en",
+     "avatar": null,
+     "last_seen": "2026-09-26T11:04:13.970+00:00",
+     "ingame_name": "vendedor_74e1",
+     "slug": "vendedor_74e1",
+     "status": "offline",
+     "id": "x",
+     "region": "en"
+    },
+    "winner": null,
+    "item": {
+     "polarity": "madurai",
+     "attributes": [
+      {
+       "value": 8.9,
+       "positive": true,
+       "url_name": "status_duration"
+      },
+      {
+       "value": 12.2,
+       "positive": true,
+       "url_name": "critical_damage"
+      },
+      {
+       "value": 8.7,
+       "positive": true,
+       "url_name": "cold_damage"
+      },
+      {
+       "value": -4.3,
+       "positive": false,
+       "url_name": "reload_speed"
+      }
+     ],
+     "re_rolls": 0,
+     "weapon_url_name": "rubico",
+     "mastery_level": 10,
+     "name": "deci-acrido",
+     "mod_rank": 0,
+     "type": "riven"
+    },
+    "private": false
+   },
+   {
+    "visible": true,
+    "starting_price": 10,
+    "minimal_reputation": 0,
+    "buyout_price": 10,
+    "note": "",
+    "platform": "pc",
+    "crossplay": true,
+    "closed": false,
+    "top_bid": null,
+    "is_marked_for": null,
+    "marked_operation_at": null,
+    "created": "2026-08-27T12:11:23.000+00:00",
+    "updated": "2026-08-27T12:11:23.000+00:00",
+    "note_raw": "",
+    "is_direct_sell": true,
+    "id": "x",
+    "owner": {
+     "reputation": 0,
+     "platform": "pc",
+     "crossplay": true,
+     "locale": "en",
+     "avatar": null,
+     "last_seen": "2026-09-26T12:41:25.455+00:00",
+     "ingame_name": "vendedor_577b",
+     "slug": "vendedor_577b",
+     "status": "offline",
+     "id": "x",
+     "region": "en"
+    },
+    "winner": null,
+    "item": {
+     "mod_rank": 0,
+     "type": "riven",
+     "weapon_url_name": "rubico",
+     "mastery_level": 14,
+     "name": "croni-ampimag",
+     "polarity": "naramon",
+     "re_rolls": 0,
+     "attributes": [
+      {
+       "value": 54.7,
+       "positive": true,
+       "url_name": "fire_rate_/_attack_speed"
+      },
+      {
+       "value": -81.4,
+       "positive": true,
+       "url_name": "recoil"
+      },
+      {
+       "value": 45.2,
+       "positive": true,
+       "url_name": "ammo_maximum"
+      },
+      {
+       "value": -91.5,
+       "positive": false,
+       "url_name": "critical_damage"
+      }
+     ]
+    },
+    "private": false
+   },
+   {
+    "minimal_reputation": 0,
+    "visible": true,
+    "starting_price": 10,
+    "buyout_price": 10,
+    "note": "",
+    "platform": "pc",
+    "crossplay": true,
+    "closed": false,
+    "top_bid": null,
+    "is_marked_for": null,
+    "marked_operation_at": null,
+    "created": "2026-07-13T12:29:22.000+00:00",
+    "updated": "2026-07-13T12:29:22.000+00:00",
+    "note_raw": "",
+    "is_direct_sell": true,
+    "id": "x",
+    "owner": {
+     "reputation": 0,
+     "platform": "pc",
+     "crossplay": true,
+     "locale": "en",
+     "avatar": null,
+     "last_seen": "2026-09-25T17:59:36.305+00:00",
+     "ingame_name": "vendedor_4cbe",
+     "slug": "vendedor_4cbe",
+     "status": "offline",
+     "id": "x",
+     "region": "en"
+    },
+    "winner": null,
+    "item": {
+     "re_rolls": 0,
+     "polarity": "naramon",
+     "mod_rank": 0,
+     "type": "riven",
+     "attributes": [
+      {
+       "value": 11.0,
+       "positive": true,
+       "url_name": "status_chance"
+      },
+      {
+       "value": 16.0,
+       "positive": true,
+       "url_name": "impact_damage"
+      },
+      {
+       "value": -9.0,
+       "positive": false,
+       "url_name": "base_damage_/_melee_damage"
+      }
+     ],
+     "name": "magnadex",
+     "mastery_level": 12,
+     "weapon_url_name": "rubico"
+    },
+    "private": false
+   },
+   {
+    "note": "",
+    "minimal_reputation": 0,
+    "visible": true,
+    "buyout_price": 10,
+    "starting_price": 10,
+    "platform": "pc",
+    "crossplay": true,
+    "closed": false,
+    "top_bid": null,
+    "is_marked_for": null,
+    "marked_operation_at": null,
+    "created": "2026-06-20T21:49:36.000+00:00",
+    "updated": "2026-09-19T20:27:14.000+00:00",
+    "note_raw": "",
+    "is_direct_sell": true,
+    "id": "x",
+    "owner": {
+     "reputation": 11,
+     "platform": "pc",
+     "locale": "en",
+     "avatar": null,
+     "last_seen": "2026-09-24T22:56:02.413+00:00",
+     "ingame_name": "vendedor_947c",
+     "slug": "vendedor_947c",
+     "crossplay": true,
+     "status": "offline",
+     "id": "x",
+     "region": "en"
+    },
+    "winner": null,
+    "item": {
+     "mastery_level": 13,
+     "re_rolls": 0,
+     "type": "riven",
+     "polarity": "madurai",
+     "weapon_url_name": "rubico",
+     "attributes": [
+      {
+       "value": 9.3,
+       "positive": true,
+       "url_name": "impact_damage"
+      },
+      {
+       "value": 7.1,
+       "positive": true,
+       "url_name": "electric_damage"
+      },
+      {
+       "value": 4.5,
+       "positive": true,
+       "url_name": "fire_rate_/_attack_speed"
+      }
+     ],
+     "name": "vexi-magnadra",
+     "mod_rank": 0
+    },
+    "private": false
+   },
+   {
+    "visible": true,
+    "starting_price": 12,
+    "minimal_reputation": 0,
+    "buyout_price": 12,
+    "note": "",
+    "platform": "pc",
+    "crossplay": true,
+    "closed": false,
+    "top_bid": null,
+    "is_marked_for": null,
+    "marked_operation_at": null,
+    "created": "2026-09-23T16:53:56.000+00:00",
+    "updated": "2026-09-23T16:53:56.000+00:00",
+    "note_raw": "",
+    "is_direct_sell": true,
+    "id": "x",
+    "owner": {
+     "reputation": 1,
+     "platform": "pc",
+     "crossplay": true,
+     "locale": "zh-hans",
+     "avatar": null,
+     "last_seen": "2026-09-25T16:45:35.195+00:00",
+     "ingame_name": "vendedor_e410",
+     "slug": "vendedor_e410",
+     "status": "offline",
+     "id": "x",
+     "region": "en"
+    },
+    "winner": null,
+    "item": {
+     "mod_rank": 0,
+     "type": "riven",
+     "weapon_url_name": "rubico",
+     "mastery_level": 10,
+     "name": "ampitox",
+     "polarity": "vazarin",
+     "re_rolls": 0,
+     "attributes": [
+      {
+       "value": 5.0,
+       "positive": true,
+       "url_name": "ammo_maximum"
+      },
+      {
+       "value": 10.2,
+       "positive": true,
+       "url_name": "toxin_damage"
+      }
+     ]
+    },
+    "private": false
+   }
+  ]
+ }
+}

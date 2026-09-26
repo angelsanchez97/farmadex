@@ -10,6 +10,7 @@ from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QProgressBar, QVBoxLayout, QWidget
 
 from ..config import DIR_IMG
+from ..ficheros import reemplazar, temporal_de
 from ..registro_log import obtener
 
 log = obtener("ui")
@@ -20,25 +21,25 @@ log = obtener("ui")
 TEMAS = {
     "vacio": {
         "titulo": "Vacio (azul)",
-        "fondo": "#0e1218", "panel": "#171d26", "panel2": "#1f2733", "borde": "#2b3442",
+        "fondo": "#0e1218", "panel": "#171d26", "panel2": "#1f2733", "boton": "#1f2733", "borde": "#2b3442",
         "texto": "#e8ebf1", "suave": "#93a0b4", "acento": "#4aa3ff", "acento_texto": "#08101c",
         "aviso": "#f0a63c", "ok": "#6fcf7a", "fondo_rgb": "14, 18, 24",
     },
     "orokin": {
         "titulo": "Orokin (dorado)",
-        "fondo": "#12100c", "panel": "#1c1913", "panel2": "#26221a", "borde": "#3a3324",
+        "fondo": "#12100c", "panel": "#1c1913", "panel2": "#26221a", "boton": "#26221a", "borde": "#3a3324",
         "texto": "#f1ece0", "suave": "#a89f8a", "acento": "#e2b455", "acento_texto": "#1a1508",
         "aviso": "#f08a3c", "ok": "#8ccf6f", "fondo_rgb": "18, 16, 12",
     },
     "tenno": {
         "titulo": "Tenno (turquesa)",
-        "fondo": "#0b1416", "panel": "#12201f", "panel2": "#182b29", "borde": "#24403c",
+        "fondo": "#0b1416", "panel": "#12201f", "panel2": "#182b29", "boton": "#182b29", "borde": "#24403c",
         "texto": "#e6f1ef", "suave": "#8fb0aa", "acento": "#39d0c0", "acento_texto": "#04201c",
         "aviso": "#f2b04a", "ok": "#7ee08a", "fondo_rgb": "11, 20, 22",
     },
     "cherry": {
         "titulo": "Cherry (cereza)",
-        "fondo": "#150c0f", "panel": "#211217", "panel2": "#2c181f", "borde": "#47242f",
+        "fondo": "#150c0f", "panel": "#211217", "panel2": "#2c181f", "boton": "#2c181f", "borde": "#47242f",
         "texto": "#f4e8eb", "suave": "#b39aa1", "acento": "#e8456a", "acento_texto": "#1f060c",
         "aviso": "#f2a444", "ok": "#7fd88a", "fondo_rgb": "21, 12, 15",
     },
@@ -67,11 +68,105 @@ COLOR_ACENTO = PALETA["acento"]
 COLOR_AVISO = PALETA["aviso"]
 
 
-def elegir_tema(nombre: str) -> dict:
-    """Activa un tema por nombre (desconocido = el de por defecto) y lo devuelve."""
+# -- aspecto personalizado (Ajustes > Aspecto) -----------------------------------------
+# Lo que el usuario puede cambiar encima del tema, por categorias fijas: no es un editor
+# libre, cada color manda sobre un tipo de elemento de toda la interfaz.
+# (clave de la paleta, nombre en Ajustes, que pinta)
+CATEGORIAS_COLOR = (
+    ("fondo", "Fondo de la ventana", "El color de fondo de toda la ventana"),
+    ("panel", "Cajas y listas", "La caja de busqueda, las listas y los recuadros de cada seccion"),
+    ("panel2", "Tarjetas", "Las tarjetas de cada objeto, mision o recompensa"),
+    ("boton", "Botones", "El fondo de los botones y de los desplegables"),
+    ("borde", "Bordes", "Las lineas que separan y rodean cada cosa"),
+    ("texto", "Texto", "El texto normal"),
+    ("suave", "Texto secundario", "Las notas y explicaciones en pequeno"),
+    ("acento", "Color principal", "Titulos, pestana activa, enlaces y el boton principal"),
+    ("acento_texto", "Texto del boton principal", "El texto que va encima del color principal"),
+    ("aviso", "Avisos", "Lo que pide atencion: datos viejos, algo que falla"),
+    ("ok", "Todo bien", "Lo que esta disponible o ha salido bien"),
+)
+CLAVES_COLOR = tuple(c for c, _n, _a in CATEGORIAS_COLOR)
+
+# Pasos de los dos tamanos: (factor, nombre). 1.0 es como viene.
+ESCALAS_INTERFAZ = ((0.9, "Compacta"), (1.0, "Normal"), (1.15, "Grande"), (1.3, "Muy grande"))
+ESCALAS_LETRA = ((0.9, "Pequena"), (1.0, "Normal"), (1.15, "Grande"), (1.3, "Muy grande"), (1.5, "Enorme"))
+
+# Escala activa: "interfaz" agranda relleno, bordes redondeados y letra de los controles;
+# "letra" solo la letra. La leen `px` y `hoja_estilos`.
+ESCALA = {"interfaz": 1.0, "letra": 1.0}
+
+
+def color_valido(valor) -> bool:
+    """Solo "#rrggbb": lo que se guarda en config.json lo puede haber tocado alguien a mano."""
+    if not isinstance(valor, str) or len(valor) != 7 or valor[0] != "#":
+        return False
+    try:
+        int(valor[1:], 16)
+    except ValueError:
+        return False
+    return True
+
+
+def _rgb(valor: str) -> str:
+    return ", ".join(str(int(valor[i:i + 2], 16)) for i in (1, 3, 5))
+
+
+def paleta_de(nombre: str, personal: dict | None = None) -> dict:
+    """El tema `nombre` con los colores personalizados encima (los invalidos se ignoran)."""
+    paleta = dict(TEMAS.get(nombre) or TEMAS[TEMA_POR_DEFECTO])
+    for clave, valor in (personal or {}).items():
+        if clave in CLAVES_COLOR and color_valido(valor):
+            paleta[clave] = valor.lower()
+    paleta["fondo_rgb"] = _rgb(paleta["fondo"])
+    return paleta
+
+
+def escala_valida(valor, pasos) -> float:
+    """El factor guardado si es uno de los pasos ofrecidos; si no, 1.0."""
+    try:
+        numero = float(valor)
+    except (TypeError, ValueError):
+        return 1.0
+    return numero if any(abs(numero - f) < 1e-6 for f, _n in pasos) else 1.0
+
+
+def aspecto_guardado(config: dict, nombre: str | None = None) -> tuple[dict, float, float]:
+    """(colores personalizados del tema, escala de interfaz, escala de letra) de la config."""
+    nombre = nombre or config.get("tema") or TEMA_POR_DEFECTO
+    todos = config.get("colores_personalizados")
+    colores = todos.get(nombre) if isinstance(todos, dict) else None
+    colores = {c: v for c, v in (colores or {}).items() if c in CLAVES_COLOR and color_valido(v)}
+    return (
+        colores,
+        escala_valida(config.get("escala_interfaz", 1.0), ESCALAS_INTERFAZ),
+        escala_valida(config.get("escala_letra", 1.0), ESCALAS_LETRA),
+    )
+
+
+def px(tamano: float, letra: bool = True, escala: tuple[float, float] | None = None) -> int:
+    """Pixeles de un tamano de la interfaz con la escala activa (o la dada, para la vista
+    previa). `letra` = es un tamano de letra, que tambien crece con "Tamano de letra"."""
+    interfaz, factor_letra = escala or (ESCALA["interfaz"], ESCALA["letra"])
+    return max(1, round(tamano * interfaz * (factor_letra if letra else 1.0)))
+
+
+_LEER_CONFIG = object()
+
+
+def elegir_tema(nombre: str, personal=_LEER_CONFIG) -> dict:
+    """Activa un tema por nombre (desconocido = el de por defecto) y lo devuelve.
+
+    Sin `personal`, aplica tambien lo que el usuario haya personalizado en Ajustes >
+    Aspecto (colores de ese tema y tamanos), leido de la configuracion.
+    """
     global COLOR_FONDO, COLOR_PANEL, COLOR_TEXTO, COLOR_SUAVE, COLOR_ACENTO, COLOR_AVISO
+    if personal is _LEER_CONFIG:
+        from ..config import cargar
+
+        personal, interfaz, letra = aspecto_guardado(cargar(), nombre if nombre in TEMAS else None)
+        ESCALA["interfaz"], ESCALA["letra"] = interfaz, letra
     PALETA.clear()
-    PALETA.update(TEMAS.get(nombre) or TEMAS[TEMA_POR_DEFECTO])
+    PALETA.update(paleta_de(nombre, personal))
     COLOR_FONDO, COLOR_PANEL = PALETA["fondo"], PALETA["panel"]
     COLOR_TEXTO, COLOR_SUAVE = PALETA["texto"], PALETA["suave"]
     COLOR_ACENTO, COLOR_AVISO = PALETA["acento"], PALETA["aviso"]
@@ -82,60 +177,71 @@ def color_rareza(rareza: str | None) -> str:
     return RAREZA.get(rareza or "", PALETA["texto"])
 
 
-def hoja_estilos(p: dict | None = None) -> str:
+def hoja_estilos(p: dict | None = None, escala: tuple[float, float] | None = None) -> str:
+    """Hoja de toda la ventana. `escala` = (interfaz, letra) para la vista previa;
+    sin ella, la activa."""
     p = p or PALETA
+    p = {"boton": p.get("panel2"), **p}  # paletas de antes de existir "boton"
+    esc = escala or (ESCALA["interfaz"], ESCALA["letra"])
+
+    def f(n: int) -> str:  # letra
+        return f"{px(n, True, esc)}px"
+
+    def m(n: int) -> str:  # medidas (relleno, radios)
+        return f"{px(n, False, esc)}px"
+
     return f"""
 QWidget {{ background: {p['fondo']}; color: {p['texto']};
-           font-family: 'Segoe UI'; font-size: 14px; }}
+           font-family: 'Segoe UI'; font-size: {f(14)}; }}
 QLabel, QCheckBox, QSlider, QTabBar, QSplitter {{ background: transparent; }}
-QLineEdit {{ background: {p['panel']}; border: 1px solid {p['borde']}; border-radius: 8px;
-             padding: 9px 12px; font-size: 15px; selection-background-color: {p['acento']}; }}
+QLineEdit {{ background: {p['panel']}; border: 1px solid {p['borde']}; border-radius: {m(8)};
+             padding: {m(9)} {m(12)}; font-size: {f(15)}; selection-background-color: {p['acento']}; }}
 QLineEdit:focus {{ border-color: {p['acento']}; }}
-QListWidget {{ background: {p['panel']}; border: 1px solid {p['borde']}; border-radius: 8px;
+QListWidget {{ background: {p['panel']}; border: 1px solid {p['borde']}; border-radius: {m(8)};
                outline: none; }}
-QListWidget::item {{ padding: 0px; border-bottom: 1px solid {p['borde']}; }}
+QListWidget::item {{ padding: 0; border-bottom: 1px solid {p['borde']}; }}
 QListWidget::item:selected {{ background: {p['panel2']}; border-left: 3px solid {p['acento']}; }}
 QListWidget::item:hover {{ background: {p['panel2']}; }}
-QTextBrowser {{ background: {p['panel']}; border: 1px solid {p['borde']}; border-radius: 8px;
-                padding: 10px; }}
+QTextBrowser {{ background: {p['panel']}; border: 1px solid {p['borde']}; border-radius: {m(8)};
+                padding: {m(10)}; }}
 QScrollArea {{ border: none; background: transparent; }}
 QScrollArea > QWidget > QWidget {{ background: transparent; }}
-QTabBar::tab {{ background: transparent; color: {p['suave']}; padding: 8px 18px;
-                margin-right: 4px; border-bottom: 2px solid transparent; font-size: 15px; }}
+QTabBar::tab {{ background: transparent; color: {p['suave']}; padding: {m(8)} {m(18)};
+                margin-right: {m(4)}; border-bottom: 2px solid transparent; font-size: {f(15)}; }}
 QTabBar::tab:selected {{ color: {p['acento']}; border-bottom: 2px solid {p['acento']}; }}
 QTabBar::tab:hover {{ color: {p['texto']}; }}
 QTabWidget::pane {{ border: none; border-top: 1px solid {p['borde']}; }}
 QTabWidget, QTabWidget > QStackedWidget {{ background: transparent; }}
-QPushButton {{ background: {p['panel2']}; border: 1px solid {p['borde']}; border-radius: 7px;
-               padding: 6px 14px; }}
+QPushButton {{ background: {p['boton']}; border: 1px solid {p['borde']}; border-radius: {m(7)};
+               padding: {m(6)} {m(14)}; }}
 QPushButton:hover {{ border-color: {p['acento']}; }}
 QPushButton:pressed {{ background: {p['panel']}; }}
 QPushButton:disabled {{ color: {p['suave']}; border-color: {p['panel2']}; }}
 QPushButton#principal {{ background: {p['acento']}; color: {p['acento_texto']};
                          font-weight: 600; border: none; }}
-QCheckBox {{ spacing: 8px; }}
-QCheckBox::indicator {{ width: 16px; height: 16px; border: 1px solid {p['borde']};
-                        border-radius: 4px; background: {p['panel']}; }}
+QCheckBox {{ spacing: {m(8)}; }}
+QCheckBox::indicator {{ width: {m(16)}; height: {m(16)}; border: 1px solid {p['borde']};
+                        border-radius: {m(4)}; background: {p['panel']}; }}
 QCheckBox::indicator:checked {{ background: {p['acento']}; border-color: {p['acento']}; }}
-QComboBox {{ background: {p['panel2']}; border: 1px solid {p['borde']}; border-radius: 7px;
-             padding: 5px 10px; }}
-QComboBox QAbstractItemView {{ background: {p['panel2']}; selection-background-color: {p['acento']};
+QComboBox {{ background: {p['boton']}; border: 1px solid {p['borde']}; border-radius: {m(7)};
+             padding: {m(5)} {m(10)}; }}
+QComboBox QAbstractItemView {{ background: {p['boton']}; selection-background-color: {p['acento']};
                                selection-color: {p['acento_texto']}; }}
-QGroupBox {{ border: 1px solid {p['borde']}; border-radius: 10px; margin-top: 14px;
-             padding: 10px 8px 6px 8px; background: {p['panel']}; }}
-QGroupBox::title {{ subcontrol-origin: margin; left: 12px; padding: 0 6px; color: {p['acento']};
-                    font-weight: 600; font-size: 13px; text-transform: uppercase; }}
-QProgressBar {{ background: {p['panel2']}; border: 1px solid {p['borde']}; border-radius: 7px;
-                height: 14px; text-align: center; color: {p['texto']}; font-size: 12px; }}
-QProgressBar::chunk {{ background: {p['acento']}; border-radius: 6px; }}
-QSlider::groove:horizontal {{ height: 4px; background: {p['borde']}; border-radius: 2px; }}
-QSlider::handle:horizontal {{ width: 16px; margin: -6px 0; background: {p['acento']};
-                              border-radius: 8px; }}
-QScrollBar:vertical {{ background: transparent; width: 10px; margin: 2px; }}
-QScrollBar::handle:vertical {{ background: {p['borde']}; border-radius: 4px; min-height: 30px; }}
+QGroupBox {{ border: 1px solid {p['borde']}; border-radius: {m(10)}; margin-top: {m(14)};
+             padding: {m(10)} {m(8)} {m(6)} {m(8)}; background: {p['panel']}; }}
+QGroupBox::title {{ subcontrol-origin: margin; left: 12px; padding: 0 {m(6)}; color: {p['acento']};
+                    font-weight: 600; font-size: {f(13)}; text-transform: uppercase; }}
+QProgressBar {{ background: {p['panel2']}; border: 1px solid {p['borde']}; border-radius: {m(7)};
+                height: {m(14)}; text-align: center; color: {p['texto']}; font-size: {f(12)}; }}
+QProgressBar::chunk {{ background: {p['acento']}; border-radius: {m(6)}; }}
+QSlider::groove:horizontal {{ height: {m(4)}; background: {p['borde']}; border-radius: {m(2)}; }}
+QSlider::handle:horizontal {{ width: {m(16)}; margin: -{m(6)} 0; background: {p['acento']};
+                              border-radius: {m(8)}; }}
+QScrollBar:vertical {{ background: transparent; width: {m(10)}; margin: {m(2)}; }}
+QScrollBar::handle:vertical {{ background: {p['borde']}; border-radius: {m(4)}; min-height: {m(30)}; }}
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
 QScrollBar:horizontal {{ height: 0; }}
-QSplitter::handle {{ background: transparent; width: 8px; }}
+QSplitter::handle {{ background: transparent; width: {m(8)}; }}
 QToolTip {{ background: {p['panel2']}; color: {p['texto']}; border: 1px solid {p['borde']}; }}
 QStatusBar {{ color: {p['suave']}; }}
 """
@@ -173,8 +279,8 @@ class Titulo(QLabel):
     def __init__(self, texto: str, parent=None):
         super().__init__(texto.upper(), parent)
         self.setStyleSheet(
-            f"color: {PALETA['acento']}; font-weight: 600; font-size: 12px; letter-spacing: 1px;"
-            " margin-top: 6px;"
+            f"color: {PALETA['acento']}; font-weight: 600; font-size: {px(12)}px; letter-spacing: 1px;"
+            f" margin-top: {px(6, False)}px;"
         )
 
 
@@ -281,9 +387,9 @@ class CacheImagenes(QObject):
                 try:
                     r = cliente.get(CDN_IMAGENES + nombre)
                     r.raise_for_status()
-                    tmp = destino.with_suffix(destino.suffix + ".tmp")
+                    tmp = temporal_de(destino)
                     tmp.write_bytes(r.content)
-                    tmp.replace(destino)
+                    reemplazar(tmp, destino)
                     self.lista.emit(nombre)
                 except Exception as e:  # noqa: BLE001 - sin imagen se sigue igual
                     log.debug("Sin imagen para %s: %s", nombre, e)

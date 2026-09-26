@@ -47,6 +47,9 @@ class Fisura:
     # Tipo de mision en ingles (Survival), para explicarlo al pasar el raton; `mision`
     # es el mismo ya traducido.
     modo: str = ""
+    # Faccion enemiga en ingles ("Grineer", "Infested"...), para el color y el filtro;
+    # `enemigo` es la misma ya traducida.
+    faccion: str = ""
 
 
 @dataclass
@@ -54,6 +57,24 @@ class Ciclo:
     nombre: str
     estado: str
     expira: datetime | None
+    # La clave de la API ("cetusCycle") y el estado sin traducir ("night"): para los avisos.
+    clave: str = ""
+    estado_en: str = ""
+
+
+@dataclass
+class ObjetoPremio:
+    """Una cosa concreta que da una invasion o una alerta, casada con el indice si se puede."""
+
+    nombre_en: str
+    cantidad: int = 1
+    unique_name: str = ""
+    item_id: int | None = None
+    nombre_es: str = ""
+
+    @property
+    def nombre_mostrar(self) -> str:
+        return self.nombre_es or self.nombre_en
 
 
 @dataclass
@@ -64,6 +85,7 @@ class Invasion:
     defensor: str
     recompensas: str
     porcentaje: float
+    objetos: list[ObjetoPremio] = field(default_factory=list)
 
 
 @dataclass
@@ -71,6 +93,10 @@ class Recompensa:
     texto: str
     expira: datetime | None = None
     detalle: str = ""
+    # Tipo de mision en ingles (arbitraje, alertas) y faccion en ingles: para los avisos.
+    tipo: str = ""
+    faccion: str = ""
+    objetos: list[ObjetoPremio] = field(default_factory=list)
 
 
 @dataclass
@@ -234,6 +260,19 @@ class Traductor:
             return f"{traducido[0]}, {traducido[1]}"
         return f"{nodo}, {self.termino('planeta', planeta)}"
 
+    def padre(self, item_id: int) -> str:
+        """El nombre (en castellano si lo hay) del objeto del que es pieza; vacio si no lo es."""
+        if self.con is None:
+            return ""
+        try:
+            fila = self.con.execute(
+                "SELECT p.nombre_es, p.nombre_en FROM items i JOIN items p ON p.id = i.padre_id WHERE i.id = ?",
+                (item_id,),
+            ).fetchone()
+        except sqlite3.Error:  # pragma: no cover - indice a medio construir
+            return ""
+        return (fila[0] or fila[1] or "") if fila else ""
+
     def objeto(self, unique_name: str, nombre_en: str) -> dict | None:
         """Busca un objeto del indice por unique_name y, si no, por nombre en ingles."""
         if self.con is None:
@@ -332,6 +371,47 @@ def _premio(recompensa) -> str:
     if recompensa.get("credits"):
         partes.append(t("{n} creditos", n=recompensa["credits"]))
     return " + ".join(p for p in partes if p)
+
+
+_RE_CAMELLO = re.compile(r"(?<=[a-z])(?=[A-Z])")
+
+
+def _humano(nombre: str) -> str:
+    """'OrokinCatalystBlueprint' -> 'Orokin Catalyst Blueprint' (el crudo de DE solo trae la ruta)."""
+    if " " in nombre or not nombre:
+        return nombre
+    return _RE_CAMELLO.sub(" ", nombre)
+
+
+def objetos_premio(recompensa, traductor: "Traductor | None" = None) -> list[ObjetoPremio]:
+    """Las cosas concretas de una recompensa, con su ficha del indice cuando se encuentra."""
+    recompensa = _dic(recompensa)
+    salida: list[ObjetoPremio] = []
+    for nombre in recompensa.get("items") or []:
+        if isinstance(nombre, str) and nombre:
+            salida.append(ObjetoPremio(nombre_en=nombre))
+    for c in _dicts(recompensa.get("countedItems")):
+        unico = str(c.get("uniqueName") or c.get("key") or "")
+        nombre = _humano(str(c.get("type") or c.get("key") or "").rsplit("/", 1)[-1])
+        if not nombre:
+            continue
+        try:
+            cantidad = int(c.get("count") or 1)
+        except (TypeError, ValueError):
+            cantidad = 1
+        salida.append(ObjetoPremio(nombre_en=nombre, cantidad=cantidad,
+                                   unique_name=_sin_tienda(unico) if unico.startswith("/") else ""))
+    if traductor is not None:
+        for o in salida:
+            fila = traductor.objeto(o.unique_name, o.nombre_en)
+            if fila:
+                o.item_id = fila["id"]
+                o.nombre_es = fila["nombre_es"] or ""
+                # Las piezas se llaman solo "Plano" en el indice: con su objeto delante.
+                padre = traductor.padre(fila["id"])
+                if padre and o.nombre_es:
+                    o.nombre_es = t("{nombre} de {padre}", nombre=o.nombre_es, padre=padre)
+    return salida
 
 
 def _bloque(nombre: str, funcion, *args):
@@ -445,6 +525,7 @@ def analizar(datos: dict, traductor: Traductor) -> Mundo:
                     acero=_bandera(f.get("isHard")) or False,
                     tormenta=tormenta,
                     modo=str(f.get("missionTypeKey") or f.get("missionType") or ""),
+                    faccion=str(f.get("enemyKey") or f.get("enemy") or ""),
                 )
             )
         orden = {"Lith": 0, "Meso": 1, "Neo": 2, "Axi": 3, "Requiem": 4, "Omnia": 5}
@@ -464,7 +545,8 @@ def analizar(datos: dict, traductor: Traductor) -> Mundo:
             etiqueta = t(CICLOS[clave]) if clave in CICLOS else _nombre_ciclo(clave)
             estado_es = ESTADOS_CICLO.get(str(estado).lower())
             salida.append(
-                Ciclo(etiqueta, t(estado_es) if estado_es else str(estado), _momento(c.get("expiry")))
+                Ciclo(etiqueta, t(estado_es) if estado_es else str(estado), _momento(c.get("expiry")),
+                      clave=clave, estado_en=str(estado).lower())
             )
         return salida
 
@@ -480,10 +562,13 @@ def analizar(datos: dict, traductor: Traductor) -> Mundo:
             if completada:
                 continue
             premios = []
+            objetos: list[ObjetoPremio] = []
             for bando in ("attacker", "defender"):
-                premio = _premio(_dic(i.get(bando)).get("reward"))
+                recompensa = _dic(i.get(bando)).get("reward")
+                premio = _premio(recompensa)
                 if premio:
                     premios.append(premio)
+                objetos += objetos_premio(recompensa, traductor)
             salida.append(
                 Invasion(
                     nodo=traductor.nodo(i.get("nodeKey") or i.get("node")),
@@ -492,6 +577,7 @@ def analizar(datos: dict, traductor: Traductor) -> Mundo:
                     defensor=traductor.termino("faccion", _faccion(i.get("defender"))),
                     recompensas=" / ".join(premios),
                     porcentaje=float(i.get("completion") or 0),
+                    objetos=objetos,
                 )
             )
         return salida
@@ -506,6 +592,9 @@ def analizar(datos: dict, traductor: Traductor) -> Mundo:
                     texto=f"{traductor.nodo(mision.get('node'))} - {premio}".strip(" -"),
                     expira=_momento(a.get("expiry")),
                     detalle=traductor.termino("mision", mision.get("typeKey") or mision.get("type")),
+                    tipo=str(mision.get("typeKey") or mision.get("type") or ""),
+                    faccion=str(mision.get("factionKey") or mision.get("faction") or ""),
+                    objetos=objetos_premio(mision.get("reward"), traductor),
                 )
             )
         return salida
@@ -526,6 +615,8 @@ def analizar(datos: dict, traductor: Traductor) -> Mundo:
                 )
                 if x
             ),
+            tipo=str(a.get("typeKey") or a.get("type") or ""),
+            faccion=str(a.get("enemyKey") or a.get("enemy") or ""),
         )
 
     def variantes(clave: str):

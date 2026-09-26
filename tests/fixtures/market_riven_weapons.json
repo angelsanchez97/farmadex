@@ -1,0 +1,901 @@
+{
+ "apiVersion": "0.25.0",
+ "data": [
+  {
+   "id": "5c5ca81696e8d2003834fdcc",
+   "slug": "kulstar",
+   "gameRef": "/Lotus/Weapons/Grineer/Pistols/GrnTorpedoPistol/GrnTorpedoPistol",
+   "group": "secondary",
+   "rivenType": "pistol",
+   "disposition": 1.3,
+   "reqMasteryRank": 5,
+   "i18n": {
+    "en": {
+     "name": "Kulstar",
+     "icon": "items/images/en/kulstar.92736ca911a3b84f99bc9e50f24369f0.png",
+     "thumb": "items/images/en/thumbs/kulstar.92736ca911a3b84f99bc9e50f24369f0.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fe1d",
+   "slug": "heliocor",
+   "gameRef": "/Lotus/Weapons/Cephalon/Melee/Hammer/CephHammerWeapon",
+   "group": "melee",
+   "rivenType": "melee",
+   "disposition": 1.35,
+   "reqMasteryRank": 9,
+   "i18n": {
+    "en": {
+     "name": "Heliocor",
+     "icon": "items/images/en/heliocor.49fc1b3f6c4e4a550a15ad7c96885195.png",
+     "thumb": "items/images/en/thumbs/heliocor.49fc1b3f6c4e4a550a15ad7c96885195.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fdd0",
+   "slug": "magnus",
+   "gameRef": "/Lotus/Weapons/Tenno/Pistols/Magnum/Magnum",
+   "group": "secondary",
+   "rivenType": "pistol",
+   "disposition": 1.53,
+   "reqMasteryRank": 10,
+   "i18n": {
+    "en": {
+     "name": "Magnus",
+     "icon": "items/images/en/magnus.25f6050dc34973f444d1c6ea54487d5e.png",
+     "thumb": "items/images/en/thumbs/magnus.25f6050dc34973f444d1c6ea54487d5e.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fded",
+   "slug": "arca_titron",
+   "gameRef": "/Lotus/Weapons/Corpus/Melee/Hammer/CorpusHammerWeapon",
+   "group": "melee",
+   "rivenType": "melee",
+   "disposition": 1.3,
+   "reqMasteryRank": 10,
+   "i18n": {
+    "en": {
+     "name": "Arca Titron",
+     "icon": "riven_item/images/arca_titron.bd711749b9917222c85fea4b60376d45.png",
+     "thumb": "riven_item/images/thumbs/arca_titron.bd711749b9917222c85fea4b60376d45.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fdef",
+   "slug": "balla",
+   "gameRef": "/Lotus/Weapons/Ostron/Melee/ModularMelee01/Tip/TipOne",
+   "group": "zaw",
+   "rivenType": "zaw",
+   "disposition": 0.8,
+   "reqMasteryRank": 0,
+   "i18n": {
+    "en": {
+     "name": "Balla",
+     "icon": "riven_item/images/balla.9e49720865f76d3a6b591ad2712a3afb.png",
+     "thumb": "riven_item/images/thumbs/balla.9e49720865f76d3a6b591ad2712a3afb.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fd95",
+   "slug": "soma",
+   "gameRef": "/Lotus/Weapons/Tenno/Rifle/TennoAR",
+   "group": "primary",
+   "rivenType": "rifle",
+   "disposition": 1.15,
+   "reqMasteryRank": 6,
+   "i18n": {
+    "en": {
+     "name": "Soma",
+     "icon": "items/images/en/soma.cdaf834f3db92d51d4452ce8f9aee19c.png",
+     "thumb": "items/images/en/thumbs/soma.cdaf834f3db92d51d4452ce8f9aee19c.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fd9a",
+   "slug": "synapse",
+   "gameRef": "/Lotus/Weapons/Infested/LongGuns/InfestedRifle",
+   "group": "primary",
+   "rivenType": "rifle",
+   "disposition": 1.31,
+   "reqMasteryRank": 11,
+   "i18n": {
+    "en": {
+     "name": "Synapse",
+     "icon": "items/images/en/synapse.8f3428d652e080644e9a3028081f4acd.png",
+     "thumb": "items/images/en/thumbs/synapse.8f3428d652e080644e9a3028081f4acd.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fd9f",
+   "slug": "tonkor",
+   "gameRef": "/Lotus/Weapons/Grineer/LongGuns/GrnGrenadeLauncher/GrnGrenadeLauncher",
+   "group": "primary",
+   "rivenType": "rifle",
+   "disposition": 1.3,
+   "reqMasteryRank": 5,
+   "i18n": {
+    "en": {
+     "name": "Tonkor",
+     "icon": "items/images/en/tonkor.18f437094ffdd53edc96e46d72eb7b59.png",
+     "thumb": "items/images/en/thumbs/tonkor.18f437094ffdd53edc96e46d72eb7b59.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fda0",
+   "slug": "torid",
+   "gameRef": "/Lotus/Weapons/ClanTech/Bio/BioWeapon",
+   "group": "primary",
+   "rivenType": "rifle",
+   "disposition": 1.3,
+   "reqMasteryRank": 4,
+   "i18n": {
+    "en": {
+     "name": "Torid",
+     "icon": "items/images/en/torid.44456f26160f4ece65656c524c4692fe.png",
+     "thumb": "items/images/en/thumbs/torid.44456f26160f4ece65656c524c4692fe.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fda1",
+   "slug": "vectis",
+   "gameRef": "/Lotus/Weapons/Tenno/Rifle/TennoSniperRifle",
+   "group": "primary",
+   "rivenType": "rifle",
+   "disposition": 1.15,
+   "reqMasteryRank": 2,
+   "i18n": {
+    "en": {
+     "name": "Vectis",
+     "icon": "items/images/en/vectis.439c24184ddd098ca33ba897be1b3fa9.png",
+     "thumb": "items/images/en/thumbs/vectis.439c24184ddd098ca33ba897be1b3fa9.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fda4",
+   "slug": "zarr",
+   "gameRef": "/Lotus/Weapons/Grineer/LongGuns/GrnCannon/GrnCannonWeapon",
+   "group": "primary",
+   "rivenType": "rifle",
+   "disposition": 1.15,
+   "reqMasteryRank": 7,
+   "i18n": {
+    "en": {
+     "name": "Zarr",
+     "icon": "items/images/en/zarr.ab172f2a4dac5c140772ba2ac675b614.png",
+     "thumb": "items/images/en/thumbs/zarr.ab172f2a4dac5c140772ba2ac675b614.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fda6",
+   "slug": "zhuge",
+   "gameRef": "/Lotus/Weapons/Tenno/LongGuns/RepeatingCrossbow/RepeatingCrossbow",
+   "group": "primary",
+   "rivenType": "rifle",
+   "disposition": 1.2,
+   "reqMasteryRank": 10,
+   "i18n": {
+    "en": {
+     "name": "Zhuge",
+     "icon": "items/images/en/zhuge.69a6b4bcee465c6b3332ddb4d6d29e19.png",
+     "thumb": "items/images/en/thumbs/zhuge.69a6b4bcee465c6b3332ddb4d6d29e19.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fd62",
+   "slug": "argonak",
+   "gameRef": "/Lotus/Weapons/Grineer/LongGuns/LaserAimRifle/LaserAimRifle",
+   "group": "primary",
+   "rivenType": "rifle",
+   "disposition": 1.25,
+   "reqMasteryRank": 7,
+   "i18n": {
+    "en": {
+     "name": "Argonak",
+     "icon": "items/images/en/argonak.39fc2b8728117c8c7cc81370cd216ba2.png",
+     "thumb": "items/images/en/thumbs/argonak.39fc2b8728117c8c7cc81370cd216ba2.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fdc0",
+   "slug": "dual_cestra",
+   "gameRef": "/Lotus/Weapons/Corpus/Pistols/CorpusMinigun/DualCorpusMinigun",
+   "group": "secondary",
+   "rivenType": "pistol",
+   "disposition": 1.35,
+   "reqMasteryRank": 7,
+   "i18n": {
+    "en": {
+     "name": "Dual Cestra",
+     "icon": "riven_item/images/dual_cestra.c55565d7154d20796cbea06fc66a928f.png",
+     "thumb": "riven_item/images/thumbs/dual_cestra.c55565d7154d20796cbea06fc66a928f.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fdf0",
+   "slug": "bo",
+   "gameRef": "/Lotus/Weapons/Tenno/Melee/Staff/Staff",
+   "group": "melee",
+   "rivenType": "melee",
+   "disposition": 1.35,
+   "reqMasteryRank": 0,
+   "i18n": {
+    "en": {
+     "name": "Bo",
+     "icon": "items/images/en/bo.52ac556f0b623ced5cc7e489a7c6d060.png",
+     "thumb": "items/images/en/thumbs/bo.52ac556f0b623ced5cc7e489a7c6d060.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fd81",
+   "slug": "latron",
+   "gameRef": "/Lotus/Weapons/Tenno/Rifle/SemiAutoRifle",
+   "group": "primary",
+   "rivenType": "rifle",
+   "disposition": 1.4,
+   "reqMasteryRank": 0,
+   "i18n": {
+    "en": {
+     "name": "Latron",
+     "icon": "items/images/en/latron.80c8dcc71e135db8e2fb398c0204d1be.png",
+     "thumb": "items/images/en/thumbs/latron.80c8dcc71e135db8e2fb398c0204d1be.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fd83",
+   "slug": "miter",
+   "gameRef": "/Lotus/Weapons/Grineer/LongGuns/GrineerSawbladeGun/SawBladeGun",
+   "group": "primary",
+   "rivenType": "rifle",
+   "disposition": 1.5,
+   "reqMasteryRank": 6,
+   "i18n": {
+    "en": {
+     "name": "Miter",
+     "icon": "items/images/en/miter.6685ee070afd0ae6e10eff755ba6898b.png",
+     "thumb": "items/images/en/thumbs/miter.6685ee070afd0ae6e10eff755ba6898b.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fd8b",
+   "slug": "penta",
+   "gameRef": "/Lotus/Weapons/Corpus/LongGuns/GrenadeLauncher/GrenadeLauncher",
+   "group": "primary",
+   "rivenType": "rifle",
+   "disposition": 1.35,
+   "reqMasteryRank": 6,
+   "i18n": {
+    "en": {
+     "name": "Penta",
+     "icon": "items/images/en/penta.2d713f1bdcad43f90dd5691a8bb775e7.png",
+     "thumb": "items/images/en/thumbs/penta.2d713f1bdcad43f90dd5691a8bb775e7.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fd8e",
+   "slug": "quanta",
+   "gameRef": "/Lotus/Weapons/Corpus/LongGuns/CrpShockRifle/CrpShockRifle",
+   "group": "primary",
+   "rivenType": "rifle",
+   "disposition": 1.4,
+   "reqMasteryRank": 4,
+   "i18n": {
+    "en": {
+     "name": "Quanta",
+     "icon": "items/images/en/quanta.a1b49d5f5d5c3c46b7f0cd130369559a.png",
+     "thumb": "items/images/en/thumbs/quanta.a1b49d5f5d5c3c46b7f0cd130369559a.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fd90",
+   "slug": "rubico",
+   "gameRef": "/Lotus/Weapons/Tenno/LongGuns/FiveShotSniper/FiveShotSniper",
+   "group": "primary",
+   "rivenType": "rifle",
+   "disposition": 0.95,
+   "reqMasteryRank": 6,
+   "i18n": {
+    "en": {
+     "name": "Rubico",
+     "icon": "items/images/en/rubico.19654c8831d70f150f84be3f69b35a15.png",
+     "thumb": "items/images/en/thumbs/rubico.19654c8831d70f150f84be3f69b35a15.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fd96",
+   "slug": "stradavar",
+   "gameRef": "/Lotus/Weapons/Tenno/LongGuns/TennoTommyGun/TennoTommyGunRifle",
+   "group": "primary",
+   "rivenType": "rifle",
+   "disposition": 1.1,
+   "reqMasteryRank": 8,
+   "i18n": {
+    "en": {
+     "name": "Stradavar",
+     "icon": "items/images/en/stradavar.e69dd79f2dc691327e6f5475c032e09c.png",
+     "thumb": "items/images/en/thumbs/stradavar.e69dd79f2dc691327e6f5475c032e09c.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fd97",
+   "slug": "strun",
+   "gameRef": "/Lotus/Weapons/Tenno/Shotgun/Shotgun",
+   "group": "primary",
+   "rivenType": "shotgun",
+   "disposition": 1.4,
+   "reqMasteryRank": 1,
+   "i18n": {
+    "en": {
+     "name": "Strun",
+     "icon": "items/images/en/strun.e8cc2909f474436bb2573b8ba7ff43b7.png",
+     "thumb": "items/images/en/thumbs/strun.e8cc2909f474436bb2573b8ba7ff43b7.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fd99",
+   "slug": "sybaris",
+   "gameRef": "/Lotus/Weapons/Tenno/LongGuns/TnoLeverAction/TnoLeverActionRifle",
+   "group": "primary",
+   "rivenType": "rifle",
+   "disposition": 1.3,
+   "reqMasteryRank": 5,
+   "i18n": {
+    "en": {
+     "name": "Sybaris",
+     "icon": "riven_item/images/sybaris.5216e20cbf612b67bbe22a6c7c6b107e.png",
+     "thumb": "riven_item/images/thumbs/sybaris.5216e20cbf612b67bbe22a6c7c6b107e.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fd9c",
+   "slug": "tetra",
+   "gameRef": "/Lotus/Weapons/Corpus/LongGuns/CorpusUMP/CorpusUMP",
+   "group": "primary",
+   "rivenType": "rifle",
+   "disposition": 1.5,
+   "reqMasteryRank": 3,
+   "i18n": {
+    "en": {
+     "name": "Tetra",
+     "icon": "items/images/en/tetra.f86faf40614dc3d227cdd7766b27fddc.png",
+     "thumb": "items/images/en/thumbs/tetra.f86faf40614dc3d227cdd7766b27fddc.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fe02",
+   "slug": "dragon_nikana",
+   "gameRef": "/Lotus/Weapons/Tenno/Melee/Swords/KatanaAndWakizashi/LowKatana",
+   "group": "melee",
+   "rivenType": "melee",
+   "disposition": 1.15,
+   "reqMasteryRank": 8,
+   "i18n": {
+    "en": {
+     "name": "Dragon Nikana",
+     "icon": "riven_item/images/dragon_nikana.3525eba6c48fb62195e846bc8030b492.png",
+     "thumb": "riven_item/images/thumbs/dragon_nikana.3525eba6c48fb62195e846bc8030b492.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fe5c",
+   "slug": "burst_laser",
+   "gameRef": "/Lotus/Types/Sentinels/SentinelWeapons/BurstLaserPistol",
+   "group": "sentinel",
+   "rivenType": "pistol",
+   "disposition": 1.45,
+   "reqMasteryRank": 0,
+   "i18n": {
+    "en": {
+     "name": "Burst Laser",
+     "icon": "items/images/en/burst_laser.a8d766d42aed74e71e246da778345604.png",
+     "thumb": "items/images/en/thumbs/burst_laser.a8d766d42aed74e71e246da778345604.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fd66",
+   "slug": "boar",
+   "gameRef": "/Lotus/Weapons/Tenno/Shotgun/FullAutoShotgun",
+   "group": "primary",
+   "rivenType": "shotgun",
+   "disposition": 1.45,
+   "reqMasteryRank": 2,
+   "i18n": {
+    "en": {
+     "name": "Boar",
+     "icon": "items/images/en/boar.9b6d1ef6c217e48180e3702ab0d4e6c8.png",
+     "thumb": "items/images/en/thumbs/boar.9b6d1ef6c217e48180e3702ab0d4e6c8.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fd73",
+   "slug": "flux_rifle",
+   "gameRef": "/Lotus/Weapons/ClanTech/Energy/CrpLaserRifle",
+   "group": "primary",
+   "rivenType": "rifle",
+   "disposition": 1.55,
+   "reqMasteryRank": 6,
+   "i18n": {
+    "en": {
+     "name": "Flux Rifle",
+     "icon": "riven_item/images/flux_rifle.715baa0ac2fcaa3d16a41c7622ad86ac.png",
+     "thumb": "riven_item/images/thumbs/flux_rifle.715baa0ac2fcaa3d16a41c7622ad86ac.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fd7e",
+   "slug": "karak",
+   "gameRef": "/Lotus/Weapons/Grineer/LongGuns/GrineerM16Homage/GrineerM16Rifle",
+   "group": "primary",
+   "rivenType": "rifle",
+   "disposition": 1.35,
+   "reqMasteryRank": 1,
+   "i18n": {
+    "en": {
+     "name": "Karak",
+     "icon": "items/images/en/karak.bbe0d895125d9c2b3b612c34a5e611f3.png",
+     "thumb": "items/images/en/thumbs/karak.bbe0d895125d9c2b3b612c34a5e611f3.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fd80",
+   "slug": "lanka",
+   "gameRef": "/Lotus/Weapons/ClanTech/Energy/Railgun",
+   "group": "primary",
+   "rivenType": "rifle",
+   "disposition": 1.05,
+   "reqMasteryRank": 10,
+   "i18n": {
+    "en": {
+     "name": "Lanka",
+     "icon": "items/images/en/lanka.fc41509b5224da3e9fd0dd1b149133cf.png",
+     "thumb": "items/images/en/thumbs/lanka.fc41509b5224da3e9fd0dd1b149133cf.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fd8a",
+   "slug": "paris",
+   "gameRef": "/Lotus/Weapons/Tenno/Bows/HuntingBow",
+   "group": "primary",
+   "rivenType": "rifle",
+   "disposition": 1.4,
+   "reqMasteryRank": 0,
+   "i18n": {
+    "en": {
+     "name": "Paris",
+     "icon": "items/images/en/paris.644a8cdf6a49b88e7df042cbac294e15.png",
+     "thumb": "items/images/en/thumbs/paris.644a8cdf6a49b88e7df042cbac294e15.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fdd9",
+   "slug": "spectra",
+   "gameRef": "/Lotus/Weapons/ClanTech/Energy/CrpLaserPistol",
+   "group": "secondary",
+   "rivenType": "pistol",
+   "disposition": 1.49,
+   "reqMasteryRank": 4,
+   "i18n": {
+    "en": {
+     "name": "Spectra",
+     "icon": "items/images/en/spectra.2d58d17ca4cad3d43d7e373294a6c7ce.png",
+     "thumb": "items/images/en/thumbs/spectra.2d58d17ca4cad3d43d7e373294a6c7ce.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fde0",
+   "slug": "twin_gremlins",
+   "gameRef": "/Lotus/Weapons/Grineer/GrineerPistol/GrineerAkimboPistol",
+   "group": "secondary",
+   "rivenType": "pistol",
+   "disposition": 1.2,
+   "reqMasteryRank": 5,
+   "i18n": {
+    "en": {
+     "name": "Twin Gremlins",
+     "icon": "items/images/en/twin_gremlins.36127609f284a9c973fcedd340d45187.png",
+     "thumb": "items/images/en/thumbs/twin_gremlins.36127609f284a9c973fcedd340d45187.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fe62",
+   "slug": "vulklok",
+   "gameRef": "/Lotus/Types/Sentinels/SentinelWeapons/SentElecRailgun",
+   "group": "sentinel",
+   "rivenType": "rifle",
+   "disposition": 1.25,
+   "reqMasteryRank": 0,
+   "i18n": {
+    "en": {
+     "name": "Vulklok",
+     "icon": "items/images/en/vulklok.afb2dead96611511849d92327fc00996.png",
+     "thumb": "items/images/en/thumbs/vulklok.afb2dead96611511849d92327fc00996.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5ced51decd3f0b0098a3862c",
+   "slug": "catchmoon",
+   "gameRef": "/Lotus/Weapons/SolarisUnited/Secondary/SUModularSecondarySet1/Barrel/SUModularSecondaryBarrelAPart",
+   "group": "kitgun",
+   "rivenType": "kitgun",
+   "disposition": 0.75,
+   "reqMasteryRank": 0,
+   "i18n": {
+    "en": {
+     "name": "Catchmoon",
+     "icon": "riven_item/images/catchmoon.971ee1945ce27bc5bb644d1937581191.png",
+     "thumb": "riven_item/images/thumbs/catchmoon.971ee1945ce27bc5bb644d1937581191.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5cfe91738be64500e4430cdc",
+   "slug": "cyngas",
+   "gameRef": "/Lotus/Weapons/Tenno/Archwing/Primary/ArchBurstGun/ArchBurstGun",
+   "group": "archgun",
+   "rivenType": "rifle",
+   "disposition": 1.3,
+   "reqMasteryRank": 4,
+   "i18n": {
+    "en": {
+     "name": "Cyngas",
+     "icon": "items/images/en/cyngas.06e5a46f3d3b985ce51c8154c0325088.png",
+     "thumb": "items/images/en/thumbs/cyngas.06e5a46f3d3b985ce51c8154c0325088.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fd67",
+   "slug": "boltor",
+   "gameRef": "/Lotus/Weapons/Tenno/Rifle/BoltoRifle",
+   "group": "primary",
+   "rivenType": "rifle",
+   "disposition": 1.3,
+   "reqMasteryRank": 2,
+   "i18n": {
+    "en": {
+     "name": "Boltor",
+     "icon": "items/images/en/boltor.b00dd8933257acaab1936c88e345edfc.png",
+     "thumb": "items/images/en/thumbs/boltor.b00dd8933257acaab1936c88e345edfc.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fd68",
+   "slug": "braton",
+   "gameRef": "/Lotus/Weapons/Tenno/Rifle/Rifle",
+   "group": "primary",
+   "rivenType": "rifle",
+   "disposition": 1.35,
+   "reqMasteryRank": 0,
+   "i18n": {
+    "en": {
+     "name": "Braton",
+     "icon": "items/images/en/braton.139748d7e02e1d7370a0641ec81f4e2a.png",
+     "thumb": "items/images/en/thumbs/braton.139748d7e02e1d7370a0641ec81f4e2a.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fd86",
+   "slug": "ogris",
+   "gameRef": "/Lotus/Weapons/ClanTech/Chemical/RocketLauncher",
+   "group": "primary",
+   "rivenType": "rifle",
+   "disposition": 1.3,
+   "reqMasteryRank": 9,
+   "i18n": {
+    "en": {
+     "name": "Ogris",
+     "icon": "items/images/en/ogris.9155e81ec783c0afd68646499883b17c.png",
+     "thumb": "items/images/en/thumbs/ogris.9155e81ec783c0afd68646499883b17c.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fd89",
+   "slug": "paracyst",
+   "gameRef": "/Lotus/Weapons/Infested/LongGuns/QuantaFullyInfested/InfQuantaRifle",
+   "group": "primary",
+   "rivenType": "rifle",
+   "disposition": 1.31,
+   "reqMasteryRank": 7,
+   "i18n": {
+    "en": {
+     "name": "Paracyst",
+     "icon": "items/images/en/paracyst.c81528e565a7651b7a7d809e9a8f2974.png",
+     "thumb": "items/images/en/thumbs/paracyst.c81528e565a7651b7a7d809e9a8f2974.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fd98",
+   "slug": "supra",
+   "gameRef": "/Lotus/Weapons/ClanTech/Energy/CrpHeavyRifle",
+   "group": "primary",
+   "rivenType": "rifle",
+   "disposition": 1.1,
+   "reqMasteryRank": 12,
+   "i18n": {
+    "en": {
+     "name": "Supra",
+     "icon": "items/images/en/supra.f1e9cbaf71eff60771de3aa57a9596f4.png",
+     "thumb": "items/images/en/thumbs/supra.f1e9cbaf71eff60771de3aa57a9596f4.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fd9d",
+   "slug": "tiberon",
+   "gameRef": "/Lotus/Weapons/Tenno/LongGuns/DrakeRifle/DrakeRifle",
+   "group": "primary",
+   "rivenType": "rifle",
+   "disposition": 1.1,
+   "reqMasteryRank": 10,
+   "i18n": {
+    "en": {
+     "name": "Tiberon",
+     "icon": "items/images/en/tiberon.d3bd3db70fcc6bd97713419f1ac222e3.png",
+     "thumb": "items/images/en/thumbs/tiberon.d3bd3db70fcc6bd97713419f1ac222e3.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fdad",
+   "slug": "aklex",
+   "gameRef": "/Lotus/Weapons/Tenno/Akimbo/AkLexPistols",
+   "group": "secondary",
+   "rivenType": "pistol",
+   "disposition": 1.05,
+   "reqMasteryRank": 4,
+   "i18n": {
+    "en": {
+     "name": "Aklex",
+     "icon": "riven_item/images/aklex.800394d7e0f24986229130ea22dfa4e7.png",
+     "thumb": "riven_item/images/thumbs/aklex.800394d7e0f24986229130ea22dfa4e7.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fdaf",
+   "slug": "aksomati",
+   "gameRef": "/Lotus/Weapons/Tenno/Pistols/SomaSidearm/AkimboSomaPistols",
+   "group": "secondary",
+   "rivenType": "pistol",
+   "disposition": 1.25,
+   "reqMasteryRank": 9,
+   "i18n": {
+    "en": {
+     "name": "Aksomati",
+     "icon": "items/images/en/aksomati.7f420cc90ae6ef6d8130c9475dc50274.png",
+     "thumb": "items/images/en/thumbs/aksomati.7f420cc90ae6ef6d8130c9475dc50274.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fdb3",
+   "slug": "angstrum",
+   "gameRef": "/Lotus/Weapons/Corpus/Pistols/CrpHandRL/CorpusHandRocketLauncher",
+   "group": "secondary",
+   "rivenType": "pistol",
+   "disposition": 1.35,
+   "reqMasteryRank": 4,
+   "i18n": {
+    "en": {
+     "name": "Angstrum",
+     "icon": "items/images/en/angstrum.8a8e60fea990e087f5075a5ad0027d1f.png",
+     "thumb": "items/images/en/thumbs/angstrum.8a8e60fea990e087f5075a5ad0027d1f.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fdb5",
+   "slug": "atomos",
+   "gameRef": "/Lotus/Weapons/Grineer/Pistols/HeatGun/GrnHeatGun",
+   "group": "secondary",
+   "rivenType": "pistol",
+   "disposition": 0.95,
+   "reqMasteryRank": 5,
+   "i18n": {
+    "en": {
+     "name": "Atomos",
+     "icon": "items/images/en/atomos.2f3af350060d4b7ff4adae2b12f97b0a.png",
+     "thumb": "items/images/en/thumbs/atomos.2f3af350060d4b7ff4adae2b12f97b0a.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fdb6",
+   "slug": "azima",
+   "gameRef": "/Lotus/Weapons/Tenno/Pistols/SundialGun/SundialPistol",
+   "group": "secondary",
+   "rivenType": "pistol",
+   "disposition": 1.25,
+   "reqMasteryRank": 6,
+   "i18n": {
+    "en": {
+     "name": "Azima",
+     "icon": "items/images/en/azima.8bb80c4b17a8fcbde5ef298c463d84e2.png",
+     "thumb": "items/images/en/thumbs/azima.8bb80c4b17a8fcbde5ef298c463d84e2.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5e02154d14569703bf43e547",
+   "slug": "shedu",
+   "gameRef": "/Lotus/Weapons/Sentients/Shedu/SheduHeavyWeapon",
+   "group": "primary",
+   "rivenType": "rifle",
+   "disposition": 0.75,
+   "reqMasteryRank": 13,
+   "i18n": {
+    "en": {
+     "name": "Shedu",
+     "icon": "items/images/en/shedu.765c016812e915e1e06ceb5e3820ae48.png",
+     "thumb": "items/images/en/thumbs/shedu.765c016812e915e1e06ceb5e3820ae48.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fd60",
+   "slug": "amprex",
+   "gameRef": "/Lotus/Weapons/Corpus/LongGuns/ChainLightningGun/ChainLightningRifle",
+   "group": "primary",
+   "rivenType": "rifle",
+   "disposition": 0.85,
+   "reqMasteryRank": 10,
+   "i18n": {
+    "en": {
+     "name": "Amprex",
+     "icon": "items/images/en/amprex.96d41f4e6b7c4f8483f90c44683ba2bf.png",
+     "thumb": "items/images/en/thumbs/amprex.96d41f4e6b7c4f8483f90c44683ba2bf.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fd6a",
+   "slug": "buzlok",
+   "gameRef": "/Lotus/Weapons/Grineer/LongGuns/GrnGorgSniperRifle/GrnGorgSniperRifle",
+   "group": "primary",
+   "rivenType": "rifle",
+   "disposition": 1.45,
+   "reqMasteryRank": 11,
+   "i18n": {
+    "en": {
+     "name": "Buzlok",
+     "icon": "items/images/en/buzlok.505769cecc7314d13d236e6227be8c26.png",
+     "thumb": "items/images/en/thumbs/buzlok.505769cecc7314d13d236e6227be8c26.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fd6b",
+   "slug": "cernos",
+   "gameRef": "/Lotus/Weapons/Tenno/Bows/AntlerBow/AntlerBow",
+   "group": "primary",
+   "rivenType": "rifle",
+   "disposition": 1.3,
+   "reqMasteryRank": 6,
+   "i18n": {
+    "en": {
+     "name": "Cernos",
+     "icon": "items/images/en/cernos.6ea49e65e339e10cc84409e7dcb02cef.png",
+     "thumb": "items/images/en/thumbs/cernos.6ea49e65e339e10cc84409e7dcb02cef.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fd71",
+   "slug": "dread",
+   "gameRef": "/Lotus/Weapons/Tenno/Bows/StalkerBow",
+   "group": "primary",
+   "rivenType": "rifle",
+   "disposition": 1.3,
+   "reqMasteryRank": 5,
+   "i18n": {
+    "en": {
+     "name": "Dread",
+     "icon": "items/images/en/dread.c1bc8cbd36a8ff069e4388607a9d1ee6.png",
+     "thumb": "items/images/en/thumbs/dread.c1bc8cbd36a8ff069e4388607a9d1ee6.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fd74",
+   "slug": "glaxion",
+   "gameRef": "/Lotus/Weapons/Corpus/LongGuns/CrpFreezeRay/CrpFreezeRayRifle",
+   "group": "primary",
+   "rivenType": "rifle",
+   "disposition": 1.3,
+   "reqMasteryRank": 8,
+   "i18n": {
+    "en": {
+     "name": "Glaxion",
+     "icon": "items/images/en/glaxion.ef97d7dd12728d34ea7ed50100c197b0.png",
+     "thumb": "items/images/en/thumbs/glaxion.ef97d7dd12728d34ea7ed50100c197b0.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fd76",
+   "slug": "grakata",
+   "gameRef": "/Lotus/Weapons/Grineer/LongGuns/GrineerAssaultRifle/GrnAssaultRifle",
+   "group": "primary",
+   "rivenType": "rifle",
+   "disposition": 1.35,
+   "reqMasteryRank": 5,
+   "i18n": {
+    "en": {
+     "name": "Grakata",
+     "icon": "items/images/en/grakata.cc349001047e5445675581a53cf4a30f.png",
+     "thumb": "items/images/en/thumbs/grakata.cc349001047e5445675581a53cf4a30f.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fd77",
+   "slug": "grinlok",
+   "gameRef": "/Lotus/Weapons/Grineer/LongGuns/GrineerLeverActionRifle/GLARifle",
+   "group": "primary",
+   "rivenType": "rifle",
+   "disposition": 1.3,
+   "reqMasteryRank": 7,
+   "i18n": {
+    "en": {
+     "name": "Grinlok",
+     "icon": "items/images/en/grinlok.d4946bece8cf876693fb748649e1e72b.png",
+     "thumb": "items/images/en/thumbs/grinlok.d4946bece8cf876693fb748649e1e72b.128x128.png"
+    }
+   }
+  },
+  {
+   "id": "5c5ca81696e8d2003834fdf9",
+   "slug": "cyath",
+   "gameRef": "/Lotus/Weapons/Ostron/Melee/ModularMelee01/Tip/TipFour",
+   "group": "zaw",
+   "rivenType": "zaw",
+   "disposition": 1,
+   "reqMasteryRank": 0,
+   "i18n": {
+    "en": {
+     "name": "Cyath",
+     "icon": "items/images/en/cyath.9be1cfd6ca29427512ee0efe203aba4d.png",
+     "thumb": "items/images/en/thumbs/cyath.9be1cfd6ca29427512ee0efe203aba4d.128x128.png"
+    }
+   }
+  }
+ ]
+}

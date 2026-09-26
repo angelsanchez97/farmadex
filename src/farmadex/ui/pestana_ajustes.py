@@ -1,4 +1,12 @@
-"""Pestana Ajustes: atajos, aspecto, idioma, datos, version y salida."""
+"""Pestana Ajustes: secciones en vertical a la izquierda, como el menu de opciones del juego.
+
+General (idioma, arranque, version), Atajos, Apariencia (tema, tamanos y colores con
+vista previa), Reliquias (lecturas de pantalla y diagnostico), Datos del juego
+(con el mantenimiento plegado en "Avanzado") y Ayuda (bienvenida, guia, Acerca de).
+
+Cada opcion rara lleva debajo una linea que dice que hace y que pasa al usarla:
+lo pidio un tester, con razon, porque un boton que nadie entiende no lo usa nadie.
+"""
 
 from __future__ import annotations
 
@@ -8,18 +16,27 @@ import sqlite3
 from collections.abc import Callable
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
+    QBoxLayout,
     QCheckBox,
+    QColorDialog,
     QComboBox,
     QFormLayout,
+    QFrame,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QPushButton,
     QScrollArea,
     QSlider,
+    QStackedWidget,
+    QStyle,
+    QTabBar,
     QVBoxLayout,
     QWidget,
 )
@@ -31,8 +48,120 @@ from ..datos import eficiencia, indice
 from ..hotkeys import parsear
 from ..idiomas import t
 from .acerca_de import abrir_acerca_de, texto_autor
-from .pestana_mundo import DISENO_POR_DEFECTO
-from .widgets import PALETA, TEMA_POR_DEFECTO, TEMAS
+from .widgets import (
+    CATEGORIAS_COLOR,
+    ESCALAS_INTERFAZ,
+    ESCALAS_LETRA,
+    PALETA,
+    TEMA_POR_DEFECTO,
+    TEMAS,
+    aspecto_guardado,
+    hoja_estilos,
+    paleta_de,
+    px,
+)
+
+# Secciones de la columna izquierda: (clave, titulo). El orden es el de la columna.
+SECCIONES = (
+    ("general", "General"),
+    ("atajos", "Atajos"),
+    ("aspecto", "Apariencia"),
+    ("reliquias", "Reliquias"),
+    ("datos", "Datos del juego"),
+    ("ayuda", "Ayuda"),
+)
+
+
+def _texto_sobre(color: str) -> str:
+    """Negro o blanco, lo que mas se lea encima de `color` (para las muestras)."""
+    c = QColor(color)
+    luz = 0.299 * c.red() + 0.587 * c.green() + 0.114 * c.blue()
+    return "#101010" if luz > 140 else "#f4f4f4"
+
+
+class VistaPrevia(QFrame):
+    """Un trocito de Farmadex pintado con el aspecto que se esta eligiendo, sin aplicarlo."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("vistaPrevia")
+        self.setMinimumWidth(300)
+        self.cabecera = QLabel("FARMADEX")
+        self.pestanas = QTabBar()
+        self.pestanas.setDrawBase(False)
+        self.pestanas.setExpanding(False)
+        self.caja = QLineEdit()
+        self.caja.setReadOnly(True)
+        self.tarjeta = QFrame()
+        self.tarjeta.setObjectName("tarjetaPrevia")
+        self.nombre = QLabel()
+        self.detalle = QLabel()
+        self.detalle.setWordWrap(True)
+        self.ok = QLabel()
+        self.aviso = QLabel()
+        self.aviso.setWordWrap(True)
+        self.boton = QPushButton()
+        self.principal = QPushButton()
+        self.principal.setObjectName("principal")
+        for boton in (self.boton, self.principal):
+            boton.setFocusPolicy(Qt.NoFocus)
+
+        dentro_tarjeta = QVBoxLayout(self.tarjeta)
+        dentro_tarjeta.setContentsMargins(12, 8, 10, 8)
+        dentro_tarjeta.setSpacing(3)
+        dentro_tarjeta.addWidget(self.nombre)
+        dentro_tarjeta.addWidget(self.detalle)
+        dentro_tarjeta.addWidget(self.ok)
+        botones = QHBoxLayout()
+        botones.addWidget(self.boton)
+        botones.addWidget(self.principal)
+        botones.addStretch(1)
+        caja = QVBoxLayout(self)
+        caja.setContentsMargins(12, 10, 12, 12)
+        caja.setSpacing(8)
+        caja.addWidget(self.cabecera)
+        caja.addWidget(self.pestanas)
+        caja.addWidget(self.caja)
+        caja.addWidget(self.tarjeta)
+        caja.addWidget(self.aviso)
+        caja.addLayout(botones)
+        caja.addStretch(1)
+        self.retraducir()
+
+    def retraducir(self) -> None:
+        while self.pestanas.count():
+            self.pestanas.removeTab(0)
+        for titulo in ("Buscar", "Objetivos", "Mundo"):
+            self.pestanas.addTab(t(titulo))
+        self.caja.setPlaceholderText(t("Busca un objeto, mision o reliquia..."))
+        self.nombre.setText("Ash Prime")
+        self.detalle.setText(t("Texto secundario: donde se consigue y cuanto se tarda."))
+        self.ok.setText(t("Disponible ahora"))
+        self.aviso.setText(t("Aviso: los datos van por detras del juego."))
+        self.boton.setText(t("Boton"))
+        self.principal.setText(t("Boton principal"))
+
+    def pintar(self, paleta: dict, escala: tuple[float, float]) -> None:
+        p = paleta
+        self.setStyleSheet(
+            hoja_estilos(p, escala)
+            + f" #vistaPrevia {{ background: {p['fondo']}; border: 1px solid {p['borde']};"
+            f" border-radius: 10px; }}"
+            f" #tarjetaPrevia {{ background: {p['panel2']}; border: 1px solid {p['borde']};"
+            f" border-radius: 8px; border-left: 4px solid {p['acento']}; }}"
+        )
+        self.cabecera.setStyleSheet(
+            f"color: {p['acento']}; font-weight: 700; font-size: {px(17, True, escala)}px; letter-spacing: 1px;"
+        )
+        self.nombre.setStyleSheet(f"color: {p['texto']}; font-weight: 600; font-size: {px(15, True, escala)}px;")
+        self.detalle.setStyleSheet(f"color: {p['suave']}; font-size: {px(12, True, escala)}px;")
+        self.ok.setStyleSheet(f"color: {p['ok']}; font-size: {px(12, True, escala)}px;")
+        self.aviso.setStyleSheet(f"color: {p['aviso']}; font-size: {px(12, True, escala)}px;")
+        # Alto minimo segun la letra elegida: si no, con letra grande el hueco de la vista
+        # previa aplasta las lineas unas encima de otras. (etiqueta, tamano, lineas)
+        for etiqueta, tamano, lineas in ((self.nombre, 15, 1), (self.detalle, 12, 2), (self.ok, 12, 1),
+                                         (self.aviso, 12, 2), (self.cabecera, 17, 1)):
+            etiqueta.setMinimumHeight(int(px(tamano, True, escala) * 1.45 * lineas))
 
 
 class PestanaAjustes(QWidget):
@@ -42,6 +171,8 @@ class PestanaAjustes(QWidget):
     opacidad_cambiada = Signal(float)
     tema_cambiado = Signal(str)
     idioma_cambiado = Signal(str)
+    # La disposicion de Mundo se cambia ahora en la propia pestana Mundo; la senal se
+    # conserva para quien siga conectado a ella.
     diseno_mundo_cambiado = Signal(str)
     ritmo_cambiado = Signal(str)
     comprobar_version = Signal()
@@ -51,52 +182,168 @@ class PestanaAjustes(QWidget):
     guardar_informe = Signal()
     # Borra el perfil de WebView2 del reproductor de guias (sesion de YouTube, cache).
     borrar_reproductor = Signal()
+    # Se guardo un aspecto nuevo (tamanos o colores): la ventana vuelve a aplicar el tema.
+    apariencia_cambiada = Signal()
+    # Ajustes > Ayuda: la bienvenida y la guia viven en la ventana, no aqui.
+    ver_bienvenida = Signal()
+    ver_guia = Signal()
+    estilo_recompensas_cambiado = Signal(str)
+    prioridad_recompensas_cambiada = Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.config = cargar()
-        p = PALETA
         # Textos fijos que hay que volver a escribir al cambiar de idioma:
         # (funcion que pone el texto, clave en castellano).
         self._fijos: list[tuple[Callable[[str], None], str]] = []
         self._notas: list[QLabel] = []
+        # Hojas de estilo que dependen del tema o del tamano: se rehacen en repintar().
+        self._estilos: list[tuple[QWidget, Callable[[], str]]] = []
         # Color de la linea de version ("suave" normal, "aviso" si hay version nueva).
         self._color_version = "suave"
+        self._modo_pantalla: str | None = None
+        self._texto_parche: str | None = None
 
-        # -- atajos --------------------------------------------------------------
-        self.campos_hotkey = {
-            "overlay": QLineEdit(self.config["hotkey_overlay"]),
-            "cursor": QLineEdit(self.config["hotkey_cursor"]),
-            "reliquias": QLineEdit(self.config["hotkey_reliquias"]),
-        }
+        # -- columna de secciones ------------------------------------------------
+        self.secciones = QListWidget()
+        self.secciones.setObjectName("seccionesAjustes")
+        self.secciones.setFocusPolicy(Qt.NoFocus)
+        self._estilo(self.secciones, self._hoja_secciones)
+        self.paginas = QStackedWidget()
+        self._claves_seccion: list[str] = []
+        self._contenido: dict[str, QVBoxLayout] = {}
+        for clave, titulo in SECCIONES:
+            item = QListWidgetItem()
+            self.secciones.addItem(item)
+            self._fijo(item.setText, titulo)
+            self._claves_seccion.append(clave)
+            self._contenido[clave] = self._pagina()
+        self.secciones.currentRowChanged.connect(self.paginas.setCurrentIndex)
+
+        self._construir_general()
+        self._construir_atajos()
+        self._construir_aspecto()
+        self._construir_reliquias()
+        self._construir_datos()
+        self._construir_ayuda()
+        for dentro in self._contenido.values():
+            dentro.addStretch(1)
+        self.secciones.setCurrentRow(0)
+        self._ajustar_ancho_secciones()
+
+        # -- pie ------------------------------------------------------------------
+        boton_salir = QPushButton()
+        self._fijo(lambda s: boton_salir.setText(s.format(app=NOMBRE_APP)), "Salir de {app}")
+        boton_salir.clicked.connect(self.salir.emit)
+        # Que es Farmadex y que dice DE de los programas de terceros (ui/acerca_de.py).
+        self.boton_acerca = QPushButton()
+        self._fijo(lambda s: self.boton_acerca.setText(s.format(app=NOMBRE_APP)), "Acerca de {app}")
+        self.boton_acerca.clicked.connect(self._abrir_acerca)
+
+        pie = QHBoxLayout()
+        creditos = self._nota("Datos de WFCD y Digital Extremes")
+        creditos.setWordWrap(False)  # en el pie hay sitio de sobra; partido queda raro
+        pie.addWidget(creditos)
+        pie.addStretch(1)
+        self.autor = QLabel()
+        self.autor.setTextFormat(Qt.RichText)
+        self.autor.setOpenExternalLinks(True)
+        self._estilo(self.autor, lambda: f"color: {PALETA['suave']}; font-size: {px(12)}px;")
+        self._fijo(lambda _s: self.autor.setText(texto_autor()), "Creado por {autor}")
+        pie.addWidget(self.autor)
+        pie.addWidget(self.boton_acerca)
+        pie.addWidget(boton_salir)
+
+        cuerpo = QHBoxLayout()
+        cuerpo.setSpacing(12)
+        cuerpo.addWidget(self.secciones)
+        cuerpo.addWidget(self.paginas, 1)
+        caja = QVBoxLayout(self)
+        caja.setContentsMargins(4, 8, 4, 4)
+        caja.addLayout(cuerpo, 1)
+        caja.addLayout(pie)
+
+        self.refrescar_estado()
+
+    # -- piezas ---------------------------------------------------------------------
+
+    def _pagina(self) -> QVBoxLayout:
+        contenido = QWidget()
+        dentro = QVBoxLayout(contenido)
+        dentro.setContentsMargins(0, 0, 8, 0)
+        dentro.setSpacing(10)
+        desplazable = QScrollArea()
+        desplazable.setWidgetResizable(True)
+        desplazable.setWidget(contenido)
+        self.paginas.addWidget(desplazable)
+        return dentro
+
+    def _hoja_secciones(self) -> str:
+        p = PALETA
+        return (
+            f"#seccionesAjustes {{ background: {p['panel']}; border: 1px solid {p['borde']};"
+            f" border-radius: 8px; padding: 4px; outline: none; }}"
+            f" #seccionesAjustes::item {{ padding: {px(10, False)}px {px(12, False)}px; border: none;"
+            f" border-left: 3px solid transparent; color: {p['suave']}; font-size: {px(15)}px; }}"
+            f" #seccionesAjustes::item:selected {{ background: {p['panel2']}; color: {p['texto']};"
+            f" border-left: 3px solid {p['acento']}; }}"
+            f" #seccionesAjustes::item:hover {{ color: {p['texto']}; background: {p['panel2']}; }}"
+        )
+
+    def _ajustar_ancho_secciones(self) -> None:
+        """Tan ancha como el titulo mas largo en el idioma activo, sin cortar ni sobrar."""
+        metrica = self.secciones.fontMetrics()
+        mas_largo = max(metrica.horizontalAdvance(self.secciones.item(i).text())
+                        for i in range(self.secciones.count()))
+        self.secciones.setFixedWidth(max(150, int(mas_largo * 1.1) + px(50, False)))
+
+    def _estilo(self, widget: QWidget, hoja: Callable[[], str]) -> None:
+        widget.setStyleSheet(hoja())
+        self._estilos.append((widget, hoja))
+
+    def _fijo(self, poner: Callable[[str], None], clave: str) -> None:
+        poner(t(clave))
+        self._fijos.append((poner, clave))
+
+    def _boton(self, clave: str) -> QPushButton:
+        boton = QPushButton()
+        self._fijo(boton.setText, clave)
+        return boton
+
+    def _grupo(self, clave: str) -> QGroupBox:
+        grupo = QGroupBox()
+        self._fijo(grupo.setTitle, clave)
+        return grupo
+
+    def _nota(self, clave: str) -> QLabel:
+        nota = QLabel()
+        nota.setWordWrap(True)
+        nota.setStyleSheet(f"color: {PALETA['suave']}; font-size: {px(12)}px;")
+        self._fijo(nota.setText, clave)
+        self._notas.append(nota)
+        return nota
+
+    def _fila(self, formulario: QFormLayout, clave: str, campo: QWidget) -> None:
+        etiqueta = QLabel()
+        self._fijo(etiqueta.setText, clave)
+        formulario.addRow(etiqueta, campo)
+
+    @staticmethod
+    def _formulario() -> QFormLayout:
         formulario = QFormLayout()
         formulario.setHorizontalSpacing(16)
-        formulario.setVerticalSpacing(8)
-        self._fila(formulario, "Abrir y cerrar el overlay", self.campos_hotkey["overlay"])
-        self._fila(formulario, "Leer el objeto bajo el cursor", self.campos_hotkey["cursor"])
-        self._fila(formulario, "Leer las recompensas de reliquia", self.campos_hotkey["reliquias"])
-        self.aviso_hotkey = QLabel("")
-        self.aviso_hotkey.setStyleSheet(f"color: {p['aviso']};")
-        if hasattr(self, "autor"):  # repintar tambien corre a mitad del __init__
-            self.autor.setStyleSheet(f"color: {p['suave']}; font-size: 12px;")
-            self.autor.setText(texto_autor())  # el enlace lleva el color de acento del tema
-        boton_hotkeys = self._boton("Aplicar atajos")
-        boton_hotkeys.clicked.connect(self._aplicar_hotkeys)
-        fila_hotkeys = QHBoxLayout()
-        fila_hotkeys.addWidget(boton_hotkeys)
-        fila_hotkeys.addWidget(self.aviso_hotkey, 1)
-        formulario.addRow(fila_hotkeys)
-        grupo_atajos = self._grupo("Atajos de teclado")
-        grupo_atajos.setLayout(formulario)
+        formulario.setVerticalSpacing(6)
+        formulario.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+        return formulario
 
-        # -- aspecto e idioma ------------------------------------------------------
-        self.tema = QComboBox()
-        for clave, tema in TEMAS.items():
-            self.tema.addItem(t(tema["titulo"]), clave)
-        actual = self.config.get("tema") or TEMA_POR_DEFECTO
-        self.tema.setCurrentIndex(max(0, self.tema.findData(actual)))
-        self.tema.currentIndexChanged.connect(self._cambiar_tema)
+    def _meter(self, seccion: str, grupo: QGroupBox, disposicion) -> QGroupBox:
+        grupo.setLayout(disposicion)
+        self._contenido[seccion].addWidget(grupo)
+        return grupo
 
+    # -- secciones --------------------------------------------------------------------
+
+    def _construir_general(self) -> None:
         # Los nombres de los idiomas van cada uno en su idioma, no se traducen.
         self.idioma = QComboBox()
         self.idioma.addItem(t("Automatico (el de Windows)"), idiomas.AUTOMATICO)
@@ -105,18 +352,219 @@ class PestanaAjustes(QWidget):
         guardado = self.config.get("idioma_ui") or idiomas.AUTOMATICO
         self.idioma.setCurrentIndex(max(0, self.idioma.findData(guardado)))
         self.idioma.currentIndexChanged.connect(self._cambiar_idioma)
+        self.iniciar_windows = QCheckBox()
+        self._fijo(self.iniciar_windows.setText, "Iniciar con Windows (escondido en la bandeja)")
+        self.iniciar_windows.setChecked(bool(self.config.get("iniciar_con_windows", False)))
+        self.iniciar_windows.toggled.connect(self._cambiar_arranque)
+        self.aviso_arranque = QLabel("")
+        self.aviso_arranque.setWordWrap(True)
+        self._estilo(self.aviso_arranque, lambda: f"color: {PALETA['suave']}; font-size: {px(12)}px;")
+        self._pintar_aviso_arranque()
 
-        self.diseno_mundo = QComboBox()
-        self.diseno_mundo.addItem(t("Lista"), "lista")
-        self.diseno_mundo.addItem(t("Tablero"), "tablero")
-        diseno_guardado = self.config.get("diseno_mundo") or DISENO_POR_DEFECTO
-        self.diseno_mundo.setCurrentIndex(max(0, self.diseno_mundo.findData(diseno_guardado)))
-        self.diseno_mundo.currentIndexChanged.connect(self._cambiar_diseno_mundo)
+        general = self._formulario()
+        self._fila(general, "Idioma", self.idioma)
+        general.addRow(self._nota("El menu de la bandeja cambia de idioma al reiniciar Farmadex."))
+        general.addRow(self.iniciar_windows)
+        general.addRow(self._nota(
+            "Farmadex se abre solo al encender el PC, sin ventana, listo para el atajo."
+        ))
+        general.addRow(self.aviso_arranque)
+        self._meter("general", self._grupo("General"), general)
 
+        # -- version ----------------------------------------------------------------
+        self.etiqueta_version = QLabel(f"{NOMBRE_APP} <b>{VERSION}</b>")
+        self.etiqueta_version.setTextFormat(Qt.RichText)
+        self._estilo(self.etiqueta_version, lambda: f"font-size: {px(16)}px;")
+        self.aviso_version = QLabel(t("Estas en la ultima version"))
+        self.aviso_version.setWordWrap(True)
+        self.aviso_version.setOpenExternalLinks(True)
+        self.aviso_version.setStyleSheet(f"color: {PALETA['suave']};")
+        self.boton_comprobar = self._boton("Comprobar ahora")
+        self.boton_comprobar.clicked.connect(self._pedir_comprobacion)
+        self.boton_instalar = self._boton("Instalar la version nueva")
+        self.boton_instalar.setObjectName("principal")
+        self.boton_instalar.setVisible(False)
+        # Para la actualizacion ya descargada y comprobada por la propia app.
+        self.boton_reiniciar = self._boton("Reiniciar y actualizar")
+        self.boton_reiniciar.setObjectName("principal")
+        self.boton_reiniciar.setVisible(False)
+        self.auto_actualizar = QCheckBox()
+        self._fijo(self.auto_actualizar.setText, "Actualizar automaticamente (se instala al cerrar Farmadex)")
+        self.auto_actualizar.setChecked(bool(self.config.get("actualizar_automaticamente", True)))
+        self.auto_actualizar.toggled.connect(lambda v: self._guardar("actualizar_automaticamente", v))
+        botones_version = QHBoxLayout()
+        botones_version.addWidget(self.boton_comprobar)
+        botones_version.addWidget(self.boton_instalar)
+        botones_version.addWidget(self.boton_reiniciar)
+        botones_version.addStretch(1)
+        version = QVBoxLayout()
+        version.setSpacing(6)
+        version.addWidget(self.etiqueta_version)
+        version.addWidget(self.aviso_version)
+        version.addWidget(self.auto_actualizar)
+        version.addWidget(self._nota(
+            "La version nueva se baja sola, se comprueba y se instala al cerrar Farmadex, "
+            "sustituyendo a la anterior. Tus objetivos y ajustes se conservan."
+        ))
+        version.addLayout(botones_version)
+        self._meter("general", self._grupo("Version"), version)
+
+    def _construir_atajos(self) -> None:
+        self.campos_hotkey = {
+            "overlay": QLineEdit(self.config["hotkey_overlay"]),
+            "cursor": QLineEdit(self.config["hotkey_cursor"]),
+            "reliquias": QLineEdit(self.config["hotkey_reliquias"]),
+            "build": QLineEdit(self.config.get("hotkey_build", "")),
+            "agrietado": QLineEdit(self.config.get("hotkey_agrietado", "")),
+        }
+        for campo in self.campos_hotkey.values():
+            campo.setMaximumWidth(260)
+        formulario = self._formulario()
+        self._fila(formulario, "Abrir y cerrar el overlay", self.campos_hotkey["overlay"])
+        formulario.addRow(self._nota("Abre y cierra esta ventana encima del juego."))
+        self._fila(formulario, "Leer el objeto bajo el cursor", self.campos_hotkey["cursor"])
+        formulario.addRow(self._nota(
+            "Es un atajo de teclado: en el juego, pon el raton encima del nombre de un objeto "
+            "(inventario, mercado, chat...) y pulsalo. Farmadex lee el texto de alrededor y abre su "
+            "ficha; si duda entre varios, te deja elegir. Hace una sola lectura a la vez: si lo "
+            "pulsas varias veces seguidas, las de mas se ignoran."
+        ))
+        self._fila(formulario, "Leer las recompensas de reliquia", self.campos_hotkey["reliquias"])
+        formulario.addRow(self._nota(
+            "Por si la lectura automatica no salta: con la pantalla de recompensas delante, las lee "
+            "a mano."
+        ))
+        self._fila(formulario, "Leer la pantalla de mejoras (Build)", self.campos_hotkey["build"])
+        self._fila(formulario, "Leer la tarjeta de un agrietado", self.campos_hotkey["agrietado"])
+        self.aviso_hotkey = QLabel("")
+        self.aviso_hotkey.setWordWrap(True)
+        self.aviso_hotkey.setStyleSheet(f"color: {PALETA['aviso']};")
+        boton_hotkeys = self._boton("Aplicar atajos")
+        boton_hotkeys.clicked.connect(self._aplicar_hotkeys)
+        fila_hotkeys = QHBoxLayout()
+        fila_hotkeys.addWidget(boton_hotkeys)
+        fila_hotkeys.addWidget(self.aviso_hotkey, 1)
+        formulario.addRow(self._nota("Escribelos asi: Ctrl+Alt+W. Los cambios valen al pulsar Aplicar."))
+        formulario.addRow(fila_hotkeys)
+        self._meter("atajos", self._grupo("Atajos de teclado"), formulario)
+
+    def _construir_aspecto(self) -> None:
+        self.tema = QComboBox()
+        for clave, tema in TEMAS.items():
+            self.tema.addItem(t(tema["titulo"]), clave)
+        actual = self.config.get("tema") or TEMA_POR_DEFECTO
+        self.tema.setCurrentIndex(max(0, self.tema.findData(actual)))
+        self.tema.currentIndexChanged.connect(self._cambiar_tema)
         self.opacidad = QSlider(Qt.Horizontal)
         self.opacidad.setRange(50, 100)
         self.opacidad.setValue(int(float(self.config["overlay_opacidad"]) * 100))
         self.opacidad.valueChanged.connect(self._cambiar_opacidad)
+        base = self._formulario()
+        self._fila(base, "Tema de color", self.tema)
+        self._fila(base, "Opacidad del fondo", self.opacidad)
+        base.addRow(self._nota("El tema y la opacidad se aplican al momento."))
+        self._meter("aspecto", self._grupo("Tema"), base)
+
+        # -- personalizacion con vista previa ------------------------------------------
+        self.escala_interfaz = QComboBox()
+        for factor, nombre in ESCALAS_INTERFAZ:
+            self.escala_interfaz.addItem(t(nombre), factor)
+        self.escala_letra = QComboBox()
+        for factor, nombre in ESCALAS_LETRA:
+            self.escala_letra.addItem(t(nombre), factor)
+        self.escala_interfaz.currentIndexChanged.connect(self._cambio_pendiente)
+        self.escala_letra.currentIndexChanged.connect(self._cambio_pendiente)
+        tamanos = self._formulario()
+        self._fila(tamanos, "Tamano de la interfaz", self.escala_interfaz)
+        self._fila(tamanos, "Tamano de letra", self.escala_letra)
+
+        # Una muestra por categoria: clic = elegir color; la flecha vuelve al del tema.
+        self.muestras: dict[str, QPushButton] = {}
+        self.deshacer_color: dict[str, QPushButton] = {}
+        rejilla = QGridLayout()
+        rejilla.setHorizontalSpacing(8)
+        rejilla.setVerticalSpacing(4)
+        for i, (clave, nombre, ayuda) in enumerate(CATEGORIAS_COLOR):
+            etiqueta = QLabel()
+            self._fijo(etiqueta.setText, nombre)
+            self._fijo(etiqueta.setToolTip, ayuda)
+            muestra = QPushButton()
+            muestra.setFixedWidth(92)
+            self._fijo(muestra.setToolTip, ayuda)
+            muestra.clicked.connect(lambda _=False, c=clave: self._elegir_color(c))
+            deshacer = QPushButton()
+            deshacer.setIcon(self.style().standardIcon(QStyle.SP_BrowserReload))
+            deshacer.setFixedWidth(30)
+            self._fijo(deshacer.setToolTip, "Volver al color del tema")
+            deshacer.clicked.connect(lambda _=False, c=clave: self._poner_color(c, None))
+            self.muestras[clave] = muestra
+            self.deshacer_color[clave] = deshacer
+            fila, columna = i % 6, (i // 6) * 3
+            rejilla.addWidget(etiqueta, fila, columna)
+            rejilla.addWidget(muestra, fila, columna + 1)
+            rejilla.addWidget(deshacer, fila, columna + 2)
+        rejilla.setColumnStretch(0, 1)
+        rejilla.setColumnStretch(3, 1)
+
+        self.vista_previa = VistaPrevia()
+        self.estado_aspecto = QLabel("")
+        self.estado_aspecto.setWordWrap(True)
+        self.boton_guardar_aspecto = self._boton("Guardar")
+        self.boton_guardar_aspecto.setObjectName("principal")
+        self.boton_guardar_aspecto.clicked.connect(self.guardar_aspecto)
+        self.boton_descartar_aspecto = self._boton("Descartar")
+        self.boton_descartar_aspecto.clicked.connect(self.descartar_aspecto)
+        self.boton_fabrica = self._boton("Volver a lo de fabrica")
+        self._fijo(self.boton_fabrica.setToolTip, "Quita todos los colores y tamanos personalizados, en todos los temas")
+        self.boton_fabrica.clicked.connect(self.aspecto_de_fabrica)
+        # Guardar y Descartar debajo de la vista previa, a la vista sin bajar la pagina.
+        botones = QHBoxLayout()
+        botones.addWidget(self.boton_guardar_aspecto)
+        botones.addWidget(self.boton_descartar_aspecto)
+        botones.addStretch(1)
+
+        izquierda = QVBoxLayout()
+        izquierda.setSpacing(8)
+        izquierda.addLayout(tamanos)
+        izquierda.addWidget(self._nota(
+            "Colores del tema elegido, por partes. Pulsa un color para cambiarlo; la flecha lo deja "
+            "como venia."
+        ))
+        izquierda.addLayout(rejilla)
+        fabrica = QHBoxLayout()
+        fabrica.addWidget(self.boton_fabrica)
+        fabrica.addStretch(1)
+        izquierda.addLayout(fabrica)
+        izquierda.addStretch(1)
+        derecha = QVBoxLayout()
+        derecha.setSpacing(6)
+        titulo_previa = QLabel()
+        self._fijo(titulo_previa.setText, "Vista previa")
+        self._estilo(titulo_previa, lambda: f"color: {PALETA['suave']}; font-size: {px(12)}px;")
+        derecha.addWidget(titulo_previa)
+        derecha.addWidget(self.vista_previa)
+        derecha.addWidget(self.estado_aspecto)
+        derecha.addLayout(botones)
+        derecha.addStretch(1)
+        # Lado a lado si cabe; con letra grande o ventana estrecha, la vista previa baja
+        # debajo de los colores (ver _ajustar_disposicion) en vez de salirse por la derecha.
+        arriba = QBoxLayout(QBoxLayout.LeftToRight)
+        arriba.setSpacing(16)
+        arriba.addLayout(izquierda, 3)
+        arriba.addLayout(derecha, 2)
+        self._arriba_aspecto, self._izquierda_aspecto = arriba, izquierda
+        personal = QVBoxLayout()
+        personal.setSpacing(8)
+        personal.addLayout(arriba)
+        personal.addWidget(self._nota(
+            "Nada cambia hasta que pulsas Guardar. Se guarda en tu configuracion, asi que se "
+            "mantiene al actualizar Farmadex."
+        ))
+        self._meter("aspecto", self._grupo("Personalizar"), personal)
+        self._fabrica_todos = False
+        self._cargar_aspecto()
+
+    def _construir_reliquias(self) -> None:
         self.estilo_recompensas = QComboBox()
         self.estilo_recompensas.addItem(t("Etiquetas pequenas junto a cada tarjeta"), "etiquetas")
         self.estilo_recompensas.addItem(t("Panel con una tarjeta por recompensa"), "panel")
@@ -150,132 +598,42 @@ class PestanaAjustes(QWidget):
         self.botin_eelog.setChecked(bool(self.config.get("botin_eelog_auto", True)))
         self.botin_eelog.toggled.connect(lambda v: self._guardar("botin_eelog_auto", v))
 
-        aspecto = QFormLayout()
-        aspecto.setHorizontalSpacing(16)
-        aspecto.setVerticalSpacing(8)
-        self._fila(aspecto, "Tema de color", self.tema)
-        self._fila(aspecto, "Idioma", self.idioma)
-        self._fila(aspecto, "Disposicion de Mundo", self.diseno_mundo)
-        self._fila(aspecto, "Opacidad del fondo", self.opacidad)
-        self._fila(aspecto, "Recompensas de reliquia", self.estilo_recompensas)
-        self._fila(aspecto, "Al abrir reliquias, destacar", self.prioridad_recompensas)
-        aspecto.addRow(self.ocr_auto)
-        aspecto.addRow(self.perfil_pasivo)
-        aspecto.addRow(self.inventario_pasivo)
-        aspecto.addRow(self.botin_eelog)
-        aspecto.addRow(self._nota(
+        lectura = self._formulario()
+        self._fila(lectura, "Recompensas de reliquia", self.estilo_recompensas)
+        lectura.addRow(self._nota("Como se ensenan encima del juego las cuatro recompensas."))
+        self._fila(lectura, "Al abrir reliquias, destacar", self.prioridad_recompensas)
+        lectura.addRow(self._nota(
+            "Que se marca en grande en cada recompensa: lo que te falta, lo que vale mas platino o "
+            "mas ducados."
+        ))
+        lectura.addRow(self.ocr_auto)
+        lectura.addRow(self._nota(
+            "Al abrir una reliquia, Farmadex lee solo la pantalla de recompensas. Si lo quitas, "
+            "tendras que usar el atajo."
+        ))
+        lectura.addRow(self.perfil_pasivo)
+        lectura.addRow(self._nota("Al abrir Perfil > Equipamiento en el juego, apunta tu maestria sin que hagas nada."))
+        lectura.addRow(self.inventario_pasivo)
+        lectura.addRow(self._nota("Todavia en pruebas: puede leer mal alguna cantidad."))
+        lectura.addRow(self.botin_eelog)
+        lectura.addRow(self._nota(
+            "En misiones en solitario, suma a tus objetivos la pieza que te toca, leyendo el "
+            "registro del propio juego."
+        ))
+        lectura.addRow(self._nota(
             "Las lecturas solas solo miran la pantalla cuando Warframe esta delante y se ha "
             "quedado quieta; F9 en la herramienta de escaneo sigue valiendo."
         ))
-        nota = self._nota(
+        lectura.addRow(self._nota(
             "Warframe tiene que estar en Ventana sin bordes (o en DX12). En pantalla "
             "completa exclusiva el overlay no se ve."
-        )
-        aspecto.addRow(nota)
+        ))
         # Lo que se ha detectado del juego: se rellena cuando la ventana lo mira.
-        self._modo_pantalla: str | None = None
         self.estado_juego = QLabel("")
         self.estado_juego.setWordWrap(True)
-        self.estado_juego.setStyleSheet(f"color: {p['suave']}; font-size: 12px;")
-        aspecto.addRow(self.estado_juego)
-        aspecto.addRow(self._nota("El menu de la bandeja cambia de idioma al reiniciar Farmadex."))
-        grupo_aspecto = self._grupo("Overlay")
-        grupo_aspecto.setLayout(aspecto)
-
-        # -- datos del juego -----------------------------------------------------
-        # Ritmo de juego: multiplica las duraciones estimadas (eficiencia.RITMOS), no las
-        # probabilidades. Un desplegable de tres y no un deslizador: el factor exacto no
-        # dice nada a quien juega, "Rapido" o "Tranquilo" si.
-        self.ritmo = QComboBox()
-        for clave in eficiencia.RITMOS:
-            self.ritmo.addItem("", clave)
-        self._textos_ritmo()
-        ritmo_guardado = self.config.get(eficiencia.CLAVE_RITMO) or eficiencia.RITMO_POR_DEFECTO
-        self.ritmo.setCurrentIndex(max(0, self.ritmo.findData(ritmo_guardado)))
-        self.ritmo.currentIndexChanged.connect(self._cambiar_ritmo)
-        ritmo = QFormLayout()
-        ritmo.setHorizontalSpacing(16)
-        self._fila(ritmo, "Ritmo de juego", self.ritmo)
-        ritmo.addRow(self._nota(
-            "Ajusta los tiempos estimados de la ficha a como juegas. No cambia las probabilidades "
-            "ni el orden de los sitios."
-        ))
-
-        self.estado_datos = QLabel("")
-        self.estado_datos.setWordWrap(True)
-        self.estado_datos.setStyleSheet(f"color: {p['suave']};")
-        boton_datos = self._boton("Reconstruir el indice")
-        boton_datos.clicked.connect(self.reconstruir.emit)
-        boton_carpeta = self._boton("Abrir la carpeta de datos")
-        boton_carpeta.clicked.connect(self._abrir_carpeta)
-        boton_reproductor = self._boton("Borrar datos del reproductor")
-        self._fijo(boton_reproductor.setToolTip, "Cierra el video y borra la sesion y la cache del reproductor de guias")
-        boton_reproductor.clicked.connect(self.borrar_reproductor.emit)
-        botones = QHBoxLayout()
-        botones.addWidget(boton_datos)
-        botones.addWidget(boton_carpeta)
-        botones.addWidget(boton_reproductor)
-        botones.addStretch(1)
-        self._texto_parche: str | None = None
-        self.aviso_parche = QLabel("")
-        self.aviso_parche.setWordWrap(True)
-        self.aviso_parche.setStyleSheet(f"color: {p['aviso']};")
-        self.aviso_parche.hide()
-        datos = QVBoxLayout()
-        datos.setSpacing(8)
-        datos.addLayout(ritmo)
-        datos.addWidget(self.estado_datos)
-        datos.addWidget(self.aviso_parche)
-        datos.addStretch(1)
-        datos.addLayout(botones)
-        grupo_datos = self._grupo("Datos del juego")
-        grupo_datos.setLayout(datos)
-
-        # -- version (siempre visible) -------------------------------------------
-        self.etiqueta_version = QLabel(f"{NOMBRE_APP} <b>{VERSION}</b>")
-        self.etiqueta_version.setTextFormat(Qt.RichText)
-        self.etiqueta_version.setStyleSheet("font-size: 16px;")
-        self.aviso_version = QLabel(t("Estas en la ultima version"))
-        self.aviso_version.setWordWrap(True)
-        self.aviso_version.setOpenExternalLinks(True)
-        self.aviso_version.setStyleSheet(f"color: {p['suave']};")
-        self.boton_comprobar = self._boton("Comprobar ahora")
-        self.boton_comprobar.clicked.connect(self._pedir_comprobacion)
-        self.boton_instalar = self._boton("Instalar la version nueva")
-        self.boton_instalar.setObjectName("principal")
-        self.boton_instalar.setVisible(False)
-        # Para la actualizacion ya descargada y comprobada por la propia app.
-        self.boton_reiniciar = self._boton("Reiniciar y actualizar")
-        self.boton_reiniciar.setObjectName("principal")
-        self.boton_reiniciar.setVisible(False)
-        self.auto_actualizar = QCheckBox()
-        self._fijo(self.auto_actualizar.setText, "Actualizar automaticamente (se instala al cerrar Farmadex)")
-        self.auto_actualizar.setChecked(bool(self.config.get("actualizar_automaticamente", True)))
-        self.auto_actualizar.toggled.connect(lambda v: self._guardar("actualizar_automaticamente", v))
-        self.iniciar_windows = QCheckBox()
-        self._fijo(self.iniciar_windows.setText, "Iniciar con Windows (escondido en la bandeja)")
-        self.iniciar_windows.setChecked(bool(self.config.get("iniciar_con_windows", False)))
-        self.iniciar_windows.toggled.connect(self._cambiar_arranque)
-        self.aviso_arranque = QLabel("")
-        self.aviso_arranque.setWordWrap(True)
-        self.aviso_arranque.setStyleSheet(f"color: {p['suave']}; font-size: 12px;")
-        self._pintar_aviso_arranque()
-        botones_version = QHBoxLayout()
-        botones_version.addWidget(self.boton_comprobar)
-        botones_version.addWidget(self.boton_instalar)
-        botones_version.addWidget(self.boton_reiniciar)
-        botones_version.addStretch(1)
-        version = QVBoxLayout()
-        version.setSpacing(8)
-        version.addWidget(self.etiqueta_version)
-        version.addWidget(self.aviso_version)
-        version.addWidget(self.auto_actualizar)
-        version.addWidget(self.iniciar_windows)
-        version.addWidget(self.aviso_arranque)
-        version.addStretch(1)
-        version.addLayout(botones_version)
-        grupo_version = self._grupo("Version")
-        grupo_version.setLayout(version)
+        self.estado_juego.setStyleSheet(f"color: {PALETA['suave']}; font-size: {px(12)}px;")
+        lectura.addRow(self.estado_juego)
+        self._meter("reliquias", self._grupo("Lectura de pantalla"), lectura)
 
         # -- diagnostico de reliquias ----------------------------------------------
         # Para el "no me sale nada al abrir una reliquia" de quien no sabe mandar el
@@ -292,14 +650,14 @@ class PestanaAjustes(QWidget):
         self.estado_informe = QLabel("")
         self.estado_informe.setWordWrap(True)
         self.estado_informe.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.estado_informe.setStyleSheet(f"color: {p['suave']}; font-size: 12px;")
+        self.estado_informe.setStyleSheet(f"color: {PALETA['suave']}; font-size: {px(12)}px;")
         self.estado_informe.hide()
         botones_diagnostico = QHBoxLayout()
         botones_diagnostico.addWidget(self.boton_diagnostico)
         botones_diagnostico.addWidget(self.boton_informe)
         botones_diagnostico.addStretch(1)
         diagnostico = QVBoxLayout()
-        diagnostico.setSpacing(8)
+        diagnostico.setSpacing(6)
         diagnostico.addWidget(self._nota(
             "Si al abrir una reliquia no sale nada encima del juego, pulsa 'Comprobar': dice si "
             "EE.log se esta leyendo, en que modo de pantalla va el juego y si el lector esta listo. "
@@ -309,100 +667,263 @@ class PestanaAjustes(QWidget):
         diagnostico.addWidget(self.resultado_diagnostico)
         diagnostico.addLayout(botones_diagnostico)
         diagnostico.addWidget(self.estado_informe)
-        grupo_diagnostico = self._grupo("Diagnostico de reliquias")
-        grupo_diagnostico.setLayout(diagnostico)
+        self._meter("reliquias", self._grupo("Diagnostico de reliquias"), diagnostico)
 
-        # -- salida ---------------------------------------------------------------
-        boton_salir = QPushButton()
-        self._fijo(lambda s: boton_salir.setText(s.format(app=NOMBRE_APP)), "Salir de {app}")
-        boton_salir.clicked.connect(self.salir.emit)
-        # Que es Farmadex y que dice DE de los programas de terceros (ui/acerca_de.py).
-        self.boton_acerca = QPushButton()
-        self._fijo(lambda s: self.boton_acerca.setText(s.format(app=NOMBRE_APP)), "Acerca de {app}")
-        self.boton_acerca.clicked.connect(lambda: abrir_acerca_de(self.window()))
+    def _construir_datos(self) -> None:
+        self.estado_datos = QLabel("")
+        self.estado_datos.setWordWrap(True)
+        self.estado_datos.setStyleSheet(f"color: {PALETA['suave']};")
+        self.aviso_parche = QLabel("")
+        self.aviso_parche.setWordWrap(True)
+        self.aviso_parche.setStyleSheet(f"color: {PALETA['aviso']};")
+        self.aviso_parche.hide()
+        # Ritmo de juego: multiplica las duraciones estimadas (eficiencia.RITMOS), no las
+        # probabilidades. Un desplegable de tres y no un deslizador: el factor exacto no
+        # dice nada a quien juega, "Rapido" o "Tranquilo" si.
+        self.ritmo = QComboBox()
+        for clave in eficiencia.RITMOS:
+            self.ritmo.addItem("", clave)
+        self._textos_ritmo()
+        ritmo_guardado = self.config.get(eficiencia.CLAVE_RITMO) or eficiencia.RITMO_POR_DEFECTO
+        self.ritmo.setCurrentIndex(max(0, self.ritmo.findData(ritmo_guardado)))
+        self.ritmo.currentIndexChanged.connect(self._cambiar_ritmo)
 
-        rejilla = QGridLayout()
-        rejilla.setHorizontalSpacing(12)
-        rejilla.setVerticalSpacing(12)
-        rejilla.addWidget(grupo_atajos, 0, 0)
-        rejilla.addWidget(grupo_aspecto, 0, 1)
-        rejilla.addWidget(grupo_datos, 1, 0)
-        rejilla.addWidget(grupo_version, 1, 1)
-        rejilla.addWidget(grupo_diagnostico, 2, 0, 1, 2)
-        rejilla.setColumnStretch(0, 1)
-        rejilla.setColumnStretch(1, 1)
+        datos = self._formulario()
+        datos.addRow(self.estado_datos)
+        datos.addRow(self.aviso_parche)
+        self._fila(datos, "Ritmo de juego", self.ritmo)
+        datos.addRow(self._nota(
+            "Farmadex calcula cuanto se tarda en conseguir cada cosa. Si juegas mas rapido o mas "
+            "tranquilo que la media, cambialo y los tiempos se ajustan. No cambia las probabilidades "
+            "ni el orden de los sitios."
+        ))
+        self._meter("datos", self._grupo("Datos del juego"), datos)
 
-        contenido = QWidget()
-        dentro = QVBoxLayout(contenido)
-        dentro.setContentsMargins(0, 0, 0, 0)
-        dentro.addLayout(rejilla)
-        dentro.addStretch(1)
-        desplazable = QScrollArea()
-        desplazable.setWidgetResizable(True)
-        desplazable.setWidget(contenido)
+        # -- avanzado (plegado): mantenimiento que casi nadie necesita --------------------
+        self.boton_avanzado = QPushButton()
+        self.boton_avanzado.setCheckable(True)
+        self.boton_avanzado.setObjectName("plegable")
+        self._estilo(self.boton_avanzado, lambda: (
+            f"QPushButton#plegable {{ background: transparent; border: none; color: {PALETA['acento']};"
+            f" font-weight: 600; text-align: left; padding: 4px 2px; font-size: {px(13)}px; }}"
+        ))
+        self.boton_avanzado.toggled.connect(self._plegar_avanzado)
+        self.avanzado = QWidget()
+        boton_datos = self._boton("Reconstruir el indice")
+        boton_datos.clicked.connect(self.reconstruir.emit)
+        boton_carpeta = self._boton("Abrir la carpeta de datos")
+        boton_carpeta.clicked.connect(self._abrir_carpeta)
+        boton_reproductor = self._boton("Borrar datos del reproductor")
+        self._fijo(boton_reproductor.setToolTip, "Cierra el video y borra la sesion y la cache del reproductor de guias")
+        boton_reproductor.clicked.connect(self.borrar_reproductor.emit)
+        self.boton_reconstruir, self.boton_carpeta, self.boton_reproductor = (
+            boton_datos, boton_carpeta, boton_reproductor)
+        avanzado = QGridLayout(self.avanzado)
+        avanzado.setContentsMargins(4, 0, 0, 0)
+        avanzado.setHorizontalSpacing(12)
+        avanzado.setVerticalSpacing(8)
+        explicaciones = (
+            (boton_datos, "Vuelve a preparar el catalogo desde cero, descargando lo que haga falta. "
+                          "Usalo solo si la busqueda sale rara o faltan objetos nuevos. Tarda un poco "
+                          "y mientras tanto no se puede buscar; tus objetivos no se tocan."),
+            (boton_carpeta, "Abre la carpeta donde Farmadex guarda tus ajustes, objetivos y registros, "
+                            "por si alguien que te ayuda te pide un fichero. No borres nada de ahi."),
+            (boton_reproductor, "Cierra el video y borra la sesion de YouTube y la cache del reproductor "
+                                "de guias. Sirve si los videos no cargan; despues tendras que volver a "
+                                "aceptar las cookies de YouTube."),
+        )
+        for fila, (boton, texto) in enumerate(explicaciones):
+            avanzado.addWidget(boton, fila, 0, Qt.AlignTop)
+            avanzado.addWidget(self._nota(texto), fila, 1)
+        avanzado.setColumnStretch(1, 1)
+        self.avanzado.setVisible(False)
+        caja = QVBoxLayout()
+        caja.setSpacing(4)
+        caja.addWidget(self.boton_avanzado)
+        caja.addWidget(self.avanzado)
+        contenedor = QWidget()
+        contenedor.setLayout(caja)
+        self._contenido["datos"].addWidget(contenedor)
+        self._plegar_avanzado(False)
 
-        pie = QHBoxLayout()
-        creditos = self._nota("Datos de WFCD y Digital Extremes")
-        creditos.setWordWrap(False)  # en el pie hay sitio de sobra; partido queda raro
-        pie.addWidget(creditos)
-        pie.addStretch(1)
-        self.autor = QLabel()
-        self.autor.setTextFormat(Qt.RichText)
-        self.autor.setOpenExternalLinks(True)
-        self.autor.setStyleSheet(f"color: {PALETA['suave']}; font-size: 12px;")
-        self._fijo(lambda _s: self.autor.setText(texto_autor()), "Creado por {autor}")
-        pie.addWidget(self.autor)
-        pie.addWidget(self.boton_acerca)
-        pie.addWidget(boton_salir)
+    def _construir_ayuda(self) -> None:
+        self.boton_bienvenida = self._boton("Ver la bienvenida")
+        self.boton_bienvenida.clicked.connect(self.ver_bienvenida.emit)
+        self.boton_guia = self._boton("Recorrido por la ventana")
+        self.boton_guia.clicked.connect(self.ver_guia.emit)
+        self.boton_acerca_ayuda = QPushButton()
+        self._fijo(lambda s: self.boton_acerca_ayuda.setText(s.format(app=NOMBRE_APP)), "Acerca de {app}")
+        self.boton_acerca_ayuda.clicked.connect(self._abrir_acerca)
+        ayuda = QGridLayout()
+        ayuda.setHorizontalSpacing(12)
+        ayuda.setVerticalSpacing(8)
+        filas = (
+            (self.boton_bienvenida, "Que es Farmadex, lo basico paso a paso, si es seguro, preguntas "
+                                    "frecuentes y agradecimientos."),
+            (self.boton_guia, "Te ensena cada parte de la ventana en su sitio, paso a paso."),
+            (self.boton_acerca_ayuda, "Version, que dice Digital Extremes de los programas de terceros "
+                                      "y como comprobar que tu descarga es la buena."),
+        )
+        for fila, (boton, texto) in enumerate(filas):
+            ayuda.addWidget(boton, fila, 0, Qt.AlignTop)
+            ayuda.addWidget(self._nota(texto), fila, 1)
+        ayuda.setColumnStretch(1, 1)
+        self._meter("ayuda", self._grupo("Ayuda"), ayuda)
 
-        caja = QVBoxLayout(self)
-        caja.setContentsMargins(4, 8, 4, 4)
-        caja.addWidget(desplazable, 1)
-        caja.addLayout(pie)
+    def resizeEvent(self, evento) -> None:  # noqa: N802 - firma de Qt
+        super().resizeEvent(evento)
+        self._ajustar_disposicion()
 
-        self.refrescar_estado()
+    def _ajustar_disposicion(self) -> None:
+        """Colores y vista previa en fila si caben en el ancho de la pagina; si no, en columna."""
+        arriba = getattr(self, "_arriba_aspecto", None)
+        if arriba is None:
+            return
+        necesario = (self._izquierda_aspecto.minimumSize().width()
+                     + self.vista_previa.minimumSizeHint().width() + 60)
+        direccion = (QBoxLayout.LeftToRight if self.paginas.width() >= necesario
+                     else QBoxLayout.TopToBottom)
+        if arriba.direction() != direccion:
+            arriba.setDirection(direccion)
 
-    # -- textos fijos y su retraduccion -------------------------------------------
+    # -- navegacion ---------------------------------------------------------------------
 
-    def _fijo(self, poner: Callable[[str], None], clave: str) -> None:
-        poner(t(clave))
-        self._fijos.append((poner, clave))
+    def ir_a(self, seccion: str) -> None:
+        """Muestra una seccion por su clave ("general", "reliquias"...)."""
+        if seccion in self._claves_seccion:
+            self.secciones.setCurrentRow(self._claves_seccion.index(seccion))
 
-    def _boton(self, clave: str) -> QPushButton:
-        boton = QPushButton()
-        self._fijo(boton.setText, clave)
-        return boton
+    def seccion_actual(self) -> str:
+        return self._claves_seccion[max(0, self.secciones.currentRow())]
 
-    def _grupo(self, clave: str) -> QGroupBox:
-        grupo = QGroupBox()
-        self._fijo(grupo.setTitle, clave)
-        return grupo
+    def _plegar_avanzado(self, abierto: bool) -> None:
+        self.avanzado.setVisible(abierto)
+        flecha = "▾" if abierto else "▸"
+        self.boton_avanzado.setText(f"{flecha}  {t('Avanzado (mantenimiento)')}")
 
-    def _nota(self, clave: str) -> QLabel:
-        nota = QLabel()
-        nota.setWordWrap(True)
-        nota.setStyleSheet(f"color: {PALETA['suave']}; font-size: 12px;")
-        self._fijo(nota.setText, clave)
-        self._notas.append(nota)
-        return nota
+    # -- aspecto: pendiente, vista previa, guardar ------------------------------------------
+
+    def _tema_actual(self) -> str:
+        return self.tema.currentData() or TEMA_POR_DEFECTO
+
+    def _cargar_aspecto(self) -> None:
+        """Lo guardado pasa a ser lo pendiente (al abrir, al descartar, al cambiar de tema)."""
+        colores, interfaz, letra = aspecto_guardado(self.config, self._tema_actual())
+        self._pend_colores = dict(colores)
+        self._fabrica_todos = False
+        for combo, valor in ((self.escala_interfaz, interfaz), (self.escala_letra, letra)):
+            combo.blockSignals(True)
+            combo.setCurrentIndex(max(0, combo.findData(valor)))
+            combo.blockSignals(False)
+        self._pintar_aspecto()
+
+    def _pendiente(self) -> tuple[dict, float, float]:
+        return (dict(self._pend_colores), float(self.escala_interfaz.currentData()),
+                float(self.escala_letra.currentData()))
+
+    def hay_cambios_aspecto(self) -> bool:
+        if self._fabrica_todos and self.config.get("colores_personalizados"):
+            return True
+        return self._pendiente() != aspecto_guardado(self.config, self._tema_actual())
+
+    def _cambio_pendiente(self, *_args) -> None:
+        self._pintar_aspecto()
+
+    def _elegir_color(self, clave: str) -> None:
+        actual = paleta_de(self._tema_actual(), self._pend_colores)[clave]
+        nombre = next(n for c, n, _a in CATEGORIAS_COLOR if c == clave)
+        color = QColorDialog.getColor(QColor(actual), self, t(nombre))
+        if color.isValid():
+            self._poner_color(clave, color.name())
+
+    def _poner_color(self, clave: str, valor: str | None) -> None:
+        """Cambia un color pendiente; None (o el mismo del tema) lo devuelve al del tema."""
+        base = TEMAS.get(self._tema_actual(), TEMAS[TEMA_POR_DEFECTO])
+        if valor is None or valor.lower() == base[clave].lower():
+            self._pend_colores.pop(clave, None)
+        else:
+            self._pend_colores[clave] = valor.lower()
+        self._pintar_aspecto()
+
+    def _pintar_aspecto(self) -> None:
+        colores, interfaz, letra = self._pendiente()
+        paleta = paleta_de(self._tema_actual(), colores)
+        for clave, muestra in self.muestras.items():
+            color = paleta[clave]
+            muestra.setText(color)
+            muestra.setStyleSheet(
+                f"QPushButton {{ background: {color}; color: {_texto_sobre(color)};"
+                f" border: 1px solid {PALETA['borde']}; border-radius: 6px; padding: 3px 6px;"
+                f" font-family: Consolas, monospace; font-size: {px(12)}px; }}"
+                f" QPushButton:hover {{ border-color: {PALETA['acento']}; }}"
+            )
+            self.deshacer_color[clave].setEnabled(clave in colores)
+        self.vista_previa.pintar(paleta, (interfaz, letra))
+        cambios = self.hay_cambios_aspecto()
+        self.boton_guardar_aspecto.setEnabled(cambios)
+        self.boton_descartar_aspecto.setEnabled(cambios)
+        if cambios:
+            texto = (t("Vista previa con lo de fabrica: pulsa Guardar para aplicarlo.")
+                     if self._fabrica_todos else t("Hay cambios sin guardar."))
+            color = PALETA["aviso"]
+        else:
+            texto, color = t("Es el aspecto que estas usando."), PALETA["suave"]
+        self.estado_aspecto.setText(texto)
+        self.estado_aspecto.setStyleSheet(f"color: {color}; font-size: {px(12)}px;")
+
+    def guardar_aspecto(self) -> None:
+        colores, interfaz, letra = self._pendiente()
+        tema = self._tema_actual()
+        todos = {} if self._fabrica_todos else dict(self.config.get("colores_personalizados") or {})
+        if colores:
+            todos[tema] = colores
+        else:
+            todos.pop(tema, None)
+        self.config["colores_personalizados"] = todos
+        self.config["escala_interfaz"] = interfaz
+        self.config["escala_letra"] = letra
+        guardar(self.config)
+        self._fabrica_todos = False
+        # La ventana lo recibe y vuelve a aplicar el tema (con esto encima) a todo.
+        self.apariencia_cambiada.emit()
+        self._pintar_aspecto()
+
+    def descartar_aspecto(self) -> None:
+        self._cargar_aspecto()
+
+    def aspecto_de_fabrica(self) -> None:
+        self._pend_colores = {}
+        self._fabrica_todos = True
+        for combo in (self.escala_interfaz, self.escala_letra):
+            combo.blockSignals(True)
+            combo.setCurrentIndex(max(0, combo.findData(1.0)))
+            combo.blockSignals(False)
+        self._pintar_aspecto()
+
+    # -- textos fijos, tema e idioma -----------------------------------------------------
 
     def repintar(self) -> None:
-        """Tras cambiar de tema: las etiquetas llevan el color puesto a mano en su hoja."""
+        """Tras cambiar de tema o de tamano: las etiquetas llevan el color puesto a mano."""
         p = PALETA
         for nota in self._notas:
-            nota.setStyleSheet(f"color: {p['suave']}; font-size: 12px;")
+            nota.setStyleSheet(f"color: {p['suave']}; font-size: {px(12)}px;")
+        for widget, hoja in self._estilos:
+            widget.setStyleSheet(hoja())
         self.aviso_hotkey.setStyleSheet(f"color: {p['aviso']};")
         self.estado_datos.setStyleSheet(f"color: {p['suave']};")
+        self.estado_informe.setStyleSheet(f"color: {p['suave']}; font-size: {px(12)}px;")
         alerta = getattr(self, "_aviso_parche_es_alerta", True)
         self.aviso_parche.setStyleSheet(f"color: {p['aviso' if alerta else 'suave']};")
         self.aviso_version.setStyleSheet(f"color: {p[self._color_version]};")
+        self.autor.setText(texto_autor())  # el enlace lleva el color de acento del tema
         if self._modo_pantalla is not None:
             self.mostrar_modo_pantalla(self._modo_pantalla)
-
-    def _fila(self, formulario: QFormLayout, clave: str, campo: QWidget) -> None:
-        etiqueta = QLabel()
-        self._fijo(etiqueta.setText, clave)
-        formulario.addRow(etiqueta, campo)
+        self._ajustar_ancho_secciones()
+        self._ajustar_disposicion()
+        if self.hay_cambios_aspecto():
+            self._pintar_aspecto()
+        else:
+            self._cargar_aspecto()
 
     def retraducir(self) -> None:
         """Vuelve a escribir todo lo fijo en el idioma activo; lo dinamico se refresca."""
@@ -411,12 +932,17 @@ class PestanaAjustes(QWidget):
         for i, tema in enumerate(TEMAS.values()):
             self.tema.setItemText(i, t(tema["titulo"]))
         self.idioma.setItemText(0, t("Automatico (el de Windows)"))
-        self.diseno_mundo.setItemText(0, t("Lista"))
-        self.diseno_mundo.setItemText(1, t("Tablero"))
+        for combo, pasos in ((self.escala_interfaz, ESCALAS_INTERFAZ), (self.escala_letra, ESCALAS_LETRA)):
+            for i, (_factor, nombre) in enumerate(pasos):
+                combo.setItemText(i, t(nombre))
         self._textos_ritmo()
         self.estilo_recompensas.setItemText(0, t("Etiquetas pequenas junto a cada tarjeta"))
         self.estilo_recompensas.setItemText(1, t("Panel con una tarjeta por recompensa"))
         self._textos_prioridad()
+        self._plegar_avanzado(self.boton_avanzado.isChecked())
+        self.vista_previa.retraducir()
+        self._pintar_aspecto()
+        self._ajustar_ancho_secciones()
         self.aviso_hotkey.setText("")
         self.estado_version(t("Estas en la ultima version"))
         self.refrescar_estado()
@@ -438,7 +964,7 @@ class PestanaAjustes(QWidget):
         etiqueta = t(self.MODOS_PANTALLA.get(modo, self.MODOS_PANTALLA["desconocido"]))
         self.estado_juego.setText(t("Modo de pantalla detectado: {modo}", modo=etiqueta))
         color = PALETA["aviso"] if modo == "exclusivo" else PALETA["suave"]
-        self.estado_juego.setStyleSheet(f"color: {color}; font-size: 12px;")
+        self.estado_juego.setStyleSheet(f"color: {color}; font-size: {px(12)}px;")
 
     # -- diagnostico de reliquias --------------------------------------------------
 
@@ -449,14 +975,15 @@ class PestanaAjustes(QWidget):
         self._ultimo_diagnostico = diagnostico
         self.resultado_diagnostico.setText(diagnostico.html(colores))
         self.resultado_diagnostico.show()
+        self.ir_a("reliquias")  # el resultado se ve donde esta el boton que lo pidio
 
     def informe_guardado(self, ruta, error: str = "") -> None:
         """Donde quedo el .zip, o por que no se pudo escribir."""
         if error:
-            self.estado_informe.setStyleSheet(f"color: {PALETA['aviso']}; font-size: 12px;")
+            self.estado_informe.setStyleSheet(f"color: {PALETA['aviso']}; font-size: {px(12)}px;")
             self.estado_informe.setText(t("No se pudo guardar el informe: {error}", error=error))
         else:
-            self.estado_informe.setStyleSheet(f"color: {PALETA['suave']}; font-size: 12px;")
+            self.estado_informe.setStyleSheet(f"color: {PALETA['suave']}; font-size: {px(12)}px;")
             self.estado_informe.setText(
                 t("Informe guardado en {ruta}. Enviaselo a quien te ayude; no contiene EE.log.", ruta=ruta)
             )
@@ -480,14 +1007,13 @@ class PestanaAjustes(QWidget):
         self.config[clave] = valor
         guardar(self.config)
 
-    estilo_recompensas_cambiado = Signal(str)
+    def _abrir_acerca(self) -> None:
+        abrir_acerca_de(self.window())
 
     def _cambiar_estilo_recompensas(self, _indice: int) -> None:
         estilo = self.estilo_recompensas.currentData()
         self._guardar("estilo_recompensas", estilo)
         self.estilo_recompensas_cambiado.emit(estilo)
-
-    prioridad_recompensas_cambiada = Signal(str)
 
     def _textos_prioridad(self) -> None:
         """Nombre y tooltip de una linea de cada preajuste, en el idioma activo."""
@@ -510,17 +1036,13 @@ class PestanaAjustes(QWidget):
     def _cambiar_tema(self, _indice: int) -> None:
         clave = self.tema.currentData() or TEMA_POR_DEFECTO
         self._guardar("tema", clave)
+        self._cargar_aspecto()  # lo pendiente era del tema anterior
         self.tema_cambiado.emit(clave)
 
     def _cambiar_idioma(self, _indice: int) -> None:
         codigo = self.idioma.currentData() or idiomas.AUTOMATICO
         self._guardar("idioma_ui", codigo)
         self.idioma_cambiado.emit(codigo)
-
-    def _cambiar_diseno_mundo(self, _indice: int) -> None:
-        clave = self.diseno_mundo.currentData() or DISENO_POR_DEFECTO
-        self._guardar("diseno_mundo", clave)
-        self.diseno_mundo_cambiado.emit(clave)
 
     RITMOS = {
         "rapido": "Rapido: veterano con buen equipo (x{factor})",

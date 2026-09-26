@@ -40,7 +40,7 @@ from __future__ import annotations
 
 import re
 
-from ..idiomas import glosa, t
+from ..idiomas import es_castellano, glosa, t
 
 # modo (nombre ingles, como en los datos) -> (nombre castellano, nombre ingles para el
 # titulo, que hay que hacer, como van las recompensas). Los dos ultimos pasan por t().
@@ -54,7 +54,7 @@ MODOS: dict[str, tuple[str, str, str, str]] = {
         "minutos 20, 40, 60... Desde el minuto 5 puedes extraer cuando quieras.",
     ),
     "Conjunction Survival": (
-        "Supervivencia de conjuncion", "Conjunction Survival",
+        "Supervivencia conjunta", "Conjunction Survival",
         "Supervivencia especial de Lua: aguanta a los enemigos y manten el soporte vital "
         "como en una Supervivencia normal.",
         "Igual que en Supervivencia: recompensa cada 5 minutos, en ciclos A, A, B, C que se "
@@ -68,32 +68,32 @@ MODOS: dict[str, tuple[str, str, str, str]] = {
         "pierdes lo acumulado.",
     ),
     "Mirror Defense": (
-        "Defensa espejo", "Mirror Defense",
+        "Defensa reflectante", "Mirror Defense",
         "Defiende dos objetivos que se van alternando; pasas de uno a otro por un tunel del Vacio.",
         "Recompensas en ciclos A, A, B, C que se repiten, como en una Defensa. La wiki no "
         "deja claro cada cuanto llegan.",
     ),
     "Mobile Defense": (
-        "Defensa movil", "Mobile Defense",
+        "Defensa móvil", "Mobile Defense",
         "Lleva la masa de datos a cada terminal y defiendela mientras se descarga.",
         "Solo da premio al terminar en algunas versiones (Vacio, Zariman, Archwing); en el "
         "resto te llevas lo que sueltan los enemigos.",
     ),
     "Excavation": (
-        "Excavacion", "Excavation",
+        "Excavación", "Excavation",
         "Pon en marcha excavadoras con las celulas de energia que sueltan algunos enemigos "
         "y defiendelas hasta que terminen.",
         "Una recompensa por cada excavadora que termina, en ciclos A, A, B, C que se repiten: "
         "la C llega con 4, 8, 12... excavadoras completadas.",
     ),
     "Interception": (
-        "Intercepcion", "Interception",
+        "Interceptación", "Interception",
         "Captura y manten las cuatro torres (A, B, C y D) para sumar puntos antes que el enemigo.",
         "Una recompensa por ronda, en ciclos A, A, B, C que se repiten: la C es la ronda 4, "
         "8, 12... Al final de cada ronda eliges salir o seguir.",
     ),
     "Disruption": (
-        "Disrupcion", "Disruption",
+        "Interrupción", "Disruption",
         "Usa las llaves que sueltan algunos enemigos para activar los conductos y defiendelos "
         "de los Demolysts; hay cuatro conductos por ronda.",
         "Una recompensa por ronda si salvas al menos un conducto, pero no va en A, A, B, C: la "
@@ -105,21 +105,21 @@ MODOS: dict[str, tuple[str, str, str, str]] = {
         "cuatro en cada ronda.",
     ),
     "Defection": (
-        "Desercion", "Defection",
+        "Deserción", "Defection",
         "Escolta a los grupos de desertores Kavor hasta la nave de extraccion; si mueren "
         "demasiados, la mision falla.",
         "Recompensa cada 2 grupos rescatados, en ciclos A, A, B, C que se repiten: la C llega "
         "con 8, 16, 24... grupos.",
     ),
     "Infested Salvage": (
-        "Rescate infestado", "Infested Salvage",
+        "Salvamento infestado", "Infested Salvage",
         "Descifra los datos con tres consolas mientras la infestacion las corroe; si caen las "
         "tres, la mision falla.",
         "Una recompensa por cada ronda de descifrado completada, en ciclos A, A, B, C que se "
         "repiten. Tras cada ronda tienes unos segundos para decidir si sales o sigues.",
     ),
     "Sanctuary Onslaught": (
-        "Embestida del Santuario", "Sanctuary Onslaught",
+        "Masacre en el Santuario", "Sanctuary Onslaught",
         "La mision de Cefalon Simaris: mata sin parar para que no baje la eficiencia y entra "
         "en el conducto para pasar a la siguiente zona.",
         "Recompensa cada 2 zonas, en ciclos A, A, B, C que se repiten (la C, en las zonas 8, "
@@ -188,7 +188,7 @@ MODOS: dict[str, tuple[str, str, str, str]] = {
         "partida es un intento.",
     ),
     "Hijack": (
-        "Secuestro", "Hijack",
+        "Usurpación", "Hijack",
         "Escolta el vehiculo por su ruta, recargandolo con tus escudos.",
         "La version normal no da premio especial al terminar.",
     ),
@@ -203,12 +203,12 @@ MODOS: dict[str, tuple[str, str, str, str]] = {
         "Un solo premio al terminar la partida.",
     ),
     "Rush": (
-        "Carrera", "Rush",
+        "Persecución", "Rush",
         "Con Archwing, destruye los tres transportes Corpus antes de que escapen.",
         "El premio depende de cuantos transportes destruyas: uno da A, dos dan B y los tres dan C.",
     ),
     "Pursuit": (
-        "Persecucion", "Pursuit",
+        "Estampida", "Pursuit",
         "Con Archwing, persigue una nave Grineer, inutiliza su motor y sus generadores de "
         "escudo y defiende tu nave.",
         "Un solo premio al terminar la mision.",
@@ -221,7 +221,7 @@ MODOS: dict[str, tuple[str, str, str, str]] = {
         "A, B y C, pero la wiki no explica que decide cada una.",
     ),
     "Volatile": (
-        "Volatil", "Volatile",
+        "Volátil", "Volatile",
         "Mision de Railjack: aborda una nave Corpus, sabotea su reactor y destruyela desde "
         "el Railjack.",
         "Un premio al completar todos los objetivos.",
@@ -234,28 +234,28 @@ MODOS: dict[str, tuple[str, str, str, str]] = {
         "tanda puedes salir o seguir.",
     ),
     "Void Storm": (
-        "Tormenta del Vacio", "Void Storm",
+        "Tormenta del Vacío", "Void Storm",
         "Fisura del Vacio en Railjack: reune reactivo matando enemigos corrompidos para abrir "
         "tu reliquia.",
         "Al terminar recibes la pieza de tu reliquia y, ademas, un premio de la tabla de la "
         "Tormenta del Vacio.",
     ),
     "Void Flood": (
-        "Inundacion del Vacio", "Void Flood",
+        "Inundación del Vacío", "Void Flood",
         "Mision del Zariman: sella las grietas del Vacio llevandoles Vitoplast mientras "
         "aguantas a los enemigos.",
         "Recompensa cada 3 grietas selladas (con el Thrax derrotado), en ciclos A, A, B, C "
         "que se repiten; tras cada una eliges salir o seguir.",
     ),
     "Void Cascade": (
-        "Cascada del Vacio", "Void Cascade",
+        "Cascada del Vacío", "Void Cascade",
         "Mision del Zariman: purga los Exolizadores de la infestacion del Vacio antes de que "
         "se llene el medidor de cascada, o la mision falla.",
         "Recompensa cada 4 Exolizadores purgados, en ciclos A, A, B, C que se repiten; tras "
         "cada una puedes salir o seguir.",
     ),
     "Void Armageddon": (
-        "Armagedon del Vacio", "Void Armageddon",
+        "Armagedón del Vacío", "Void Armageddon",
         "Mision del Zariman: defiende los dos Exodampers, que se alternan, y protege la "
         "reliquia del Angel del Vacio.",
         "Recompensa cada 3 oleadas superadas (con el Angel derrotado), en ciclos A, A, B, C "
@@ -294,13 +294,13 @@ MODOS: dict[str, tuple[str, str, str, str]] = {
         "daba durante el evento Operacion: Atramentum.",
     ),
     "Netracells": (
-        "Netracells", "Netracells",
+        "Netraceldas", "Netracells",
         "Encuentra la boveda y baja su seguridad matando enemigos dentro de la zona marcada.",
         "Solo da premio las 5 primeras veces de cada semana, gastando un pulso de busqueda; "
         "sin pulsos se puede jugar, pero sin premio.",
     ),
     "Ascension": (
-        "Ascension", "Ascension",
+        "Ascensión", "Ascension",
         "Defiende el recolector y despues la capsula de extraccion mientras sube.",
         "Un premio al terminar la mision.",
     ),
@@ -311,7 +311,7 @@ MODOS: dict[str, tuple[str, str, str, str]] = {
         "Premio al terminar la mision; no hay recompensas por oleada.",
     ),
     "Conclave": (
-        "Conclave", "Conclave",
+        "Cónclave", "Conclave",
         "Partidas contra otros jugadores (PvP).",
         "Se gana reputacion de Conclave para la tienda de Teshin; ademas, cada partida puede "
         "soltar algo de su tabla.",
@@ -319,6 +319,22 @@ MODOS: dict[str, tuple[str, str, str, str]] = {
 }
 
 # Variantes del mismo modo tal como llegan de las distintas fuentes de datos.
+# Nombres que Farmadex ensenaba antes y no son los del juego en castellano: se siguen
+# encontrando al buscarlos ("disrupcion" lleva a Interrupcion), pero ya no se ensenan.
+# Los nombres de arriba son los oficiales, de los textos del juego que publica WFCD
+# (warframe-worldstate-data, data/es/missionTypes.json y solNodes.json), contrastados con
+# la wiki en castellano el 2026-09-26.
+NOMBRES_ANTERIORES: dict[str, tuple[str, ...]] = {
+    "Disruption": ("Disrupcion",),
+    "Interception": ("Intercepcion",),
+    "Hijack": ("Secuestro",),
+    "Infested Salvage": ("Rescate infestado",),
+    "Mirror Defense": ("Defensa espejo",),
+    "Sanctuary Onslaught": ("Embestida del Santuario",),
+    "Conjunction Survival": ("Supervivencia de conjuncion",),
+    "Rush": ("Carrera",),
+}
+
 ALIAS = {
     "Extermination": "Exterminate",
     "Arbitrations": "Arbitration",
@@ -480,7 +496,19 @@ def nombre(modo_en: str | None) -> str:
     if not modo:
         return ""
     es, en = MODOS[modo][:2]
+    if not es_castellano():
+        # Los catalogos de otros idiomas tienen las claves sin tildes ("Tormenta del Vacio").
+        llana = _sin_tildes(es)
+        traducido = t(llana)
+        if traducido != llana:
+            return traducido
     return glosa(es, en)
+
+
+def _sin_tildes(texto: str) -> str:
+    import unicodedata
+
+    return "".join(c for c in unicodedata.normalize("NFKD", texto) if not unicodedata.combining(c))
 
 
 def linea_rotacion(modo_en: str | None, rotacion: str | None) -> str:

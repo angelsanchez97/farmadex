@@ -27,6 +27,7 @@ from pathlib import Path
 
 from .. import VERSION
 from ..config import DIR_LOGS
+from ..ficheros import reemplazar, temporal_de
 from ..registro_log import obtener
 from .app import numeros
 from .descarga import DIR_DESCARGAS
@@ -144,12 +145,19 @@ def parametros_instalador(ruta_setup: Path | str, ruta_log: Path | None = None) 
     return [str(ruta_setup), *PARAMETROS, f"/LOG={ruta_log}"]
 
 
-def instalar_silencioso(ruta_setup: Path | str, etiqueta: str, ejecutable_actual: str | Path | None = None) -> bool:
+def instalar_silencioso(
+    ruta_setup: Path | str,
+    etiqueta: str,
+    ejecutable_actual: str | Path | None = None,
+    borrar_al_acabar: bool = True,
+) -> bool:
     """Lanza el setup en silencio y apunta que version se esta instalando.
 
     Devuelve True si el proceso arranco: quien llama debe cerrar Farmadex en cuanto
     pueda. Si el setup devuelve error, el envoltorio vuelve a abrir la version
     actual, que al arrancar ve la instalacion pendiente sin cumplir y lo avisa.
+    `borrar_al_acabar` False deja el setup donde estaba (el de la carpeta de
+    compilaciones no es nuestro: solo se borran los que descarga Farmadex).
     """
     ruta_setup = Path(ruta_setup)
     if not ruta_setup.exists():
@@ -159,7 +167,10 @@ def instalar_silencioso(ruta_setup: Path | str, etiqueta: str, ejecutable_actual
         ejecutable_actual = sys.executable
     try:
         DIR_LOGS.mkdir(parents=True, exist_ok=True)
-        _escribir(RUTA_PENDIENTE, {"version": etiqueta, "setup": str(ruta_setup), "momento": time.time()})
+        _escribir(RUTA_PENDIENTE, {
+            "version": etiqueta, "setup": str(ruta_setup), "momento": time.time(),
+            "borrar_setup": bool(borrar_al_acabar),
+        })
         orden = _linea_de_ordenes(ruta_setup, Path(ejecutable_actual))
         banderas = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(subprocess, "DETACHED_PROCESS", 0)
         subprocess.Popen(orden, close_fds=True, creationflags=banderas)  # noqa: S603 - ruta verificada por SHA-256
@@ -242,7 +253,8 @@ def resultado_instalacion_anterior() -> tuple[str, str] | None:
         return None
     RUTA_PENDIENTE.unlink(missing_ok=True)
     etiqueta = str(pendiente.get("version") or "")
-    setup = pendiente.get("setup")
+    # Un setup que no descargo Farmadex (carpeta de compilaciones) no se borra nunca.
+    setup = pendiente.get("setup") if pendiente.get("borrar_setup", True) else None
     pedida, actual = numeros(etiqueta), numeros(VERSION)
     if not pedida or not actual:
         log.warning("Apunte de actualizacion ilegible (%r): se descarta", etiqueta)
@@ -313,7 +325,7 @@ def _leer(ruta: Path) -> dict | None:
 
 def _escribir(ruta: Path, datos: dict) -> None:
     ruta.parent.mkdir(parents=True, exist_ok=True)
-    tmp = ruta.with_suffix(".tmp")
+    tmp = temporal_de(ruta)
     tmp.write_text(json.dumps(datos), encoding="utf-8")
-    tmp.replace(ruta)
+    reemplazar(tmp, ruta)
 

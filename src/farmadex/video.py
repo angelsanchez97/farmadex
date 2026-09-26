@@ -19,6 +19,13 @@ porque el .exe no tiene consola y ahi stdout puede no existir.
 Muere con Farmadex: vigila el PID del padre y se cierra en cuanto desaparece, aunque
 Farmadex se haya caido sin avisar. Para cambiar de video, Farmadex cierra este proceso
 (por su PID) y lanza otro.
+
+El mismo hijo sirve para cualquier pagina web dentro de Farmadex (el panel Web, con las
+builds de Overframe): los botones "Atras" y "Recargar" del panel dejan una orden en un
+fichero al lado del de estado ("ATRAS", "RECARGAR") y el hijo la ejecuta en la pagina.
+El hijo apunta en otro fichero la direccion que se esta viendo, para que "Abrir en el
+navegador" abra esa y no la del principio. Los enlaces que piden ventana nueva se abren
+en la misma vista: el usuario no quiere que se le abran ventanas.
 """
 
 from __future__ import annotations
@@ -30,11 +37,63 @@ import sys
 import time
 from pathlib import Path
 
+from .ficheros import reemplazar, temporal_de
+
 ARGUMENTO = "--video"
 TITULO = "Farmadex · Guia"
 # Cada cuanto se mira si Farmadex sigue vivo, y cuanto se espera a que exista la ventana.
 VIGILANCIA_S = 1.5
 ESPERA_VENTANA_S = 20.0
+# Cada cuanto se miran las ordenes del panel (Atras, Recargar).
+ORDENES_S = 0.2
+# Orden del panel -> JavaScript que la hace en la pagina.
+ORDENES = {"ATRAS": "history.back()", "ADELANTE": "history.forward()", "RECARGAR": "location.reload()"}
+
+
+def rutas_auxiliares(estado: str | Path) -> tuple[Path, Path]:
+    """(fichero de ordenes, fichero con la direccion actual), al lado del de estado.
+
+    Farmadex y el hijo las sacan de aqui los dos: asi no hacen falta argumentos nuevos.
+    """
+    estado = Path(estado)
+    return estado.with_name(estado.stem + "_ordenes.txt"), estado.with_name(estado.stem + "_url.txt")
+
+
+def leer_orden(ruta: str | Path) -> str | None:
+    """La orden pendiente (y se borra, para no repetirla); None si no hay ninguna valida."""
+    ruta = Path(ruta)
+    try:
+        texto = ruta.read_text(encoding="utf-8").strip().upper()
+        ruta.unlink()
+    except OSError:
+        return None
+    return texto if texto in ORDENES else None
+
+
+def atender(ventana, ordenes: Path, url_actual: Path, ultima_url: str) -> str:
+    """Una vuelta del hijo: hace la orden pendiente y apunta la direccion si ha cambiado.
+
+    Devuelve la direccion apuntada. Nunca falla: una pagina que no deja ejecutar el
+    JavaScript solo se queda sin ir atras.
+    """
+    orden = leer_orden(ordenes)
+    if orden:
+        try:
+            ejecutar = getattr(ventana, "run_js", None) or ventana.evaluate_js
+            ejecutar(ORDENES[orden])
+        except Exception:  # noqa: BLE001 - pagina aun sin cargar o que no lo permite
+            pass
+    try:
+        actual = str(ventana.get_current_url() or "")
+    except Exception:  # noqa: BLE001 - aun sin pagina
+        actual = ""
+    if actual and actual != ultima_url:
+        try:
+            escribir_estado(url_actual, actual)
+        except OSError:
+            return ultima_url
+        return actual
+    return ultima_url
 
 
 def enrutar(argv: list[str] | None = None) -> int | None:
@@ -65,9 +124,9 @@ def escribir_estado(ruta: str | Path, texto: str) -> None:
     """Deja el estado en el fichero de una vez (primero a uno temporal y luego se renombra),
     para que Farmadex nunca lea una linea a medias."""
     ruta = Path(ruta)
-    temporal = ruta.with_suffix(ruta.suffix + ".tmp")
+    temporal = temporal_de(ruta)
     temporal.write_text(texto, encoding="utf-8")
-    os.replace(temporal, ruta)
+    reemplazar(temporal, ruta)
 
 
 def proceso_vivo(pid: int) -> bool:
@@ -106,6 +165,12 @@ def main(argv: list[str]) -> int:
         escribir_estado(args.estado, f"ERROR sin_pywebview {error}")
         return 2
 
+    ordenes, url_actual = rutas_auxiliares(args.estado)
+    try:
+        # Un enlace que pide ventana nueva se abre en la misma vista, no en el navegador.
+        webview.settings["OPEN_EXTERNAL_LINKS_IN_BROWSER"] = False
+    except Exception:  # noqa: BLE001 - version de pywebview sin ese ajuste
+        pass
     ventana = webview.create_window(
         TITULO, args.url, width=args.ancho, height=args.alto, x=-32000, y=-32000,
         frameless=True, easy_drag=False, hidden=True, focus=True, background_color="#000000",
@@ -122,9 +187,17 @@ def main(argv: list[str]) -> int:
             ventana.destroy()
             return
         escribir_estado(args.estado, f"HWND {hwnd}")
-        # Sin Farmadex no tiene sentido seguir: nadie ensena esta ventana.
-        while proceso_vivo(args.padre):
-            time.sleep(VIGILANCIA_S)
+        # Sin Farmadex no tiene sentido seguir: nadie ensena esta ventana. Mientras tanto,
+        # las ordenes del panel (Atras, Recargar) y la direccion que se esta viendo.
+        ultima_url, siguiente_vigilancia = "", 0.0
+        while True:
+            ahora = time.monotonic()
+            if ahora >= siguiente_vigilancia:
+                if not proceso_vivo(args.padre):
+                    break
+                siguiente_vigilancia = ahora + VIGILANCIA_S
+            ultima_url = atender(ventana, ordenes, url_actual, ultima_url)
+            time.sleep(ORDENES_S)
         ventana.destroy()
 
     try:

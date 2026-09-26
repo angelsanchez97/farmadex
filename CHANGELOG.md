@@ -1,5 +1,89 @@
 # Cambios
 
+## 0.5.0
+
+Esta versión sale casi entera de los comentarios de un tester muy detallista.
+La primera vez que la abras, Farmadex vuelve a preparar los datos del juego:
+tarda un poco, solo esa vez.
+
+**Build y Agrietados, pestañas nuevas**
+- Build: abre en el juego la pantalla de mejoras de un warframe o un arma y
+  pulsa Ctrl+Alt+B. Farmadex lee sus mods y arcanos, y al pulsar uno te dice de
+  dónde sale.
+- Agrietados: pon el ratón sobre un riven y pulsa Ctrl+Alt+G (o apunta sus
+  estadísticas a mano). Te dice entre qué valores puede salir cada una en esa
+  arma, qué nota tiene la tuya, de S a F, y un precio de referencia de
+  warframe.market.
+- Builds en Overframe: en la ficha de un warframe o un arma, y en la pestaña
+  Build, un botón te abre sus builds de Overframe dentro de Farmadex, en la
+  pestaña Web, sin salir del programa.
+- Arreglado el aviso «No se pudieron actualizar los datos» que salía si se
+  abrían dos Farmadex a la vez: ahora solo puede haber uno.
+
+**Buscar**
+- Cada tipo de objeto tiene su color (recursos en amarillo, mods en azul,
+  armas en naranja...), con su leyenda.
+- Las fichas enseñan las estadísticas de las armas y su disposición de riven,
+  lo que hace un mod en cada rango, el efecto de los arcanos y lo básico de
+  cada warframe.
+- Los glifos traen su código de canje y un botón para copiarlo.
+- Los nombres de misión son los oficiales en castellano: Interrupción,
+  Interceptación, Usurpación...
+- Arreglado el mod Sierra, que no salía bien.
+
+**Modo compacto**
+- Salen todos los resultados en lista y al pulsar uno se despliegan sus
+  detalles justo debajo, sin perder la búsqueda.
+- Nueva chincheta «Fijar» para que se quede siempre encima del juego.
+
+**Objetivos**
+- Pones cuántos quieres de cada cosa y sumas varios de golpe; el contador no
+  se pasa de la meta.
+- Pestañas Sin empezar, En progreso y Completados, filtro por categoría y de
+  diez en diez, con lo último arriba.
+- Un set es un solo panel que se abre con un clic, y en las armas puedes
+  apuntar cada recurso de fabricación por separado.
+- Antes de borrar te pregunta, y puedes marcar varios para borrarlos juntos.
+
+**Mundo**
+- Avisos de Windows, todos apagados hasta que tú los elijas: fisuras de los
+  tipos que quieras, Baro y lo que trae de tus objetivos, Teshin, Palladino,
+  arbitrajes, invasiones, alertas, incursión, arcontes y la noche en Cetus.
+- Puedes ocultar los bloques que no uses, filtrar por facción (cada una con
+  su color) y cambiar entre lista y tablero desde la propia pestaña.
+- Al pulsar una recompensa se abre su ficha, y el texto se puede copiar.
+- Arreglado el aviso de «Baro trae algo de tus objetivos».
+
+**Primes**
+- Cuadrícula ordenada, con todas las cajas del mismo ancho.
+- Las Formas y los Adaptadores Exilus van aparte, al final.
+- Nuevo desplegable para ordenar: por nombre, marcados primero, más piezas en
+  búsqueda, más recientes o recién conseguidos.
+- El botón de «Incluir lo que está en bóveda» se queda quieto mientras carga.
+
+**Ventana y ajustes**
+- La ventana se mueve y cambia de tamaño desde cualquier borde.
+- Solo se abre un Farmadex: si lo lanzas otra vez, te enseña el que ya tenías.
+- Ajustes va por secciones en una columna, cada opción explica para qué
+  sirve, y lo menos usado está en «Avanzado», plegado.
+- Nuevo en Apariencia: tamaño de la ventana, tamaño de letra y cualquier
+  color, con vista previa antes de guardar.
+- La rueda del ratón ya no cambia los desplegables sin querer al hacer scroll.
+- El lector de lo que hay bajo el cursor (Ctrl+Alt+Q) ya no se queda colgado.
+
+**Primera vez y confianza**
+- La primera vez te recibe una bienvenida con lo básico, si es seguro y las
+  dudas más típicas, y luego el recorrido por la ventana, que ahora enseña
+  también Build, Agrietados, los avisos de Mundo, el aspecto y los objetivos
+  nuevos.
+- En Acerca de hay un apartado «¿Es seguro?», y en la web del proyecto una
+  página que explica por qué avisa Windows y cómo comprobar que la descarga es
+  la buena, con un fichero de huellas en cada versión.
+
+**Actualizaciones y errores**
+- Al actualizar, la versión vieja se cierra del todo y no deja restos.
+- El registro de errores apunta más cosas, para poder ayudarte si algo falla.
+
 ## 0.4.3
 
 - Al abrir una reliquia se ve de un vistazo qué importa: cada tarjeta lleva

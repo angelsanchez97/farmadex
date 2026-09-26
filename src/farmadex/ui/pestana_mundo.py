@@ -11,6 +11,7 @@ from __future__ import annotations
 import html
 import unicodedata
 from datetime import datetime, timezone
+from urllib.parse import quote, unquote
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
@@ -19,16 +20,23 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QMenu,
+    QPushButton,
     QScrollArea,
+    QStackedWidget,
     QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
-from ..idiomas import t
+from ..config import cargar, guardar
+from ..idiomas import glosa, t
+from ..online import avisos_mundo
+from ..online import worldstate as ws
 from ..online.worldstate import Fisura, Mundo, restante
 from ..registro_log import obtener
 from . import glosario
+from .personalizar_mundo import PanelPersonalizar, ocultas
 from .widgets import PALETA
 
 log = obtener("mundo")
@@ -50,6 +58,27 @@ TITULOS = {
 }
 DISENOS = ("lista", "tablero")
 DISENO_POR_DEFECTO = "lista"
+CLAVE_DISENO = "diseno_mundo"
+CLAVE_FACCIONES = "mundo_facciones"
+# Facciones de las fisuras: clave interna -> nombre en la interfaz y color del nombre.
+# Colores fijos (no del tema): se reconocen igual con cualquier tema, como en el juego.
+FACCIONES = (
+    ("grineer", "Grineer", "#ef7d5a", "Grineer"),
+    ("corpus", "Corpus", "#5eb3f0", "Corpus"),
+    ("infested", "Infestados", "#86cf6c", "Infested"),
+    ("orokin", "Orokin", "#e6c464", "Orokin"),
+    ("murmur", "Murmullo", "#bd92ec", "Murmur"),
+    ("crossfire", "Fuego cruzado", "#d0d0d0", "Crossfire"),
+    ("narmer", "Narmer", "#ec98bd", "Narmer"),
+)
+COLORES_FACCION = {clave: color for clave, _, color, _en in FACCIONES}
+# Lo que manda la API (ingles) o el glosario (espanol) -> clave de FACCIONES.
+_ALIAS_FACCION = {
+    "infestation": "infested", "infestados": "infested", "infestado": "infested",
+    "corrupted": "orokin", "corruptos": "orokin", "corrupto": "orokin",
+    "sentient": "murmur", "sintientes": "murmur", "murmullo": "murmur", "the murmur": "murmur",
+    "fuego cruzado": "crossfire",
+}
 # Por debajo de estos minutos la cuenta atras se pinta en naranja.
 MINUTOS_URGENTE = 10
 # Bloques que nacen plegados: se abren con un clic y se quedan asi hasta cerrar.
@@ -107,6 +136,16 @@ def _terminado(expira) -> bool:
     return expira is not None and restante(expira) == "terminado"
 
 
+def clave_faccion(fisura) -> str:
+    """'grineer', 'corpus'...; vacio si no se sabe de que faccion es."""
+    bruto = _sin_tildes(getattr(fisura, "faccion", "") or getattr(fisura, "enemigo", "") or "").lower().strip()
+    return _ALIAS_FACCION.get(bruto, bruto)
+
+
+# Texto que se puede seleccionar y copiar con el raton, sin perder los enlaces.
+SELECCIONABLE = Qt.TextSelectableByMouse | Qt.LinksAccessibleByMouse
+
+
 class Seccion(QFrame):
     """Un bloque del mundo, plegable por su titulo. Guarda las cuentas atras para refrescarlas."""
 
@@ -161,6 +200,8 @@ class Seccion(QFrame):
 
     def _preparar(self, etiqueta: QLabel) -> None:
         etiqueta.setTextFormat(Qt.RichText)
+        etiqueta.setTextInteractionFlags(SELECCIONABLE)
+        etiqueta.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         etiqueta.linkHovered.connect(lambda url: glosario.mostrar(url, etiqueta) if url else None)
         etiqueta.linkActivated.connect(self._activar)
 
@@ -253,6 +294,9 @@ class Seccion(QFrame):
         rejilla = QGridLayout()
         rejilla.setHorizontalSpacing(14)
         rejilla.setVerticalSpacing(2)
+        # Columnas del mismo ancho: cada cosa empieza siempre en el mismo sitio.
+        for columna in range(columnas):
+            rejilla.setColumnStretch(columna, 1)
         for i, (texto_html, expira) in enumerate(celdas):
             etiqueta = QLabel()
             self._preparar(etiqueta)
@@ -286,11 +330,19 @@ Tarjeta = Seccion
 
 
 class PestanaMundo(QWidget):
-    # Un objeto de Baro pinchado: la ventana abre su ficha en Buscar.
+    # Un objeto pinchado (Baro, una recompensa): la ventana abre su ficha en Buscar.
     abrir_item = Signal(int)
+    # Una recompensa que no esta en el indice: la ventana la busca por su nombre en Buscar.
+    buscar_texto = Signal(str)
+    # Texto para un aviso de Windows (la ventana lo manda a la bandeja).
+    aviso_windows = Signal(str)
+    diseno_cambiado = Signal(str)
 
-    def __init__(self, parent=None, diseno: str = DISENO_POR_DEFECTO):
+    def __init__(self, parent=None, diseno: str | None = None):
         super().__init__(parent)
+        self.config = cargar()
+        if diseno is None:
+            diseno = self.config.get(CLAVE_DISENO) or DISENO_POR_DEFECTO
         self.diseno = diseno if diseno in DISENOS else DISENO_POR_DEFECTO
         self.mundo: Mundo | None = None
         self._motivo_fallo: str | None = None
@@ -299,6 +351,9 @@ class PestanaMundo(QWidget):
         self.usuario = None
         self._eras_necesarias: dict[str, list[str]] = {}
         self._plegadas: dict[str, bool] = dict(PLEGADAS_POR_DEFECTO)
+        facciones = self.config.get(CLAVE_FACCIONES) or []
+        self._facciones: set[str] = {str(f) for f in facciones} if isinstance(facciones, list) else set()
+        self._avisador = avisos_mundo.Avisador(self.config.get(avisos_mundo.CLAVE_ENVIADOS))
         p = PALETA
 
         self.filtro_era = QComboBox()
@@ -311,16 +366,50 @@ class PestanaMundo(QWidget):
             self.filtro_modo.addItem(t(modo), modo)
         self.filtro_modo.currentIndexChanged.connect(lambda _: self.pintar())
         glosario.aplicar(self.filtro_modo, "camino_de_acero")
+        # Facciones preferidas: solo esas fisuras, cada una con el color de su faccion.
+        self.filtro_faccion = QPushButton()
+        self.filtro_faccion.setCursor(Qt.PointingHandCursor)
+        self.menu_facciones = QMenu(self.filtro_faccion)
+        self.acciones_faccion = {}
+        for clave, _nombre, _color, _en in FACCIONES:
+            accion = self.menu_facciones.addAction("")
+            accion.setCheckable(True)
+            accion.setChecked(clave in self._facciones)
+            accion.toggled.connect(self._cambiar_facciones)
+            self.acciones_faccion[clave] = accion
+        self.menu_facciones.addSeparator()
+        self.accion_todas = self.menu_facciones.addAction("")
+        self.accion_todas.triggered.connect(self._todas_las_facciones)
+        self.filtro_faccion.setMenu(self.menu_facciones)
         self.aviso = QLabel(t("Consultando el estado del mundo..."))
         self.aviso.setStyleSheet(f"color: {p['suave']};")
+        self.aviso.setWordWrap(True)
+        self.aviso.setTextInteractionFlags(Qt.TextSelectableByMouse)
 
         self.etiqueta_fisuras = QLabel(t("Fisuras:"))
         glosario.aplicar(self.etiqueta_fisuras, "fisura")
+        # La disposicion se elige aqui mismo: afecta solo a esta pestana.
+        self.etiqueta_diseno = QLabel()
+        self.selector_diseno = QComboBox()
+        self.selector_diseno.addItem("", "lista")
+        self.selector_diseno.addItem("", "tablero")
+        self.selector_diseno.setCurrentIndex(max(0, self.selector_diseno.findData(self.diseno)))
+        self.selector_diseno.currentIndexChanged.connect(
+            lambda _: self.cambiar_diseno(self.selector_diseno.currentData() or DISENO_POR_DEFECTO)
+        )
+        self.boton_personalizar = QPushButton()
+        self.boton_personalizar.setCheckable(True)
+        self.boton_personalizar.setCursor(Qt.PointingHandCursor)
+        self.boton_personalizar.toggled.connect(self.mostrar_personalizar)
         filtros = QHBoxLayout()
         filtros.addWidget(self.etiqueta_fisuras)
         filtros.addWidget(self.filtro_era)
         filtros.addWidget(self.filtro_modo)
-        filtros.addWidget(self.aviso, 1)
+        filtros.addWidget(self.filtro_faccion)
+        filtros.addStretch(1)
+        filtros.addWidget(self.etiqueta_diseno)
+        filtros.addWidget(self.selector_diseno)
+        filtros.addWidget(self.boton_personalizar)
 
         self.tarjetas = {clave: Seccion(t(titulo), clave, self._plegadas) for clave, titulo in TITULOS.items()}
         for seccion in self.tarjetas.values():
@@ -330,6 +419,49 @@ class PestanaMundo(QWidget):
         glosario.aplicar(self.tarjetas["tormentas"].boton, "tormenta")
         glosario.aplicar(self.tarjetas["baro"].boton, "baro")
 
+        self.desplazable = QScrollArea()
+        self.desplazable.setWidgetResizable(True)
+        self._construir_contenido()
+
+        self.paginas = QStackedWidget()
+        self.paginas.addWidget(self.desplazable)
+        self.pagina_ajustes = None
+        self._nueva_pagina_ajustes()
+
+        caja = QVBoxLayout(self)
+        caja.addLayout(filtros)
+        caja.addWidget(self.aviso)
+        caja.addWidget(self.paginas, 1)
+
+        self._reloj = QTimer(self)
+        self._reloj.timeout.connect(self._tic)
+        self._reloj.start(1000)
+        self._textos_barra()
+
+    def _nueva_pagina_ajustes(self) -> None:
+        """La pagina de personalizar; se rehace entera al cambiar de idioma o de tema."""
+        en_ajustes = self.pagina_ajustes is not None and self.paginas.currentWidget() is self.pagina_ajustes
+        nueva = PanelPersonalizar()
+        nueva.volver.connect(lambda: self.boton_personalizar.setChecked(False))
+        nueva.secciones_cambiadas.connect(self.pintar)
+        nueva.probar_aviso.connect(
+            lambda: self.aviso_windows.emit(t("Asi se veran los avisos de Farmadex sobre el mundo de Warframe"))
+        )
+        if self.pagina_ajustes is not None:
+            self.paginas.removeWidget(self.pagina_ajustes)
+            self.pagina_ajustes.deleteLater()
+        self.pagina_ajustes = nueva
+        self.paginas.addWidget(nueva)
+        if en_ajustes:
+            self.paginas.setCurrentWidget(nueva)
+
+    def _construir_contenido(self) -> None:
+        """Coloca los bloques segun la disposicion; se puede rehacer sin perder los datos."""
+        viejo = self.desplazable.takeWidget()
+        for seccion in self.tarjetas.values():
+            seccion.setParent(None)
+        if viejo is not None:
+            viejo.deleteLater()
         contenido = QWidget()
         if self.diseno == "tablero":
             rejilla = QGridLayout(contenido)
@@ -339,38 +471,94 @@ class PestanaMundo(QWidget):
             for clave in ("objetivos", "fisuras", "acero", "tormentas"):
                 izquierda.addWidget(self.tarjetas[clave])
             izquierda.addStretch(1)
-            for clave in ("ciclos", "baro", "sortie", "invasiones", "nightwave"):
+            for clave in ("ciclos", "baro", "sortie", "invasiones", "nightwave", "ahora"):
                 derecha.addWidget(self.tarjetas[clave])
             derecha.addStretch(1)
             rejilla.addLayout(izquierda, 0, 0)
             rejilla.addLayout(derecha, 0, 1)
             rejilla.setColumnStretch(0, 3)
             rejilla.setColumnStretch(1, 2)
-            self.tarjetas["ahora"].hide()
         else:
             columna = QVBoxLayout(contenido)
             columna.setSpacing(8)
             for clave in ("ahora", "objetivos", "fisuras", "acero", "tormentas", "sortie", "baro",
-                          "invasiones", "nightwave"):
+                          "invasiones", "nightwave", "ciclos"):
                 columna.addWidget(self.tarjetas[clave])
             columna.addStretch(1)
-            self.tarjetas["ciclos"].hide()
+        self.desplazable.setWidget(contenido)
+        self._visibilidad_base()
 
-        desplazable = QScrollArea()
-        desplazable.setWidgetResizable(True)
-        desplazable.setWidget(contenido)
+    def _visibilidad_base(self) -> None:
+        """Lo que la disposicion ensena de entrada; el pintado esconde lo que sobre."""
+        for clave, seccion in self.tarjetas.items():
+            estructural = (clave == "ahora" and self.diseno != "lista") or (
+                clave == "ciclos" and self.diseno != "tablero")
+            seccion.setVisible(not estructural)
 
-        caja = QVBoxLayout(self)
-        caja.addLayout(filtros)
-        caja.addWidget(desplazable, 1)
+    def cambiar_diseno(self, diseno: str) -> None:
+        """Lista o tablero, al vuelo y desde la propia pestana; se recuerda para la proxima vez."""
+        diseno = diseno if diseno in DISENOS else DISENO_POR_DEFECTO
+        if self.selector_diseno.currentData() != diseno:
+            self.selector_diseno.blockSignals(True)
+            self.selector_diseno.setCurrentIndex(max(0, self.selector_diseno.findData(diseno)))
+            self.selector_diseno.blockSignals(False)
+        if diseno == self.diseno:
+            return
+        self.diseno = diseno
+        self.config[CLAVE_DISENO] = diseno
+        guardar(self.config)
+        self._construir_contenido()
+        self.pintar()
+        self.diseno_cambiado.emit(diseno)
 
-        self._reloj = QTimer(self)
-        self._reloj.timeout.connect(self._tic)
-        self._reloj.start(1000)
+    def mostrar_personalizar(self, mostrar: bool) -> None:
+        if self.boton_personalizar.isChecked() != mostrar:
+            self.boton_personalizar.setChecked(mostrar)  # vuelve a entrar por la senal
+            return
+        self.paginas.setCurrentWidget(self.pagina_ajustes if mostrar else self.desplazable)
+        if not mostrar:
+            # Al volver se aplica lo elegido: bloques y, si hay avisos nuevos, se mandan ya.
+            self.pintar()
+            self._avisar()
+
+    # -- facciones -------------------------------------------------------------
+
+    def _cambiar_facciones(self, *_):
+        self._facciones = {c for c, accion in self.acciones_faccion.items() if accion.isChecked()}
+        self.config[CLAVE_FACCIONES] = sorted(self._facciones)
+        guardar(self.config)
+        self._textos_barra()
+        self.pintar()
+
+    def _todas_las_facciones(self) -> None:
+        for accion in self.acciones_faccion.values():
+            accion.blockSignals(True)
+            accion.setChecked(False)
+            accion.blockSignals(False)
+        self._cambiar_facciones()
+
+    def _textos_barra(self) -> None:
+        for clave, nombre, _color, en in FACCIONES:
+            self.acciones_faccion[clave].setText(glosa(nombre, en))
+        self.accion_todas.setText(t("Ensenar todas"))
+        if self._facciones:
+            self.filtro_faccion.setText(t("Facciones: {n}", n=len(self._facciones)))
+        else:
+            self.filtro_faccion.setText(t("Facciones: todas"))
+        self.filtro_faccion.setToolTip(t(
+            "Elige las facciones que te interesan: solo se ensenan sus fisuras. "
+            "El nombre de la faccion sale con su color para reconocerla de un vistazo."))
+        self.etiqueta_diseno.setText(t("Disposicion:"))
+        self.selector_diseno.setItemText(0, t("Lista"))
+        self.selector_diseno.setItemText(1, t("Tablero"))
+        self.boton_personalizar.setText(t("Personalizar y avisos"))
+        self.boton_personalizar.setToolTip(t("Elige que bloques ver y de que quieres que Farmadex te avise"))
 
     def _enlace(self, url: str) -> None:
         if url.startswith("item:"):
             self.abrir_item.emit(int(url.removeprefix("item:")))
+        elif url.startswith("buscar:"):
+            self.buscar_texto.emit(unquote(url.removeprefix("buscar:")))
 
     # -- idioma -------------------------------------------------------------
 
@@ -380,6 +568,7 @@ class PestanaMundo(QWidget):
         for i, modo in enumerate(MODOS):
             self.filtro_modo.setItemText(i, t(modo))
         self.etiqueta_fisuras.setText(t("Fisuras:"))
+        self._textos_barra()
         for clave, titulo in TITULOS.items():
             self.tarjetas[clave].setTitle(t(titulo))
         for clave, termino in (("fisuras", "fisura"), ("acero", "camino_de_acero"),
@@ -388,8 +577,33 @@ class PestanaMundo(QWidget):
         glosario.aplicar(self.filtro_era, "era")
         glosario.aplicar(self.filtro_modo, "camino_de_acero")
         glosario.aplicar(self.etiqueta_fisuras, "fisura")
+        self._nueva_pagina_ajustes()
         self._pintar_aviso()
         self.pintar()
+
+    # -- avisos de Windows ------------------------------------------------------
+
+    def _avisar(self) -> None:
+        """Manda a la bandeja lo nuevo que el usuario ha pedido que se le avise."""
+        mundo = self.mundo
+        if mundo is None or mundo.esta_viejo():
+            # Con datos viejos se avisaria de cosas que ya pasaron.
+            return
+        prefs = avisos_mundo.normalizar(self.config.get(avisos_mundo.CLAVE_CONFIG))
+        if not avisos_mundo.alguno_activo(prefs):
+            return
+        try:
+            avisos = avisos_mundo.calcular(mundo, prefs, facciones=self._facciones)
+        except Exception:  # noqa: BLE001 - un aviso roto no puede tumbar la pestana
+            log.warning("No se pudieron calcular los avisos del mundo", exc_info=True)
+            return
+        nuevos = self._avisador.nuevos(avisos)
+        self.config[avisos_mundo.CLAVE_ENVIADOS] = dict(self._avisador.enviados)
+        if not nuevos:
+            return
+        guardar(self.config)
+        log.info("Avisos del mundo: %s", [a.clave for a in nuevos])
+        self.aviso_windows.emit(avisos_mundo.juntar(nuevos))
 
     # -- datos -------------------------------------------------------------
 
@@ -420,8 +634,24 @@ class PestanaMundo(QWidget):
         self._motivo_fallo = None
         if self.indice is not None:
             self._eras_necesarias = self._calcular_eras()
+        self._marcar_baro()
         self._pintar_aviso()
         self.pintar()
+        self._avisar()
+
+    def _marcar_baro(self) -> None:
+        """Marca lo que Baro trae y esta en tus objetivos (arriba y en verde, y para los avisos)."""
+        baro = getattr(self.mundo, "baro_detalle", None)
+        if baro is None or self.usuario is None:
+            return
+        from ..estado import objetivos as estado_objetivos
+
+        try:
+            unicos = [o.unique_name for o in estado_objetivos.listar(self.usuario)]
+        except Exception:  # noqa: BLE001 - sin objetivos, Baro se ensena igual
+            log.warning("No se pudieron leer los objetivos para Baro", exc_info=True)
+            return
+        ws.marcar_objetivos(baro, unicos)
 
     def marcar_desactualizado(self, motivo: str) -> None:
         self._motivo_fallo = motivo
@@ -488,6 +718,7 @@ class PestanaMundo(QWidget):
             texto, color = "", p["suave"]
         self.aviso.setText(texto)
         self.aviso.setStyleSheet(f"color: {color};")
+        self.aviso.setVisible(bool(texto))
 
     def _tic(self) -> None:
         for tarjeta in self.tarjetas.values():
@@ -499,6 +730,16 @@ class PestanaMundo(QWidget):
         mundo = self.mundo
         for tarjeta in self.tarjetas.values():
             tarjeta.limpiar()
+        self._visibilidad_base()
+        try:
+            self._pintar_todo(mundo)
+        finally:
+            # Lo que el usuario ha escondido en "Personalizar", fuera siempre.
+            for clave in ocultas(self.config):
+                if clave in self.tarjetas:
+                    self.tarjetas[clave].hide()
+
+    def _pintar_todo(self, mundo: Mundo | None) -> None:
         if mundo is None:
             # Sin datos todavia. Si es porque la consulta fallo, se dice; si no,
             # se deja el aviso de "consultando" que ya esta arriba.
@@ -537,6 +778,11 @@ class PestanaMundo(QWidget):
                 continue
             if modo == "Tormenta del Vacio" and not f.tormenta:
                 continue
+            if self._facciones:
+                faccion = clave_faccion(f)
+                # Una faccion que no se reconoce no se esconde: mejor de mas que perderla.
+                if faccion in COLORES_FACCION and faccion not in self._facciones:
+                    continue
             salida.append(f)
         # Rapidas primero; a igual rapidez, la que mas tiempo deja.
         salida.sort(key=lambda f: (rapidez(f.mision), -(minutos_restantes(f.expira) or 0)))
@@ -554,7 +800,8 @@ class PestanaMundo(QWidget):
         if f.mision:
             partes.append(glosario.enlace_mision(f.modo, f.mision, p["texto"]))
         if f.enemigo:
-            partes.append(f"<span style='color:{p['suave']}'>{html.escape(f.enemigo)}</span>")
+            color = COLORES_FACCION.get(clave_faccion(f), p["suave"])
+            partes.append(f"<span style='color:{color}'>{html.escape(f.enemigo)}</span>")
         if f.acero:
             partes.append(glosario.enlace("camino_de_acero", t("Acero"), p["aviso"]))
         if f.tormenta:
@@ -626,7 +873,9 @@ class PestanaMundo(QWidget):
         if sin_filtro:
             return t(
                 "Hay {n} fisuras abiertas, pero ninguna pasa el filtro ({era}, {modo})",
-                n=sin_filtro, era=self.filtro_era.currentText(), modo=self.filtro_modo.currentText(),
+                n=sin_filtro, era=self.filtro_era.currentText(),
+                modo=self.filtro_modo.currentText() + (
+                    ", " + self.filtro_faccion.text() if self._facciones else ""),
             )
         return t("Ahora mismo no hay ninguna fisura abierta")
 
@@ -679,9 +928,15 @@ class PestanaMundo(QWidget):
         seccion = self.tarjetas["ahora"]
         if self.diseno != "lista":
             return
-        celdas = [(f"<b>{html.escape(c.nombre)}</b>: {html.escape(c.estado)}", c.expira) for c in mundo.ciclos]
+        # Duviri no es de dia o de noche como los demas: va en su propia linea, a la
+        # izquierda como Baro, en vez de quedar suelto al final de la rejilla.
+        duviri = [c for c in mundo.ciclos if getattr(c, "clave", "") == "duviriCycle" or c.nombre == t("Duviri")]
+        celdas = [(f"<b>{html.escape(c.nombre)}</b>: {html.escape(c.estado)}", c.expira)
+                  for c in mundo.ciclos if c not in duviri]
         if celdas:
             seccion.rejilla(celdas, columnas=3)
+        for c in duviri:
+            seccion.linea(f"<b>{html.escape(c.nombre)}</b>: {html.escape(c.estado)}", c.expira)
         baro = getattr(mundo, "baro_detalle", None)
         if baro is not None:
             seccion.linea(self._html_baro_cabecera(baro), baro.expira if baro.activo else baro.llegada)
@@ -703,7 +958,12 @@ class PestanaMundo(QWidget):
         total = len(mundo.invasiones) + len(mundo.alertas) + (1 if mundo.arbitracion else 0)
         seccion.contador(total)
         for a in mundo.alertas:
-            seccion.linea(f"<b>{t('Alerta')}</b> {html.escape(a.texto)}", a.expira)
+            premios = self._html_premios(getattr(a, "objetos", []))
+            texto = html.escape(a.texto)
+            if premios:
+                nodo = a.texto.split(" - ", 1)[0]
+                texto = f"{html.escape(nodo)} &middot; {premios}"
+            seccion.linea(f"<b>{t('Alerta')}</b> {texto}", a.expira)
         if mundo.arbitracion:
             seccion.linea(
                 f"<b>{t('Arbitracion')}</b> {html.escape(mundo.arbitracion.texto)} "
@@ -716,9 +976,12 @@ class PestanaMundo(QWidget):
                 if i.atacante and i.defensor
                 else ""
             )
+            premios = self._html_premios(getattr(i, "objetos", []))
+            if not premios and i.recompensas:
+                premios = html.escape(i.recompensas)
             seccion.linea(
                 f"<b>{html.escape(i.nodo)}</b> · {html.escape(i.descripcion + bandos)}"
-                + (f" · {html.escape(i.recompensas)}" if i.recompensas else "")
+                + (f" · {premios}" if premios else "")
                 + f" · {abs(i.porcentaje):.0f}%"
             )
         sobran = len(mundo.invasiones) - MAX_INVASIONES
@@ -726,6 +989,23 @@ class PestanaMundo(QWidget):
             seccion.vacia(t("y {n} invasiones mas", n=sobran))
         if not total:
             self._vacia(seccion, t("No hay invasiones ni alertas activas"))
+
+    def _html_premios(self, objetos) -> str:
+        """Las recompensas como enlaces: con ficha en el indice la abren; si no, se buscan."""
+        p = PALETA
+        trozos = []
+        vistos = set()
+        for o in objetos or []:
+            nombre = (f"{o.cantidad}x " if o.cantidad > 1 else "") + o.nombre_mostrar
+            if nombre in vistos:
+                continue
+            vistos.add(nombre)
+            destino = f"item:{o.item_id}" if o.item_id else "buscar:" + quote(o.nombre_mostrar, safe="")
+            trozos.append(
+                f"<a style='color:{p['texto']};text-decoration:underline' href='{destino}'>"
+                f"{html.escape(nombre)}</a>"
+            )
+        return " / ".join(trozos)
 
     def _pintar_sortie(self, mundo: Mundo) -> None:
         p = PALETA
@@ -752,7 +1032,7 @@ class PestanaMundo(QWidget):
         for r in mundo.acero:
             seccion.linea(
                 glosario.enlace("camino_de_acero", t("Camino de Acero"), p["texto"], negrita=True)
-                + f": {html.escape(r.texto)} <span style='color:{p['suave']}'>{html.escape(r.detalle)}</span>",
+                + f": {html.escape(avisos_mundo.nombre_teshin(r.texto))} <span style='color:{p['suave']}'>{html.escape(r.detalle)}</span>",
                 r.expira,
             )
         for r in mundo.nightwave[:MAX_NIGHTWAVE]:

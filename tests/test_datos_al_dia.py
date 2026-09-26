@@ -92,6 +92,7 @@ def test_el_aviso_de_ajustes_cambia_de_color_segun_el_tono(tmp_path, monkeypatch
     monkeypatch.setattr(config, "RUTA_CONFIG", tmp_path / "config.json")
     idiomas.cargar("es")
     ajustes = PestanaAjustes()
+    ajustes.ir_a("datos")  # Ajustes va por secciones: el aviso vive en Datos del juego
     ajustes.avisar_parche("van por detras", aviso=True)
     assert PALETA["aviso"] in ajustes.aviso_parche.styleSheet()
     ajustes.avisar_parche("tienes lo ultimo publicado", aviso=False)

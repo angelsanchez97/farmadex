@@ -2,7 +2,7 @@
 #
 #   powershell -ExecutionPolicy Bypass -File empaquetado\construir.ps1
 #
-# Deja todo en dist\ con su SHA-256. El instalador solo se genera si esta
+# Deja todo en dist\ con su SHA-256 y un SHA256SUMS.txt para subir a la release. El instalador solo se genera si esta
 # instalado Inno Setup 6; sin el, el zip portable sirve igual.
 
 $ErrorActionPreference = "Stop"
@@ -81,6 +81,20 @@ if (Test-Path $iscc) {
     Write-Host "  Descargalo de https://jrsoftware.org/isdl.php y vuelve a lanzar esto." -ForegroundColor Yellow
 }
 
+Write-Host "`nHuellas SHA-256 (SHA256SUMS.txt)" -ForegroundColor Cyan
+# Se sube a la release junto al setup y al zip: quien descarga puede comprobar con
+# Get-FileHash que su fichero es exactamente el publicado (docs/SEGURIDAD.md).
+# Formato de sha256sum ("HUELLA  fichero"), en mayusculas como las ensena Get-FileHash.
+$publicables = Get-ChildItem dist -File | Where-Object { $_.Extension -in ".exe", ".zip" } | Sort-Object Name
+if (-not $publicables) { throw "No hay nada que publicar en dist\" }
+$lineas = foreach ($fichero in $publicables) {
+    "{0}  {1}" -f (Get-FileHash $fichero.FullName -Algorithm SHA256).Hash, $fichero.Name
+}
+$sumas = "dist\SHA256SUMS.txt"
+# Sin BOM y con saltos LF: asi tambien lo lee `sha256sum -c` en Linux o en Git Bash.
+[System.IO.File]::WriteAllText((Join-Path $raiz $sumas), (($lineas -join "`n") + "`n"), (New-Object System.Text.UTF8Encoding $false))
+Get-Content $sumas | ForEach-Object { Write-Host "  $_" }
+
 Write-Host "`nCopiando a la carpeta de actualizaciones" -ForegroundColor Cyan
 # Farmadex mira esta carpeta al arrancar y ofrece instalar lo que encuentre.
 $destino = Join-Path $env:LOCALAPPDATA "Farmadex" | Join-Path -ChildPath "actualizaciones"
@@ -92,7 +106,7 @@ Write-Host "  $destino"
 Write-Host "`n== Resultado ==" -ForegroundColor Cyan
 $tamano = [math]::Round((Get-ChildItem "dist\Farmadex" -Recurse -File | Measure-Object Length -Sum).Sum / 1MB, 1)
 Write-Host "Instalado: $tamano MB"
-Get-ChildItem dist -File | ForEach-Object {
+Get-ChildItem dist -File | Where-Object { $_.Name -ne "SHA256SUMS.txt" } | ForEach-Object {
     $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash
     Write-Host ("{0}  {1} MB`n  SHA-256 {2}" -f $_.Name, [math]::Round($_.Length / 1MB, 1), $hash)
 }

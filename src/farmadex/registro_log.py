@@ -26,6 +26,9 @@ from .config import DIR_LOGS, crear_carpetas
 
 RUTA_LOG = DIR_LOGS / f"{NOMBRE_APP.lower()}.log"
 RUTA_ERRORES_REGISTRO = DIR_LOGS / "registro_errores.txt"
+# Cierres a lo bruto (fallo dentro de Qt, del OCR o de otra libreria nativa): Python no
+# llega a escribir nada en el registro normal, pero `faulthandler` deja aqui la pila.
+RUTA_CIERRES_BRUSCOS = DIR_LOGS / "cierres_bruscos.txt"
 MAX_FALLOS_APUNTADOS = 50  # trazas que se guardan; despues solo se cuenta
 
 _configurado = False
@@ -199,8 +202,20 @@ def obtener(nombre: str) -> logging.Logger:
     return logging.getLogger(f"{NOMBRE_APP.lower()}.{nombre}")
 
 
+_fichero_cierres = None
+
+
 def instalar_gancho_excepciones(mostrar_dialogo=None) -> None:
-    """Manda cualquier excepcion no capturada al log (y opcionalmente a un dialogo)."""
+    """Manda al log todo lo que antes se perdia sin rastro en el .exe sin consola.
+
+    - Excepciones no capturadas del hilo principal y de los slots de Qt (`sys.excepthook`),
+      opcionalmente tambien a un dialogo.
+    - Excepciones en hilos de `threading` (`threading.excepthook`): sin esto iban a
+      stderr, que en el ejecutable no existe.
+    - Excepciones "no lanzables" (en `__del__`, en callbacks de limpieza).
+    - Avisos y errores de Qt (qWarning/qCritical/qFatal).
+    - Cierres a lo bruto de codigo nativo: pila en `logs/cierres_bruscos.txt`.
+    """
     log = obtener("excepciones")
 
     def gancho(tipo, valor, traza):
@@ -214,4 +229,77 @@ def instalar_gancho_excepciones(mostrar_dialogo=None) -> None:
             except Exception:  # noqa: BLE001 - el dialogo nunca debe tumbar el gancho
                 log.exception("Fallo al mostrar el dialogo de error")
 
+    def gancho_hilos(argumentos):
+        if argumentos.exc_type is SystemExit:
+            return
+        nombre = argumentos.thread.name if argumentos.thread is not None else "?"
+        log.error(
+            "Excepcion no controlada en el hilo %s", nombre,
+            exc_info=(argumentos.exc_type, argumentos.exc_value, argumentos.exc_traceback),
+        )
+
+    def gancho_no_lanzable(info):
+        log.warning(
+            "Excepcion ignorada (%s)", info.err_msg or "no lanzable",
+            exc_info=(info.exc_type, info.exc_value, info.exc_traceback),
+        )
+
     sys.excepthook = gancho
+    threading.excepthook = gancho_hilos
+    sys.unraisablehook = gancho_no_lanzable
+    _activar_faulthandler()
+    instalar_mensajes_qt()
+
+
+def _activar_faulthandler(ruta: Path | None = None) -> bool:
+    """Deja la pila de un cierre brusco en `cierres_bruscos.txt` (se abre y no se cierra:
+    faulthandler escribe sobre el descriptor en el momento del fallo)."""
+    global _fichero_cierres
+    import faulthandler
+
+    ruta = ruta or RUTA_CIERRES_BRUSCOS
+    try:
+        ruta.parent.mkdir(parents=True, exist_ok=True)
+        # Que no crezca sin fin: si pasa de 1 MB se empieza de cero.
+        if ruta.exists() and ruta.stat().st_size > 1_000_000:
+            ruta.unlink()
+        nuevo = open(ruta, "a", encoding="utf-8")  # noqa: SIM115 - tiene que quedar abierto
+        nuevo.write(f"--- {time.strftime('%Y-%m-%d %H:%M:%S')} {NOMBRE_APP} {VERSION} pid {os.getpid()}\n")
+        nuevo.flush()
+        faulthandler.enable(file=nuevo, all_threads=True)
+    except (OSError, RuntimeError, ValueError) as e:
+        apuntar_fallo_registro("faulthandler", f"No se pudo activar: {e}")
+        return False
+    anterior, _fichero_cierres = _fichero_cierres, nuevo
+    if anterior is not None:
+        try:
+            anterior.close()
+        except OSError:
+            pass
+    return True
+
+
+def instalar_mensajes_qt() -> bool:
+    """Los qWarning/qCritical/qFatal de Qt van al registro (en el .exe se perdian)."""
+    try:
+        from PySide6.QtCore import QtMsgType, qInstallMessageHandler
+    except ImportError:  # pragma: no cover - sin Qt no hay nada que enganchar
+        return False
+    log = obtener("qt")
+    niveles = {
+        QtMsgType.QtWarningMsg: logging.WARNING,
+        QtMsgType.QtCriticalMsg: logging.ERROR,
+        QtMsgType.QtFatalMsg: logging.CRITICAL,
+    }
+
+    def manejador(tipo, contexto, mensaje):
+        nivel = niveles.get(tipo)
+        if nivel is None:  # depuracion e informacion de Qt: demasiado ruido
+            return
+        try:
+            log.log(nivel, "%s", mensaje)
+        except Exception:  # noqa: BLE001 - un manejador de Qt nunca puede lanzar
+            pass
+
+    qInstallMessageHandler(manejador)
+    return True

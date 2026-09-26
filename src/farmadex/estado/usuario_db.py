@@ -10,7 +10,7 @@ from ..registro_log import obtener
 
 log = obtener("usuario_db")
 
-VERSION = 2
+VERSION = 3
 
 ESQUEMA = """
 CREATE TABLE IF NOT EXISTS meta (clave TEXT PRIMARY KEY, valor TEXT);
@@ -24,9 +24,24 @@ CREATE TABLE IF NOT EXISTS objetivos (
   creado_en TEXT NOT NULL,
   completado_en TEXT,
   notas TEXT,
-  orden INTEGER
+  orden INTEGER,
+  -- v3: para filtrar y agrupar en la pestana (sets, armas, recursos...).
+  categoria TEXT,
+  grupo TEXT,
+  grupo_nombre TEXT
 );
 CREATE UNIQUE INDEX IF NOT EXISTS ux_objetivos_item ON objetivos(item_unique_name);
+
+-- v3: recursos de fabricacion de un objetivo (Ferrita, Rubedo... de la Magistar),
+-- marcados uno a uno. Solo se guarda lo que el usuario ha tocado.
+CREATE TABLE IF NOT EXISTS objetivo_recursos (
+  objetivo_id INTEGER NOT NULL REFERENCES objetivos(id) ON DELETE CASCADE,
+  item_unique_name TEXT NOT NULL,
+  nombre TEXT NOT NULL,
+  cantidad_objetivo INTEGER NOT NULL DEFAULT 1,
+  cantidad_actual INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (objetivo_id, item_unique_name)
+);
 
 CREATE TABLE IF NOT EXISTS progreso_eventos (
   id INTEGER PRIMARY KEY,
@@ -82,6 +97,23 @@ def _migrar(con: sqlite3.Connection) -> None:
         _anadir_columna(con, "historial_recompensas", "mejor_unique_name", "TEXT")
         _anadir_columna(con, "historial_recompensas", "valor_platino", "REAL")
         _anadir_columna(con, "historial_recompensas", "ducados", "INTEGER")
+    if actual < 3:
+        # v3: categoria y set de cada objetivo (se rellenan al conectar el indice) y el
+        # contador ya no pasa de la meta: lo que se paso antes se deja en la meta.
+        _anadir_columna(con, "objetivos", "categoria", "TEXT")
+        _anadir_columna(con, "objetivos", "grupo", "TEXT")
+        _anadir_columna(con, "objetivos", "grupo_nombre", "TEXT")
+        con.execute(
+            "UPDATE objetivos SET cantidad_objetivo = 1 WHERE cantidad_objetivo IS NULL OR cantidad_objetivo < 1"
+        )
+        con.execute(
+            "UPDATE objetivos SET cantidad_actual = cantidad_objetivo WHERE cantidad_actual > cantidad_objetivo"
+        )
+        con.execute("UPDATE objetivos SET cantidad_actual = 0 WHERE cantidad_actual < 0")
+        con.execute(
+            "UPDATE objetivos SET completado_en = COALESCE(completado_en, creado_en) "
+            "WHERE cantidad_actual >= cantidad_objetivo"
+        )
     con.execute(
         "INSERT OR REPLACE INTO meta (clave, valor) VALUES ('esquema_version', ?)", (str(VERSION),)
     )

@@ -122,13 +122,15 @@ def sincronizar_objetivos(usuario: sqlite3.Connection) -> list[tuple[str, int, i
     cambios = []
     for objetivo in estado_objetivos.listar(usuario):
         lectura = cantidad_de(usuario, objetivo.unique_name)
-        if lectura is None or lectura.cantidad <= objetivo.actual:
+        # El contador de un objetivo no pasa de su meta: tener 900 de 500 lo deja en 500.
+        tope = min(lectura.cantidad, objetivo.objetivo) if lectura is not None else 0
+        if lectura is None or tope <= objetivo.actual:
             continue
         estado_objetivos.sumar(
-            usuario, objetivo.id, lectura.cantidad - objetivo.actual, origen=ORIGEN,
+            usuario, objetivo.id, tope - objetivo.actual, origen=ORIGEN,
             detalle=f"inventario: {lectura.cantidad}",
         )
-        cambios.append((objetivo.unique_name, objetivo.actual, lectura.cantidad))
+        cambios.append((objetivo.unique_name, objetivo.actual, tope))
     if cambios:
         log.info("Objetivos puestos al dia con el inventario: %d", len(cambios))
     return cambios

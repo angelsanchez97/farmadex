@@ -114,6 +114,11 @@ TERMINOS: dict[str, tuple[str, str]] = {
         "Parte de un warframe o de un arma (plano, chasis, sistemas, neuroptica...). "
         "Con todas las piezas se construye el objeto completo en la Fundicion.",
     ),
+    "disposicion": (
+        "Disposicion de riven",
+        "Cuanto mejoran los mods Agrietados (rivens) de esta arma: de 1 punto (poco) a 5 "
+        "(mucho). DE la sube en las armas que casi nadie usa y la baja en las mas usadas.",
+    ),
     "ducados": (
         "Ducados",
         "Moneda que da Baro Ki'Teer a cambio de piezas Prime que te sobren. Con ella se "

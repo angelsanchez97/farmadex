@@ -93,6 +93,7 @@ def buscar(con: sqlite3.Connection | None, texto: str, limite: int = MAX_RESULTA
         if modo in MODOS_NO_BUSCABLES:
             continue
         alias = [a for a, destino in modos_mision.ALIAS.items() if destino == modo]
+        alias += modos_mision.NOMBRES_ANTERIORES.get(modo, ())
         nivel = _mejor(consulta, [es, en, modo, glosa(es, en), *alias])
         if nivel is not None:
             resultados.append({"item_id": None, "clave": f"modo:{modo}", "tipo_resultado": "modo",

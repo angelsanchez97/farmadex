@@ -34,7 +34,7 @@ def test_traductor_de_nodos(traductor):
     # Hydron esta en el indice de prueba, asi que sale con su planeta traducido.
     assert traductor.nodo("Hydron (Sedna)") == "Hydron, Sedna"
     # Uno que no esta: al menos se traduce el planeta con el glosario.
-    assert traductor.nodo("Oceanum (Pluto)") == "Oceanum, Pluton"
+    assert traductor.nodo("Oceanum (Pluto)") == "Oceanum, Plutón"
     assert traductor.nodo(None) == ""
 
 

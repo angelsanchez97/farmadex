@@ -49,7 +49,7 @@ def test_ficha_encadena_componente_reliquia_y_vaulted(indice_poblado):
 
 
 def test_traducciones_del_glosario(con):
-    assert indice.traducir(con, "mision", "Interception") == "Intercepcion"
+    assert indice.traducir(con, "mision", "Interception") == "Interceptación"
     assert indice.traducir(con, "rareza", "Rare") == "Raro"
     # Lo que no esta traducido se devuelve tal cual, no se pierde.
     assert indice.traducir(con, "mision", "Inventado") == "Inventado"

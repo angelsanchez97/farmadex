@@ -31,6 +31,11 @@ Reglas:
   util, se escucha la guia mientras se juega). "Cerrar video" lo para del todo.
 - Perfil y cache de WebView2 en la carpeta de datos de Farmadex (reproductor/), nunca en
   el Escritorio; Ajustes tiene "Borrar datos del reproductor".
+
+El mismo mecanismo sirve para cualquier pagina web (PanelWeb, pestana "Web"): las builds
+de Overframe se navegan ahi sin salir de Farmadex. Cada panel tiene su proceso hijo, su
+fichero de estado y su perfil, asi que se puede escuchar una guia mientras se mira una
+build. "Atras" y "Recargar" van al hijo como ordenes en un fichero (farmadex/video.py).
 """
 
 from __future__ import annotations
@@ -45,6 +50,7 @@ from PySide6.QtGui import QDesktopServices, QWindow
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QStackedLayout, QVBoxLayout, QWidget
 
 from .. import config
+from .. import video as hijo
 from ..idiomas import t
 from ..registro_log import obtener
 from .widgets import PALETA
@@ -100,6 +106,10 @@ class PanelVideo(QWidget):
     modo_video = Signal()  # el usuario pide la ventana reducida a solo el video
     cerrado = Signal()
 
+    # Nombre del panel en sus ficheros: el de video conserva los de siempre (estado_<pid>.txt
+    # y perfil/); otro panel (el web) usa estado_<pid>_web.txt y perfil_web/.
+    NOMBRE = ""
+
     def __init__(self, parent=None, lanzar=None, incrustar=None):
         super().__init__(parent)
         # Inyectables para las pruebas: nunca se lanza un proceso ni una ventana de verdad.
@@ -119,6 +129,12 @@ class PanelVideo(QWidget):
 
         self.boton_modo = QPushButton()
         self.boton_modo.clicked.connect(self.modo_video.emit)
+        # Navegacion normal dentro de la pagina (de una busqueda de YouTube al video y
+        # vuelta, o por las builds de Overframe).
+        self.boton_atras = QPushButton()
+        self.boton_atras.clicked.connect(lambda: self.ordenar("ATRAS"))
+        self.boton_recargar = QPushButton()
+        self.boton_recargar.clicked.connect(lambda: self.ordenar("RECARGAR"))
         self.boton_navegador = QPushButton()
         self.boton_navegador.clicked.connect(self.abrir_en_navegador)
         self.boton_cerrar = QPushButton()
@@ -126,6 +142,8 @@ class PanelVideo(QWidget):
         barra = QHBoxLayout()
         barra.setContentsMargins(0, 0, 0, 0)
         barra.addWidget(self.boton_modo)
+        barra.addWidget(self.boton_atras)
+        barra.addWidget(self.boton_recargar)
         barra.addStretch(1)
         barra.addWidget(self.boton_navegador)
         barra.addWidget(self.boton_cerrar)
@@ -164,23 +182,39 @@ class PanelVideo(QWidget):
     def retraducir(self) -> None:
         self.boton_modo.setText(t("Modo video"))
         self.boton_modo.setToolTip(t("Deja Farmadex reducido a solo el video, encima del juego"))
+        self.boton_atras.setText(t("‹ Atras"))
+        self.boton_atras.setToolTip(t("Vuelve a la pagina anterior"))
+        self.boton_recargar.setText(t("Recargar"))
+        self.boton_recargar.setToolTip(t("Vuelve a cargar la pagina"))
         self.boton_navegador.setText(t("Abrir en el navegador"))
-        self.boton_cerrar.setText(t("Cerrar video"))
+        self.boton_navegador.setToolTip(t("Abre lo que se esta viendo en tu navegador de siempre"))
+        self.boton_cerrar.setText(self._texto_cerrar())
         self.boton_fallo.setText(t("Abrir en el navegador"))
         self._pintar_mensaje()
         self._pintar_botones()
 
-    def repintar(self) -> None:
-        self.mensaje.setStyleSheet(f"color: {PALETA['suave']};")
+    def _texto_cerrar(self) -> str:
+        return t("Cerrar video")
 
-    def _pintar_mensaje(self) -> None:
-        textos = {
+    def _textos_mensaje(self) -> dict[str, str]:
+        return {
             "vacio": t("Pulsa \"Guias en YouTube\" en la ficha de una mision o de un objeto y el video "
                        "se vera aqui."),
             "cargando": t("Abriendo el reproductor..."),
             "fallo": t("No se puede reproducir aqui. Puedes abrir la guia en el navegador."),
         }
-        self.mensaje.setText(textos.get(self._texto, ""))
+
+    def _texto_abierto(self) -> str:
+        return t("Guia abierta en el panel Video.")
+
+    def _texto_fallo(self) -> str:
+        return t("No se puede reproducir aqui: usa \"Abrir en el navegador\".")
+
+    def repintar(self) -> None:
+        self.mensaje.setStyleSheet(f"color: {PALETA['suave']};")
+
+    def _pintar_mensaje(self) -> None:
+        self.mensaje.setText(self._textos_mensaje().get(self._texto, ""))
         self.boton_fallo.setVisible(self._texto == "fallo")
 
     def _pintar_botones(self) -> None:
@@ -188,6 +222,8 @@ class PanelVideo(QWidget):
         self.boton_navegador.setEnabled(hay)
         self.boton_cerrar.setEnabled(hay)
         self.boton_modo.setEnabled(hay)
+        self.boton_atras.setEnabled(hay)
+        self.boton_recargar.setEnabled(hay)
 
     def _mostrar(self, texto: str) -> None:
         self._texto = texto
@@ -207,12 +243,14 @@ class PanelVideo(QWidget):
         self._pintar_botones()
         carpeta = carpeta_datos()
         carpeta.mkdir(parents=True, exist_ok=True)
-        self._estado = carpeta / f"estado_{os.getpid()}.txt"
-        try:
-            self._estado.unlink(missing_ok=True)
-        except OSError:
-            pass
-        programa, argumentos = comando(url, self._estado, os.getpid(), carpeta / "perfil")
+        sufijo = f"_{self.NOMBRE}" if self.NOMBRE else ""
+        self._estado = carpeta / f"estado_{os.getpid()}{sufijo}.txt"
+        for ruta in (self._estado, *hijo.rutas_auxiliares(self._estado)):
+            try:
+                ruta.unlink(missing_ok=True)
+            except OSError:
+                pass
+        programa, argumentos = comando(url, self._estado, os.getpid(), carpeta / f"perfil{sufijo}")
         self._mostrar("cargando")
         try:
             self.proceso = self._lanzar(programa, argumentos)
@@ -261,7 +299,7 @@ class PanelVideo(QWidget):
         self.pila.setCurrentWidget(self.area)
         self._vigilar_ventana()
         self._recolocar()
-        self.estado.emit(t("Guia abierta en el panel Video."))
+        self.estado.emit(self._texto_abierto())
 
     def _crear_anfitrion(self) -> QWidget:
         """Ventana opaca, sin bordes y encima del overlay (del que es hija) para el video."""
@@ -321,7 +359,7 @@ class PanelVideo(QWidget):
         self._sondeo.stop()
         self._parar_hijo(conservar_url=True)
         self._mostrar("fallo")
-        self.estado.emit(t("No se puede reproducir aqui: usa \"Abrir en el navegador\"."))
+        self.estado.emit(self._texto_fallo())
 
     def _parar_hijo(self, conservar_url: bool = True) -> None:
         self._sondeo.stop()
@@ -340,10 +378,11 @@ class PanelVideo(QWidget):
                 self.proceso.waitForFinished(2000)
             self.proceso = None
         if self._estado is not None:
-            try:
-                self._estado.unlink(missing_ok=True)
-            except OSError:
-                pass
+            for ruta in (self._estado, *hijo.rutas_auxiliares(self._estado)):
+                try:
+                    ruta.unlink(missing_ok=True)
+                except OSError:
+                    pass
         if not conservar_url:
             self.url = ""
 
@@ -354,16 +393,73 @@ class PanelVideo(QWidget):
         self._mostrar("vacio")
         self.cerrado.emit()
 
+    def ordenar(self, orden: str) -> bool:
+        """"Atras" / "Recargar": deja la orden para el hijo; False si no hay pagina abierta."""
+        if self._estado is None or self.proceso is None or not self.reproduciendo:
+            return False
+        ordenes, _ = hijo.rutas_auxiliares(self._estado)
+        try:
+            hijo.escribir_estado(ordenes, orden)
+        except OSError:
+            log.warning("No se pudo dejar la orden %s al reproductor", orden)
+            return False
+        return True
+
+    def url_actual(self) -> str:
+        """La direccion que se esta viendo (el hijo la apunta al navegar); si no, la de inicio."""
+        if self._estado is not None and self.reproduciendo:
+            _, ruta = hijo.rutas_auxiliares(self._estado)
+            try:
+                actual = ruta.read_text(encoding="utf-8").strip()
+            except OSError:
+                actual = ""
+            if actual.startswith(("http://", "https://")):
+                return actual
+        return self.url
+
     def abrir_en_navegador(self) -> None:
-        """Solo al pulsar: la misma guia en el navegador del sistema."""
-        if self.url:
-            QDesktopServices.openUrl(QUrl(self.url))
+        """Solo al pulsar: lo que se esta viendo, en el navegador del sistema."""
+        url = self.url_actual()
+        if url:
+            QDesktopServices.openUrl(QUrl(url))
 
     def borrar_datos(self) -> bool:
         """Cierra el reproductor y borra su perfil de WebView2 (sesion, cookies, cache)."""
         self.cerrar()
-        perfil = carpeta_datos() / "perfil"
+        perfil = carpeta_datos() / (f"perfil_{self.NOMBRE}" if self.NOMBRE else "perfil")
         if not perfil.exists():
             return True
         shutil.rmtree(perfil, ignore_errors=True)
         return not perfil.exists()
+
+
+class PanelWeb(PanelVideo):
+    """Pestana "Web": una pagina cualquiera (las builds de Overframe) dentro de Farmadex.
+
+    Es el reproductor de guias con otros textos y sin "modo video": su propio proceso
+    hijo, su fichero de estado y su perfil de WebView2 (perfil_web/). Farmadex no lee ni
+    guarda nada de la pagina: solo la ensena para que el usuario la navegue.
+    """
+
+    NOMBRE = "web"
+
+    def retraducir(self) -> None:
+        super().retraducir()
+        self.boton_modo.hide()
+
+    def _texto_cerrar(self) -> str:
+        return t("Cerrar pagina")
+
+    def _textos_mensaje(self) -> dict[str, str]:
+        return {
+            "vacio": t("Pulsa \"Builds en Overframe\" en la ficha de un warframe o de un arma, o en la "
+                       "pestana Build, y la pagina se vera aqui."),
+            "cargando": t("Abriendo la pagina..."),
+            "fallo": t("No se puede abrir aqui. Puedes abrir la pagina en el navegador."),
+        }
+
+    def _texto_abierto(self) -> str:
+        return t("Pagina abierta en la pestana Web.")
+
+    def _texto_fallo(self) -> str:
+        return t("No se puede abrir aqui: usa \"Abrir en el navegador\".")

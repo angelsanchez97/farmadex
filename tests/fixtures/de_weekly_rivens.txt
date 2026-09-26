@@ -1,0 +1,35 @@
+[
+  {
+    itemType: 'Archgun Riven Mod',
+    compatibility: null,
+    rerolled: false,
+    avg: 8.6,
+    stddev: 1.02,
+    min: 7,
+    max: 10,
+    pop: 1,
+    median: 9
+  },
+  {
+    itemType: 'Rifle Riven Mod',
+    compatibility: 'Rubico',
+    rerolled: true,
+    avg: 645.9,
+    stddev: 1296.98,
+    min: 10,
+    max: 6000,
+    pop: 3,
+    median: 200
+  },
+  {
+    itemType: 'Melee Riven Mod',
+    compatibility: 'Bo',
+    rerolled: true,
+    avg: 526.28,
+    stddev: 1600.23,
+    min: 2,
+    max: 32000,
+    pop: 51,
+    median: 250
+  }
+]

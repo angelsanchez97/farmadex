@@ -36,6 +36,20 @@ class Paso:
     objetivo: Callable[[object], QWidget | tuple[QWidget, ...] | None] | None
 
 
+def _en_ajustes(ventana, seccion: str, *nombres: str):
+    """Widgets de Ajustes a resaltar, abriendo antes su seccion (Ajustes va por
+    secciones en una columna y lo de las demas no se ve)."""
+    ajustes = getattr(ventana, "ajustes", None)
+    if ajustes is None:
+        return None
+    if hasattr(ajustes, "ir_a"):
+        ajustes.ir_a(seccion)
+    widgets = tuple(w for w in (getattr(ajustes, n, None) for n in nombres) if w is not None)
+    if not widgets:
+        return None
+    return widgets[0] if len(widgets) == 1 else widgets
+
+
 def _pasos(ventana) -> list[Paso]:
     """Textos y objetivos de cada paso. Se recalcula en cada arranque de la guia para que
     salga siempre en el idioma activo y con el atajo que el usuario tenga configurado."""
@@ -112,6 +126,21 @@ def _pasos(ventana) -> list[Paso]:
             objetivo=lambda v: getattr(v, "objetivos", None),
         ),
         Paso(
+            titulo=t("Ordenar tus objetivos"),
+            cuerpo=t(
+                "Arriba los separas en Sin empezar, En progreso y Completados, y puedes filtrar por "
+                "categoria (sets, recursos, armas...). En cada uno pones cuantos quieres y sumas "
+                "varios de golpe; un set se despliega con un clic para ver sus piezas, y en un arma "
+                "puedes apuntar sus recursos de fabricacion por separado. Antes de borrar, Farmadex "
+                "te pregunta, y puedes marcar varios para quitarlos juntos."
+            ),
+            pestana="objetivos",
+            objetivo=lambda v: tuple(
+                w for w in (getattr(v.objetivos, "estados", None), getattr(v.objetivos, "filtro", None))
+                if w is not None
+            ) or None,
+        ),
+        Paso(
             titulo=t("Primes"),
             cuerpo=t(
                 "Marca las piezas prime que te faltan y pulsa \"Donde farmear\": te dice en que "
@@ -130,6 +159,17 @@ def _pasos(ventana) -> list[Paso]:
             ),
             pestana="mundo",
             objetivo=lambda v: getattr(v, "mundo", None),
+        ),
+        Paso(
+            titulo=t("Avisos del mundo"),
+            cuerpo=t(
+                "En \"Personalizar y avisos\" eliges que te avise Windows aunque tengas la ventana "
+                "escondida: cuando llega Baro, cuando hay una fisura o una invasion que te interesa, "
+                "la noche en Cetus... Ahi tambien ocultas las secciones que no uses y filtras por "
+                "faccion. Y si pulsas una recompensa, se abre su ficha."
+            ),
+            pestana="mundo",
+            objetivo=lambda v: getattr(getattr(v, "mundo", None), "boton_personalizar", None),
         ),
         Paso(
             titulo=t("Video"),
@@ -158,7 +198,7 @@ def _pasos(ventana) -> list[Paso]:
                 "falta, el platino o los ducados."
             ),
             pestana="ajustes",
-            objetivo=lambda v: getattr(getattr(v, "ajustes", None), "ocr_auto", None),
+            objetivo=lambda v: _en_ajustes(v, "reliquias", "ocr_auto"),
         ),
         Paso(
             titulo=t("Perfil"),
@@ -171,11 +211,34 @@ def _pasos(ventana) -> list[Paso]:
             objetivo=lambda v: getattr(v, "perfil", None),
         ),
         Paso(
+            titulo=t("Build"),
+            cuerpo=t(
+                "Abre en el juego la pantalla de mejoras de un warframe o un arma y "
+                "pulsa {atajo}: Farmadex lee sus mods y arcanos y los lista aqui. "
+                "Pulsas uno y te dice de donde sale.",
+                atajo=ventana.config.get("hotkey_build", "Ctrl+Alt+B"),
+            ),
+            pestana="builds",
+            objetivo=lambda v: getattr(getattr(v, "builds", None), "boton", None),
+        ),
+        Paso(
+            titulo=t("Agrietados"),
+            cuerpo=t(
+                "Para saber si un mod agrietado es bueno: pon el raton sobre la tarjeta en el juego y "
+                "pulsa {atajo}, o apunta sus estadisticas a mano. Te da la nota de cada una, de S (lo "
+                "mejor) a F, entre que valores puede salir y un precio de referencia en warframe.market.",
+                atajo=ventana.config.get("hotkey_agrietado", "Ctrl+Alt+G"),
+            ),
+            pestana="agrietados",
+            objetivo=lambda v: getattr(getattr(v, "agrietados", None), "boton_leer", None),
+        ),
+        Paso(
             titulo=t("Modo compacto"),
             cuerpo=t(
                 "Con Ctrl+M (o este boton) la ventana pasa a una cajita pensada para jugar o "
-                "para un directo, con solo la busqueda y lo esencial. Los bordes de la ventana "
-                "se pueden arrastrar para cambiar el tamano, en los dos modos."
+                "para un directo, con solo la busqueda y lo esencial. Pulsa un resultado y sus "
+                "detalles se despliegan debajo, y con \"Fijar\" se queda siempre encima del juego. "
+                "La ventana se mueve y cambia de tamano arrastrando desde cualquier borde."
             ),
             pestana=None,
             objetivo=lambda v: getattr(v, "boton_modo", None),
@@ -183,12 +246,23 @@ def _pasos(ventana) -> list[Paso]:
         Paso(
             titulo=t("Ajustes"),
             cuerpo=t(
-                "Tema de color, idioma, atajos de teclado, como se comprueban las "
-                "actualizaciones y si Farmadex arranca solo con Windows: todo se cambia aqui, "
-                "casi siempre al momento."
+                "A la izquierda eliges la seccion: General (idioma, actualizaciones, arrancar con "
+                "Windows), Atajos, Apariencia (colores y tamano de letra), Reliquias, Datos del juego "
+                "y Ayuda, donde puedes volver a ver la bienvenida."
             ),
             pestana="ajustes",
-            objetivo=lambda v: getattr(v, "ajustes", None),
+            objetivo=lambda v: getattr(getattr(v, "ajustes", None), "secciones", None)
+            or getattr(v, "ajustes", None),
+        ),
+        Paso(
+            titulo=t("A tu gusto"),
+            cuerpo=t(
+                "En Apariencia haces la ventana y la letra mas grandes o mas pequenas y cambias "
+                "cualquier color. Lo ves antes en la vista previa, y solo se aplica al pulsar "
+                "Guardar; \"Volver a lo de fabrica\" lo deja todo como estaba."
+            ),
+            pestana="ajustes",
+            objetivo=lambda v: _en_ajustes(v, "aspecto", "escala_interfaz", "escala_letra"),
         ),
         Paso(
             titulo=t("Si no sale nada al abrir una reliquia"),
@@ -198,12 +272,7 @@ def _pasos(ventana) -> list[Paso]:
                 "quien te ayude; no lleva nada de tu cuenta."
             ),
             pestana="ajustes",
-            objetivo=lambda v: tuple(
-                w for w in (
-                    getattr(getattr(v, "ajustes", None), "boton_diagnostico", None),
-                    getattr(getattr(v, "ajustes", None), "boton_informe", None),
-                ) if w is not None
-            ) or None,
+            objetivo=lambda v: _en_ajustes(v, "reliquias", "boton_diagnostico", "boton_informe"),
         ),
     ]
 

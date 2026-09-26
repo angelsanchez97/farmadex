@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 import time
 
 import re
@@ -41,16 +42,21 @@ from ..actualizador.descarga import DescargadorApp
 from ..actualizador.local import ComprobadorLocal, instalar
 from ..captura import pantalla
 from ..captura import prioridad as prioridad_recompensas
+from ..captura.agrietados import LectorAgrietado
+from ..captura.builds import LectorBuild
 from ..captura.comparador import ServicioComparador
-from ..captura.cursor import LectorCursor
+from ..captura.cursor import LectorCursor, TurnoLecturas
 from ..captura.lector_pasivo import LectorPasivo
 from ..captura.reliquias import DisparadorAutomatico, LectorRecompensas, Recompensa, completar, resumir
 from ..online.servicio_market import ServicioMarket
 from ..online.worldstate import ServicioMundo
+from .pestana_agrietados import PestanaAgrietados
 from .pestana_ajustes import PestanaAjustes
+from .pestana_builds import PestanaBuilds
 from .pestana_buscador import PestanaBuscador
 from .pestana_mundo import DISENO_POR_DEFECTO, PestanaMundo
 from .etiquetas import EtiquetasRecompensas
+from .bienvenida import CapaBienvenida, toca_bienvenida
 from .guia import CapaGuia
 from .panel_recompensas import PanelRecompensas
 from .pestana_objetivos import PestanaObjetivos
@@ -64,7 +70,7 @@ from .vista_compacta import (
     VistaCompacta,
 )
 from .maestria import estado_con_padre, texto_maestria
-from .reproductor import PanelVideo
+from .reproductor import PanelVideo, PanelWeb
 from .widgets import PALETA, BarraProgreso, elegir_tema, hoja_estilos
 
 log = obtener("overlay")
@@ -73,9 +79,9 @@ log = obtener("overlay")
 ATAJO_MODO = "Ctrl+M"
 
 # Franja en los bordes/esquinas donde el cursor pasa a redimensionar en vez de a arrastrar
-# o a hacer clic normal. Cabe dentro de los margenes del marco (10, 6, 10, 8) para no pisar
-# ningun widget de dentro.
-MARGEN_REDIMENSION = 6
+# o a hacer clic normal. Solo cuenta donde el raton cae sobre el propio marco (los widgets
+# de dentro se quedan sus clics), asi que no le quita nada a ninguno.
+MARGEN_REDIMENSION = 8
 
 # Minimo de la vista completa: cuatro pestanas y la barra de busqueda siguen legibles,
 # comprobado con una captura (herramientas/capturas/overlay_minimo_completo.png).
@@ -94,6 +100,22 @@ _OESTE = {"o", "no", "so"}
 _ESTE = {"e", "ne", "se"}
 _NORTE = {"n", "no", "ne"}
 _SUR = {"s", "so", "se"}
+
+# Borde de `borde_en_posicion` -> bordes de Qt para QWindow.startSystemResize.
+BORDES_QT = {
+    "n": Qt.TopEdge,
+    "s": Qt.BottomEdge,
+    "e": Qt.RightEdge,
+    "o": Qt.LeftEdge,
+    "no": Qt.TopEdge | Qt.LeftEdge,
+    "ne": Qt.TopEdge | Qt.RightEdge,
+    "so": Qt.BottomEdge | Qt.LeftEdge,
+    "se": Qt.BottomEdge | Qt.RightEdge,
+}
+
+# Cada cuanto se vuelve a poner la compacta fijada por encima de todo. Warframe en
+# ventana sin bordes puede ponerse el tambien "siempre encima" al recibir el foco y taparla.
+REFUERZO_ENCIMA_MS = 1500
 
 CURSOR_POR_BORDE = {
     "n": Qt.SizeVerCursor,
@@ -164,6 +186,8 @@ class VentanaOverlay(QWidget):
     recompensas_conocidas = Signal(list)  # list[Recompensa] dadas por EE.log, sin caja
 
     cerrar_programa = Signal()
+    # Lectura bajo el cursor pedida al hilo de captura (numero de solicitud).
+    _pedir_lectura_cursor = Signal(int)
     # Aviso que tiene que verse aunque la ventana este escondida (lo ensena la bandeja):
     # reliquia abierta en pantalla completa exclusiva, lector de pantalla que no carga...
     aviso_bandeja = Signal(str)
@@ -226,7 +250,18 @@ class VentanaOverlay(QWidget):
         self.boton_guia.setCursor(Qt.PointingHandCursor)
         self.boton_guia.setToolTip(t("Lanza la guia de uso desde el principio"))
         self.boton_guia.clicked.connect(self.mostrar_guia)
+        # Chincheta de la vista compacta: fijarla por encima del juego (se recuerda).
+        self.boton_fijar = QPushButton(t("Fijar"))
+        self.boton_fijar.setCheckable(True)
+        self.boton_fijar.setFixedHeight(26)
+        self.boton_fijar.setCursor(Qt.PointingHandCursor)
+        self.boton_fijar.setChecked(bool(self.config.get("compacta_siempre_encima", True)))
+        self.boton_fijar.toggled.connect(self.fijar_encima)
+        self._reloj_encima = QTimer(self)
+        self._reloj_encima.setInterval(REFUERZO_ENCIMA_MS)
+        self._reloj_encima.timeout.connect(self._reforzar_encima)
         self._guia: CapaGuia | None = None
+        self._bienvenida: CapaBienvenida | None = None
         self._pintar_cabecera()
 
         cabecera = QHBoxLayout()
@@ -235,6 +270,7 @@ class VentanaOverlay(QWidget):
         cabecera.addStretch(1)
         cabecera.addWidget(self.pista)
         cabecera.addWidget(self.boton_guia)
+        cabecera.addWidget(self.boton_fijar)
         cabecera.addWidget(self.boton_modo)
         cabecera.addWidget(boton_cerrar)
 
@@ -253,11 +289,24 @@ class VentanaOverlay(QWidget):
         self.video.modo_video.connect(lambda: self.aplicar_modo("video"))
         self.video.cerrado.connect(self._video_cerrado)
         self.buscador.reproductor = self.abrir_video
+        # Paginas web dentro de Farmadex (las builds de Overframe), en la pestana Web.
+        self.web = PanelWeb()
+        self.web.estado.connect(lambda texto: self.estado.setText(texto))
+        self.buscador.navegador_web = self.abrir_web
         self.buscador.conectar_usuario(self.objetivos.usuario)
         self.perfil.perfil_cambiado.connect(self.buscador.refrescar_perfil)
         self.perfil.abrir_item.connect(lambda item_id: self._abrir_desde_cursor(item_id, ""))
         self.mundo.abrir_item.connect(lambda item_id: self._abrir_desde_cursor(item_id, ""))
+        self.mundo.buscar_texto.connect(self._buscar_desde_mundo)
+        self.mundo.aviso_windows.connect(self.aviso_bandeja.emit)
         self.primes.abrir_item.connect(lambda item_id: self._abrir_desde_cursor(item_id, ""))
+        # Build (mods leidos de la pantalla de mejoras) y Agrietados (grados y precio).
+        self.builds = PestanaBuilds()
+        self.builds.abrir_item.connect(lambda item_id: self._abrir_desde_cursor(item_id, ""))
+        self.builds.pedir_lectura.connect(self.leer_build)
+        self.builds.abrir_web.connect(self.abrir_web)
+        self.agrietados = PestanaAgrietados()
+        self.agrietados.pedir_lectura.connect(self.leer_agrietado)
         self.objetivos.cambiados.connect(self.mundo.refrescar_objetivos)
         self.ajustes.reconstruir.connect(lambda: self.preparar_datos(forzar=True))
         self.ajustes.tema_cambiado.connect(self.cambiar_tema)
@@ -269,6 +318,10 @@ class VentanaOverlay(QWidget):
         self.ajustes.pedir_diagnostico.connect(self.mostrar_diagnostico)
         self.ajustes.guardar_informe.connect(self.guardar_informe)
         self.ajustes.borrar_reproductor.connect(self._borrar_reproductor)
+        # Ajustes > Ayuda y Ajustes > Aspecto (tamanos y colores guardados: se reaplica el tema).
+        self.ajustes.ver_bienvenida.connect(self.mostrar_bienvenida)
+        self.ajustes.ver_guia.connect(self.mostrar_guia)
+        self.ajustes.apariencia_cambiada.connect(lambda: self.cambiar_tema(self.config.get("tema", "")))
         # Lo que el diagnostico cuenta de la ultima reliquia: cuando se vio la pantalla
         # (reloj de pared, para decir "hace 3 min"), que se leyo y que se pinto.
         self._t_reliquia_reloj: float | None = None
@@ -380,6 +433,7 @@ class VentanaOverlay(QWidget):
             ),
         )
         self.estado.setText(t("Comprobando datos..."))
+        log.info("Preparando los datos del juego%s", " (reconstruccion pedida a mano)" if forzar else "")
         self.tarea = TareaDatos(forzar=forzar)
         self.tarea.progreso.connect(self.progreso.actualizar)
         self.tarea.terminada.connect(self._datos_listos)
@@ -422,6 +476,8 @@ class VentanaOverlay(QWidget):
         self.objetivos.conectar_indice(indice.conectar())
         self.primes.conectar_indice(indice.conectar())
         self.perfil.conectar_indice(indice.conectar())
+        self.builds.conectar_indice(indice.conectar())
+        self.agrietados.conectar_indice(indice.conectar())
         self.mundo.conectar_objetivos(indice.conectar(), self.objetivos.usuario)
         self._arrancar_mundo()
         self._arrancar_captura()
@@ -432,7 +488,10 @@ class VentanaOverlay(QWidget):
 
     def _avisar_o_lanzar_guia(self) -> None:
         """La primera vez que la ventana esta lista: la guia sola si es instalacion nueva,
-        o un aviso discreto si quien abre Farmadex ya lo tenia instalado de antes."""
+        o un aviso discreto si quien abre Farmadex ya lo tenia instalado de antes.
+        Si toca la bienvenida, va ella primero y es ella quien ofrece la guia."""
+        if self._bienvenida is not None or self._bienvenida_si_toca():
+            return
         if self.config.get("guia_vista") or self._guia is not None:
             return
         if not self._config_existia_antes:
@@ -454,6 +513,32 @@ class VentanaOverlay(QWidget):
             self.aplicar_modo("completo")
         self._aviso("guia_nueva", None)
         self._guia = CapaGuia(self)
+
+    # -- bienvenida (ui/bienvenida.py) ---------------------------------------------
+
+    def _bienvenida_si_toca(self) -> bool:
+        """La primera vez (o la primera tras actualizar a una version con bienvenida),
+        obligatoria. Nunca en las pruebas ni sin pantalla (ver `toca_bienvenida`)."""
+        if self._bienvenida is not None or not toca_bienvenida(self.config):
+            return False
+        self.mostrar_bienvenida(obligatoria=True)
+        return True
+
+    def mostrar_bienvenida(self, obligatoria: bool = False) -> None:
+        """Desde Ajustes > Ayuda o Acerca de se abre cerrable; la primera vez, no."""
+        if self._bienvenida is not None:
+            return
+        if self.modo == "compacto":
+            self.aplicar_modo("completo")
+        self._bienvenida = CapaBienvenida(self, obligatoria=obligatoria)
+        self._bienvenida.terminada.connect(lambda con_guia: con_guia and self.mostrar_guia())
+
+    def showEvent(self, evento):  # noqa: N802 - firma de Qt
+        super().showEvent(evento)
+        # Al abrir la ventana por primera vez, antes incluso de que esten los datos: se
+        # lee mientras se descargan. Diferido para que la ventana tenga ya su tamano.
+        if self._bienvenida is None and not self.config.get("bienvenida_vista"):
+            QTimer.singleShot(0, self._bienvenida_si_toca)
 
     def _anadir_objetivo(self, item_id: int, set_completo: bool) -> None:
         creados = self.objetivos.anadir_item(item_id, set_completo)
@@ -497,13 +582,24 @@ class VentanaOverlay(QWidget):
         self.hilo_captura = QThread(self)
         self.lector_recompensas = LectorRecompensas(motor)
         self.lector_cursor = LectorCursor(motor)
-        for lector in (self.lector_recompensas, self.lector_cursor):
+        self.lector_build = LectorBuild(motor)
+        self.lector_agrietado = LectorAgrietado(motor)
+        for lector in (self.lector_recompensas, self.lector_cursor, self.lector_build, self.lector_agrietado):
             lector.moveToThread(self.hilo_captura)
             lector.estado.connect(self.estado.setText)
         self.hilo_captura.started.connect(self.lector_recompensas.iniciar)
         self.hilo_captura.started.connect(self.lector_cursor.iniciar)
+        self.hilo_captura.started.connect(self.lector_build.iniciar)
+        self.hilo_captura.started.connect(self.lector_agrietado.iniciar)
+        self.lector_build.leida.connect(self._build_leida)
+        self.lector_agrietado.leida.connect(self._agrietado_leido)
         self.lector_recompensas.leidas.connect(self._pintar_recompensas)
         self.lector_cursor.encontrado.connect(self._abrir_desde_cursor)
+        # Una lectura bajo el cursor a la vez: pulsar el atajo muchas veces seguidas
+        # encolaba una lectura entera por pulsacion y acababa tumbando el programa.
+        self.turno_cursor = TurnoLecturas(self._pedir_lectura_cursor.emit)
+        self._pedir_lectura_cursor.connect(self.lector_cursor.leer_solicitud)
+        self.lector_cursor.terminado.connect(self._lectura_cursor_terminada)
         # Lectura pasiva del perfil, el inventario y la fundicion: mismo hilo, mismo motor.
         self.lector_pasivo = LectorPasivo(
             motor,
@@ -1162,10 +1258,54 @@ class VentanaOverlay(QWidget):
             self.etiquetas.hide()
         QTimer.singleShot(0, self.lector_recompensas.leer_ahora)
 
+    def leer_build(self) -> None:
+        """Atajo o boton de la pestana Build: lee la pantalla de mejoras del arsenal."""
+        if self.hilo_captura is None:
+            self.estado.setText(t("Los datos todavia se estan preparando"))
+            return
+        QTimer.singleShot(0, self.lector_build.leer_ahora)
+
+    def _build_leida(self, build) -> None:
+        self.builds.mostrar_build(build)
+        if build.vacia:
+            return
+        self.mostrar()
+        if self.modo != "completo":
+            self.aplicar_modo("completo")
+        self.pestanas.setCurrentWidget(self.builds)
+
+    def leer_agrietado(self) -> None:
+        """Atajo o boton de la pestana Agrietados: lee la tarjeta que hay bajo el cursor."""
+        if self.hilo_captura is None:
+            self.estado.setText(t("Los datos todavia se estan preparando"))
+            return
+        QTimer.singleShot(0, self.lector_agrietado.leer_ahora)
+
+    def _agrietado_leido(self, tarjeta) -> None:
+        self.agrietados.mostrar_tarjeta(tarjeta)
+        if tarjeta.velado or (not tarjeta.estadisticas and not tarjeta.arma_texto):
+            return
+        self.mostrar()
+        if self.modo != "completo":
+            self.aplicar_modo("completo")
+        self.pestanas.setCurrentWidget(self.agrietados)
+
     def leer_cursor(self) -> None:
+        """Atajo de "leer el objeto bajo el cursor": una lectura a la vez.
+
+        Si ya hay una en marcha (o la anterior acaba de empezar), la pulsacion se
+        apunta y se lee otra vez al terminar; varias pulsaciones seguidas cuentan
+        como una sola, la ultima.
+        """
         if self.hilo_captura is None:
             return
-        QTimer.singleShot(0, self.lector_cursor.leer_ahora)
+        estado = self.turno_cursor.pedir()
+        self.lector_cursor.ultima_pedida = self.turno_cursor.ultima
+        if estado != "lanzada":
+            log.debug("Lectura bajo el cursor apuntada para cuando acabe la actual")
+
+    def _lectura_cursor_terminada(self, numero: int) -> None:
+        self.turno_cursor.terminada(numero)
 
     # -- avisos que tienen que verse y diagnostico -----------------------------------
 
@@ -1377,6 +1517,14 @@ class VentanaOverlay(QWidget):
         self.pestanas.setCurrentWidget(self.buscador)
         self.buscador.abrir(item_id)
 
+    def _buscar_desde_mundo(self, texto: str) -> None:
+        """Una recompensa de Mundo que no esta en el indice: se busca por su nombre."""
+        self.mostrar()
+        if self.modo == "compacto":
+            self.aplicar_modo("completo")
+        self.pestanas.setCurrentWidget(self.buscador)
+        self.buscador.caja.setText(texto)
+
     def _abrir_completo(self, item_id: int) -> None:
         """Enter en la vista compacta: la ficha entera de ese objeto."""
         self.aplicar_modo("completo")
@@ -1407,8 +1555,11 @@ class VentanaOverlay(QWidget):
         self.estado.setVisible(not compacto and not video)
         self.pista.setVisible(not compacto and not video)
         self.boton_guia.setVisible(not video)
+        self.boton_fijar.setVisible(compacto)
         self.video.boton_modo.setVisible(not video)
         self._pintar_boton_modo()
+        if guardar_config:
+            log.info("Vista cambiada a %s", modo)
         self.setMaximumSize(16777215, 16777215)
         # El sitio del banner se vuelve a reservar mas abajo, sobre la geometria del modo nuevo.
         self._alto_banner_compacto = 0
@@ -1438,6 +1589,7 @@ class VentanaOverlay(QWidget):
                     self.move(g[0] + g[2] - ANCHO_COMPACTO, g[1])
         self._pintar_banner()
         self._asegurar_en_pantalla()
+        self._aplicar_encima()
         if guardar_config:
             self.config["overlay_modo"] = modo
             guardar(self.config)
@@ -1446,6 +1598,47 @@ class VentanaOverlay(QWidget):
         caja = self.compacta.caja if compacto else self.buscador.caja
         caja.setFocus()
         caja.selectAll()
+
+    # -- chincheta: siempre encima en la vista compacta -----------------------
+
+    def _quiere_encima(self) -> bool:
+        """La completa y la de video van siempre encima; la compacta, si esta fijada."""
+        return self.modo != "compacto" or self.boton_fijar.isChecked()
+
+    def fijar_encima(self, fijada: bool) -> None:
+        """La chincheta de la compacta: fijada se queda encima del juego aunque se haga
+        clic en el; sin fijar se comporta como una ventana normal y el juego la tapa."""
+        self.config["compacta_siempre_encima"] = bool(fijada)
+        guardar(self.config)
+        log.info("Vista compacta %s", "fijada encima" if fijada else "sin fijar")
+        self._aplicar_encima()
+
+    def _aplicar_encima(self) -> None:
+        encima = self._quiere_encima()
+        self.boton_fijar.setToolTip(
+            t("Fijada: se queda por encima del juego. Pulsa para soltarla.")
+            if self.boton_fijar.isChecked()
+            else t("Pulsa para que se quede siempre por encima del juego.")
+        )
+        if bool(self.windowFlags() & Qt.WindowStaysOnTopHint) != encima:
+            visible = self.isVisible()
+            # Cambiar las banderas de una ventana ya creada la esconde: se vuelve a ensenar.
+            self.setWindowFlag(Qt.WindowStaysOnTopHint, encima)
+            if visible:
+                self.show()
+                self.raise_()
+        fijada_compacta = self.modo == "compacto" and encima and self.isVisible()
+        if fijada_compacta and not self._reloj_encima.isActive():
+            self._reloj_encima.start()
+        elif not fijada_compacta and self._reloj_encima.isActive():
+            self._reloj_encima.stop()
+
+    def _reforzar_encima(self) -> None:
+        """Vuelve a ponerla por encima sin robarle el foco al juego (solo Windows)."""
+        if not (self.isVisible() and self.modo == "compacto" and self._quiere_encima()):
+            self._reloj_encima.stop()
+            return
+        poner_encima_sin_foco(self)
 
     def _clave_geometria(self) -> str:
         return {
@@ -1463,13 +1656,22 @@ class VentanaOverlay(QWidget):
             self.pestanas.setCurrentWidget(self.video)
         self.video.abrir(url)
 
+    def abrir_web(self, url: str) -> None:
+        """Una pagina web (las builds de Overframe) en la pestana Web, dentro de Farmadex."""
+        if self.modo != "completo":
+            self.aplicar_modo("completo")
+        self.pestanas.setCurrentWidget(self.web)
+        self.web.abrir(url)
+
     def _video_cerrado(self) -> None:
         """Al cerrar el video en modo video no queda nada que ver: vuelve la vista completa."""
         if self.modo == "video":
             self.aplicar_modo("completo")
 
     def _borrar_reproductor(self) -> None:
-        if self.video.borrar_datos():
+        log.info("Borrado de los datos del reproductor pedido desde Ajustes")
+        web_borrada = self.web.borrar_datos()
+        if self.video.borrar_datos() and web_borrada:
             self.estado.setText(t("Datos del reproductor borrados."))
         else:
             self.estado.setText(t("No se pudieron borrar todos los datos del reproductor."))
@@ -1518,6 +1720,7 @@ class VentanaOverlay(QWidget):
         self.show()
         self.raise_()
         self.activateWindow()
+        self._aplicar_encima()
         caja = self.compacta.caja if self.modo == "compacto" else self.buscador.caja
         caja.setFocus()
         caja.selectAll()
@@ -1527,6 +1730,7 @@ class VentanaOverlay(QWidget):
     def ocultar(self) -> None:
         self._guardar_geometria()
         self.hide()
+        self._reloj_encima.stop()
         if self.servicio_mundo:
             self.servicio_mundo.cadencia(visible=False)
 
@@ -1552,8 +1756,11 @@ class VentanaOverlay(QWidget):
             (self.primes, "Primes"),
             (self.mundo, "Mundo"),
             (self.perfil, "Perfil"),
+            (self.builds, "Build"),
+            (self.agrietados, "Agrietados"),
             (self.ajustes, "Ajustes"),
             (self.video, "Video"),
+            (self.web, "Web"),
         ]
 
     def _pintar_pista(self) -> None:
@@ -1571,7 +1778,7 @@ class VentanaOverlay(QWidget):
             self.pestanas.setTabText(i, t(titulo))
         self.estado.setText("")
         for pestana in (self.buscador, self.objetivos, self.primes, self.mundo, self.perfil, self.ajustes, self.compacta,
-                        self.video):
+                        self.video, self.web, self.builds, self.agrietados):
             pestana.retraducir()
         self._regenerar_avisos()
 
@@ -1583,6 +1790,10 @@ class VentanaOverlay(QWidget):
 
     def _cambiar_diseno_mundo(self, diseno: str) -> None:
         """Cambio al vuelo: rehace Mundo con la disposicion nueva sin perder lo que ya se sabia."""
+        # La disposicion ya se cambia dentro de la propia pestana, sin rehacerla.
+        if hasattr(self.mundo, "cambiar_diseno"):
+            self.mundo.cambiar_diseno(diseno)
+            return
         anterior = self.mundo
         nuevo = PestanaMundo(diseno=diseno)
         if anterior.indice is not None:
@@ -1626,6 +1837,12 @@ class VentanaOverlay(QWidget):
             f" QPushButton:hover {{ color: {PALETA['texto']}; border-color: {PALETA['acento']}; }}"
         )
         self.boton_guia.setStyleSheet(self.boton_modo.styleSheet())
+        # Fijada se ve encendida (color de acento), suelta como los otros botones.
+        self.boton_fijar.setStyleSheet(
+            self.boton_modo.styleSheet()
+            + f" QPushButton:checked {{ color: {PALETA['acento']}; border-color: {PALETA['acento']};"
+            f" font-weight: 700; }}"
+        )
 
     def cambiar_tema(self, nombre: str) -> None:
         """Se puede cambiar en caliente: la hoja de estilos y lo que lleva color en el HTML."""
@@ -1645,6 +1862,9 @@ class VentanaOverlay(QWidget):
         self.compacta.repintar()
         self.ajustes.repintar()
         self.video.repintar()
+        self.web.repintar()
+        self.builds.repintar()
+        self.agrietados.repintar()
         # Mundo genera su HTML con la paleta dentro; retraducir lo vuelve a pintar entero.
         self.mundo.retraducir()
         self._regenerar_avisos()
@@ -1652,9 +1872,21 @@ class VentanaOverlay(QWidget):
     # -- arrastre de la ventana ----------------------------------------------
 
     def mousePressEvent(self, evento):  # noqa: N802 - firma de Qt
-        if evento.button() == Qt.LeftButton and evento.position().y() < 34:
-            self._arrastre = evento.globalPosition().toPoint() - self.frameGeometry().topLeft()
+        """Arrastrar la ventana desde cualquier zona vacia, no solo desde la cabecera.
+
+        Aqui solo llegan los clics que ningun widget de dentro ha querido (botones,
+        listas, cajas de texto y enlaces se quedan los suyos). Se le pide a Windows que
+        mueva la ventana el mismo (`startSystemMove`), como con una barra de titulo de
+        verdad; donde no se puede (pruebas sin pantalla), se mueve a mano.
+        """
+        if evento.button() != Qt.LeftButton:
+            return
+        ventana = self.windowHandle()
+        if ventana is not None and ventana.startSystemMove():
             evento.accept()
+            return
+        self._arrastre = evento.globalPosition().toPoint() - self.frameGeometry().topLeft()
+        evento.accept()
 
     def mouseMoveEvent(self, evento):  # noqa: N802
         if self._arrastre and evento.buttons() & Qt.LeftButton:
@@ -1695,6 +1927,11 @@ class VentanaOverlay(QWidget):
         borde = self._borde_bajo_cursor(evento)
         if borde is None:
             return False
+        # Redimensionado nativo de Windows (fluido, respeta el minimo); si la plataforma
+        # no lo ofrece, se hace a mano con `geometria_redimensionada`.
+        ventana = self.windowHandle()
+        if ventana is not None and ventana.startSystemResize(BORDES_QT[borde]):
+            return True
         self._borde_activo = borde
         self._geom_inicio_resize = self.geometry()
         self._pos_inicio_resize = evento.globalPosition().toPoint()
@@ -1736,9 +1973,12 @@ class VentanaOverlay(QWidget):
         self.ocultar()
 
     def cerrar_de_verdad(self) -> None:
+        log.info("Cerrando la ventana y los hilos de trabajo")
+        self._reloj_encima.stop()
         self._guardar_geometria()
         # El reproductor de guias que lanzo esta ventana (solo ese proceso, por su PID).
         self.video.cerrar()
+        self.web.cerrar()
         self.etiquetas.hide()
         if getattr(self, "comprobador_datos", None):
             self.comprobador_datos.parar()
@@ -1773,6 +2013,28 @@ class VentanaOverlay(QWidget):
 
         market.cerrar_compartido()
         super().close()
+
+
+def poner_encima_sin_foco(widget: QWidget) -> bool:
+    """SetWindowPos(HWND_TOPMOST) sin activar: la sube por encima de las demas ventanas
+    "siempre encima" (el juego incluido) sin quitarle el foco a nadie."""
+    if sys.platform != "win32":
+        return False
+    try:
+        import ctypes
+
+        HWND_TOPMOST = -1
+        SWP_NOSIZE, SWP_NOMOVE, SWP_NOACTIVATE = 0x0001, 0x0002, 0x0010
+        user32 = ctypes.WinDLL("user32")
+        user32.SetWindowPos.argtypes = [
+            ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_uint
+        ]
+        return bool(user32.SetWindowPos(
+            ctypes.c_void_p(int(widget.winId())), ctypes.c_void_p(HWND_TOPMOST), 0, 0, 0, 0,
+            SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE,
+        ))
+    except (AttributeError, OSError, ValueError):
+        return False
 
 
 def _texto_plano(html_aviso: str) -> str:

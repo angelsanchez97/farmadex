@@ -90,6 +90,16 @@ CREATE TABLE IF NOT EXISTS items_nombres (
 );
 CREATE INDEX IF NOT EXISTS ix_items_nombres_idioma ON items_nombres(idioma);
 
+-- Recetas: que pide cada objeto para fabricarse y cuanto (Magistar: 750 Ferrita, 300 Rubedo...).
+-- Aparte de items.padre_id porque los recursos compartidos (Criotica, Rubedo) pierden el
+-- padre al pasar a Resources, y la pestana Objetivos los necesita para marcarlos uno a uno.
+CREATE TABLE IF NOT EXISTS recetas (
+  padre_id INTEGER NOT NULL REFERENCES items(id),
+  item_id INTEGER NOT NULL REFERENCES items(id),
+  cantidad INTEGER,
+  PRIMARY KEY (padre_id, item_id)
+);
+
 CREATE TABLE IF NOT EXISTS reliquia_recompensas (
   reliquia_id INTEGER NOT NULL REFERENCES items(id),
   refinamiento TEXT NOT NULL,
@@ -97,6 +107,15 @@ CREATE TABLE IF NOT EXISTS reliquia_recompensas (
   rareza TEXT,
   probabilidad REAL,
   PRIMARY KEY (reliquia_id, refinamiento, item_id)
+);
+
+-- Lo que la ficha ensena ademas de donde sale (datos/detalles.py): estadisticas de armas,
+-- efecto por rango de mods y arcanos, habilidades de warframes y el codigo de canje de los
+-- glifos. Un JSON por objeto; no sirve para buscar. Los indices de antes no la tienen y
+-- el codigo lo tolera.
+CREATE TABLE IF NOT EXISTS detalles (
+  item_id INTEGER PRIMARY KEY REFERENCES items(id),
+  datos TEXT NOT NULL
 );
 
 CREATE VIRTUAL TABLE IF NOT EXISTS busqueda USING fts5(

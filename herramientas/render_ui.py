@@ -24,7 +24,12 @@ TEMAS = ("vacio", "orokin", "tenno", "cherry")
 
 
 def preparar_sandbox() -> Path:
-    real = Path(os.environ.get("FARMADEX_INDICE_ORIGEN") or Path(os.environ.get("LOCALAPPDATA", "")) / "Farmadex" / "db" / "indice.sqlite")
+    # Si ya se apunto FARMADEX_DATOS a una caja de arena con su indice (por ejemplo una
+    # carpeta temporal con un indice recien construido), se usa esa tal cual.
+    propia = os.environ.get("FARMADEX_DATOS")
+    if propia and (Path(propia) / "Farmadex" / "db" / "indice.sqlite").exists():
+        return Path(propia)
+    real =Path(os.environ.get("FARMADEX_INDICE_ORIGEN") or Path(os.environ.get("LOCALAPPDATA", "")) / "Farmadex" / "db" / "indice.sqlite")
     if not real.exists():
         sys.exit("No hay indice real construido; abre la app una vez primero.")
     raiz = Path(tempfile.gettempdir()) / "farmadex_render"

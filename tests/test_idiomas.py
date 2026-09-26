@@ -121,7 +121,8 @@ def _claves_del_codigo() -> set[str]:
             if not (isinstance(nodo, ast.Call) and isinstance(nodo.func, ast.Name)):
                 continue
             # t("...") y self._fijo(poner, "...") de Ajustes, que traduce su segundo argumento.
-            if nodo.func.id == "t" and nodo.args:
+            # frase() (ui/acerca_de.py) traduce su primer argumento igual que t().
+            if nodo.func.id in ("t", "frase") and nodo.args:
                 literal = nodo.args[0]
             elif nodo.func.id == "_fijo" and len(nodo.args) >= 2:
                 literal = nodo.args[1]
@@ -159,7 +160,7 @@ def _claves_del_codigo() -> set[str]:
         PestanaAjustes.MODOS_PANTALLA.values(), worldstate.CICLOS.values(),
         worldstate.ESTADOS_CICLO.values(), (reliquias.AVISO_DATOS, reliquias.AVISO_MOTOR),
         # Titulos de las pestanas (VentanaOverlay._titulos_pestanas los pasa por t()).
-        ("Buscar", "Objetivos", "Primes", "Mundo", "Perfil", "Ajustes", "Video"),
+        ("Buscar", "Objetivos", "Primes", "Mundo", "Perfil", "Ajustes", "Video", "Web"),
         pestana_primes.NOMBRES_REFINAMIENTO.values(),
         # Que hacer y como van las recompensas de cada tipo de mision.
         modos_mision.textos(),

@@ -8,6 +8,7 @@ import sqlite3
 from pathlib import Path
 
 from ..registro_log import obtener
+from . import detalles
 
 log = obtener("items")
 
@@ -129,6 +130,12 @@ def normalizar(texto: str) -> str:
     return re.sub(r"\s+", " ", t).strip()
 
 
+def es_variante_menor(unique_name: str | None) -> bool:
+    """Mod de principiante o intermedio ("Flawed Serration" en el juego) que en WFCD se
+    llama igual que el mod de verdad."""
+    return bool(unique_name) and ("/Beginner/" in unique_name or "/Intermediate/" in unique_name)
+
+
 def nombre_canonico_reliquia(nombre: str) -> tuple[str, str] | None:
     """'Axi A7 Exceptional' -> ('Axi A7', 'Exceptional')."""
     partes = nombre.split()
@@ -227,6 +234,8 @@ class ImportadorItems:
         # item_id -> {idioma: nombre}, para que un componente pueda nombrar a su padre
         # en su mismo idioma aunque el padre ya se haya insertado antes.
         self.nombres_extra_por_item: dict[int, dict[str, str]] = {}
+        # Ids de los mods de principiante/intermedio que repiten el nombre del de verdad.
+        self.variantes_menores: set[int] = set()
         # Formato nuevo de WFCD (2026-09-24): catalogo de piezas (Components.json) y el
         # resto de objetos, por uniqueName, para completar las referencias de las recetas.
         self.catalogo_piezas: dict[str, dict] = {}
@@ -317,7 +326,12 @@ class ImportadorItems:
 
     def _registrar_alias(self, nombre: str, item_id: int) -> None:
         clave = normalizar(nombre)
-        if clave and clave not in self.alias:
+        if not clave:
+            return
+        previo = self.alias.get(clave)
+        if previo is None or (previo in self.variantes_menores and item_id not in self.variantes_menores):
+            # "Serration" es a la vez la Sierra defectuosa (Beginner, sale antes en Mods.json)
+            # y la de verdad: las tablas de drops hablan de la de verdad.
             self.alias[clave] = item_id
 
     def _insertar(self, fila: dict) -> int:
@@ -397,8 +411,12 @@ class ImportadorItems:
                     "actualizacion": _actualizacion(obj),
                 }
             )
+            if es_variante_menor(unico):
+                self.variantes_menores.add(item_id)
             self._registrar_alias(nombre, item_id)
             self._guardar_nombres_idioma(item_id, self._extra(unico))
+            # Estadisticas, efecto por rango y habilidades: solo para la ficha.
+            detalles.guardar(self.con, item_id, detalles.extraer(obj, categoria, self.i18n.get(unico)))
             cuenta += 1
 
             for drop in _lista(obj.get("drops")):
@@ -459,6 +477,11 @@ class ImportadorItems:
         )
         if primera_vez:
             self.componentes_por_nombre[nombre].append(item_id)
+        # La receta se apunta aparte: si luego el ingrediente pasa a recurso pierde el padre.
+        self.con.execute(
+            "INSERT OR REPLACE INTO recetas (padre_id, item_id, cantidad) VALUES (?, ?, ?)",
+            (padre_id, item_id, _entero(comp.get("itemCount"))),
+        )
         # Nombre en fr/de/pt/it/pl: primero el de WFCD si lo trae (raro en piezas),
         # si no el del glosario de componentes de ese idioma ("Chassis" -> "Châssis").
         padre_idioma = self.nombres_extra_por_item.get(padre_id, {})

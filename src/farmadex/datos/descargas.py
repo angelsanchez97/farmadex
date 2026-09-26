@@ -23,7 +23,7 @@ from ..config import DIR_DATOS, RUTA_ESTADO_DATOS, USER_AGENT, crear_carpetas
 from ..registro_log import obtener
 from .tabla_oficial import NOMBRE_FICHERO as FICHERO_TABLA_OFICIAL
 from .tabla_oficial import URL_TABLA_OFICIAL, fecha_publicacion
-from ..ficheros import reemplazar
+from ..ficheros import reemplazar, temporal_de
 
 log = obtener("descargas")
 
@@ -262,7 +262,7 @@ class Descargador:
 
     def _descargar_una_vez(self, url: str, destino: Path, etiqueta: str) -> None:
         destino.parent.mkdir(parents=True, exist_ok=True)
-        tmp = destino.with_suffix(destino.suffix + ".tmp")
+        tmp = temporal_de(destino)
         ultimo_error = None
         estado: int | None = None
         for intento in range(3):
@@ -283,7 +283,7 @@ class Descargador:
                                 )
                             else:
                                 self.progreso(f"{etiqueta} ({hechos // 1_048_576} MB)", 0, 0)
-                tmp.replace(destino)
+                reemplazar(tmp, destino)
                 return
             except httpx.HTTPError as e:
                 ultimo_error = e
@@ -577,9 +577,9 @@ class Descargador:
         if not solo_idioma:
             log.warning("Las traducciones al %s no traen ningun nombre reconocible", idioma)
             return False
-        tmp = destino.with_suffix(".tmp")
+        tmp = temporal_de(destino)
         tmp.write_text(json.dumps(solo_idioma, ensure_ascii=False), encoding="utf-8")
-        tmp.replace(destino)
+        reemplazar(tmp, destino)
         log.info("Traducciones al %s: %d objetos", idioma, len(solo_idioma))
         return True
 

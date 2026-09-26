@@ -20,6 +20,7 @@ from PySide6.QtCore import QObject, Signal, Slot
 from .. import NOMBRE_APP
 from ..config import DIR_ACTUALIZACIONES, cargar
 from ..registro_log import obtener
+from . import instalacion
 from .app import Version, es_mas_nueva, numeros
 
 log = obtener("actualizador.local")
@@ -84,8 +85,15 @@ def _notas(carpeta: Path) -> str:
     return ""
 
 
-def instalar(version: Version) -> bool:
-    """Lanza el instalador y devuelve True si arranco (la app debe cerrarse luego)."""
+def instalar(version: Version, silencioso: bool | None = None) -> bool:
+    """Lanza el instalador y devuelve True si arranco (la app debe cerrarse luego).
+
+    Si Farmadex esta instalado con el instalador, el setup va en silencio y en modo
+    actualizacion (espera a que este Farmadex se cierre, sustituye los ficheros y lo
+    vuelve a abrir), igual que las actualizaciones descargadas: sin asistente que
+    rellenar y sin riesgo de acabar con dos copias. Desde el codigo o la portable se
+    abre el asistente de siempre, que es quien sabe a donde instalar.
+    """
     ruta = Path(version.url)
     if not ruta.exists():
         log.warning("El instalador ya no esta: %s", ruta)
@@ -94,6 +102,11 @@ def instalar(version: Version) -> bool:
         # Un zip no se instala solo: se abre la carpeta y lo hace el usuario.
         os.startfile(ruta.parent)  # noqa: S606 - abrir el explorador es la intencion
         return False
+    if silencioso is None:
+        silencioso = instalacion.es_instalacion_por_instalador()
+    if silencioso:
+        log.info("Actualizando en silencio con el instalador de la carpeta: %s", ruta)
+        return instalacion.instalar_silencioso(ruta, version.etiqueta, borrar_al_acabar=False)
     try:
         subprocess.Popen([str(ruta)], close_fds=True)
         log.info("Instalador lanzado: %s", ruta)

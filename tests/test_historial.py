@@ -45,7 +45,7 @@ def test_migracion_desde_la_version_1_anade_columnas_sin_perder_filas(tmp_path, 
     columnas = {f[1] for f in con.execute("PRAGMA table_info(historial_recompensas)")}
     assert {"mejor_unique_name", "valor_platino", "ducados"} <= columnas
     assert con.execute("SELECT COUNT(*) FROM historial_recompensas").fetchone()[0] == 1
-    assert con.execute("SELECT valor FROM meta WHERE clave='esquema_version'").fetchone()[0] == "2"
+    assert con.execute("SELECT valor FROM meta WHERE clave='esquema_version'").fetchone()[0] == str(usuario_db.VERSION)
     assert con.execute("SELECT COUNT(*) FROM historial_eventos").fetchone()[0] == 0
     con.close()
 
