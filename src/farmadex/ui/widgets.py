@@ -16,35 +16,44 @@ from ..registro_log import obtener
 log = obtener("ui")
 
 # -- temas ------------------------------------------------------------------------
-# Cuatro aspectos para que el usuario elija. Todos con fondo muy oscuro y opaco,
-# porque la ventana se lee encima de una partida, no sobre un fondo neutro.
+# Aspectos para que el usuario elija. Todos con fondo muy oscuro y opaco, porque la
+# ventana se lee encima de una partida, no sobre un fondo neutro. "secundario" es el
+# color de apoyo del estilo C (fisuras, reliquias, lo que se puede hacer ya).
 TEMAS = {
+    # El de la propuesta C del rediseno (0.6): negro verdoso, oro y turquesa. Es el que
+    # estrenan las instalaciones nuevas; quien ya tenia un tema guardado lo conserva.
+    "lua": {
+        "titulo": "Lua (oro y turquesa)",
+        "fondo": "#090c0d", "panel": "#101617", "panel2": "#172022", "boton": "#172022", "borde": "#3b3627",
+        "texto": "#ece3cc", "suave": "#9a927e", "acento": "#d4b06a", "acento_texto": "#151008",
+        "aviso": "#f0a63c", "ok": "#8fd08a", "secundario": "#58d3c0", "fondo_rgb": "9, 12, 13",
+    },
     "vacio": {
         "titulo": "Vacio (azul)",
         "fondo": "#0e1218", "panel": "#171d26", "panel2": "#1f2733", "boton": "#1f2733", "borde": "#2b3442",
         "texto": "#e8ebf1", "suave": "#93a0b4", "acento": "#4aa3ff", "acento_texto": "#08101c",
-        "aviso": "#f0a63c", "ok": "#6fcf7a", "fondo_rgb": "14, 18, 24",
+        "aviso": "#f0a63c", "ok": "#6fcf7a", "secundario": "#e2b455", "fondo_rgb": "14, 18, 24",
     },
     "orokin": {
         "titulo": "Orokin (dorado)",
         "fondo": "#12100c", "panel": "#1c1913", "panel2": "#26221a", "boton": "#26221a", "borde": "#3a3324",
         "texto": "#f1ece0", "suave": "#a89f8a", "acento": "#e2b455", "acento_texto": "#1a1508",
-        "aviso": "#f08a3c", "ok": "#8ccf6f", "fondo_rgb": "18, 16, 12",
+        "aviso": "#f08a3c", "ok": "#8ccf6f", "secundario": "#58d3c0", "fondo_rgb": "18, 16, 12",
     },
     "tenno": {
         "titulo": "Tenno (turquesa)",
         "fondo": "#0b1416", "panel": "#12201f", "panel2": "#182b29", "boton": "#182b29", "borde": "#24403c",
         "texto": "#e6f1ef", "suave": "#8fb0aa", "acento": "#39d0c0", "acento_texto": "#04201c",
-        "aviso": "#f2b04a", "ok": "#7ee08a", "fondo_rgb": "11, 20, 22",
+        "aviso": "#f2b04a", "ok": "#7ee08a", "secundario": "#e2b455", "fondo_rgb": "11, 20, 22",
     },
     "cherry": {
         "titulo": "Cherry (cereza)",
         "fondo": "#150c0f", "panel": "#211217", "panel2": "#2c181f", "boton": "#2c181f", "borde": "#47242f",
         "texto": "#f4e8eb", "suave": "#b39aa1", "acento": "#e8456a", "acento_texto": "#1f060c",
-        "aviso": "#f2a444", "ok": "#7fd88a", "fondo_rgb": "21, 12, 15",
+        "aviso": "#f2a444", "ok": "#7fd88a", "secundario": "#58d3c0", "fondo_rgb": "21, 12, 15",
     },
 }
-TEMA_POR_DEFECTO = "orokin"
+TEMA_POR_DEFECTO = "lua"
 
 # Colores por rareza (los del juego) y por estado.
 RAREZA = {
@@ -56,8 +65,28 @@ RAREZA = {
 COLOR_BOVEDA = "#f0a63c"
 COLOR_DISPONIBLE = "#6fcf7a"
 
+
+
+def _mezcla(uno: str, otro: str, peso: float) -> str:
+    """`peso` de `uno` y el resto de `otro` (dos "#rrggbb")."""
+    a = [int(uno[i:i + 2], 16) for i in (1, 3, 5)]
+    b = [int(otro[i:i + 2], 16) for i in (1, 3, 5)]
+    return "#" + "".join(f"{round(x * peso + y * (1 - peso)):02x}" for x, y in zip(a, b))
+
+
+def completar_paleta(paleta: dict) -> dict:
+    """Anade los colores que el estilo C calcula a partir de los demas: `tenue` (texto muy
+    apagado), `acento_tenue` (filetes dorados apagados) y `secundario` si faltase."""
+    p = dict(paleta)
+    p.setdefault("boton", p.get("panel2", p["panel"]))
+    p.setdefault("secundario", "#58d3c0")
+    p["tenue"] = _mezcla(p["suave"], p["fondo"], 0.68)
+    p["acento_tenue"] = _mezcla(p["acento"], p["fondo"], 0.62)
+    return p
+
+
 # La paleta activa. Los modulos la leen al construir y al pintar, no al importar.
-PALETA = dict(TEMAS[TEMA_POR_DEFECTO])
+PALETA = completar_paleta(TEMAS[TEMA_POR_DEFECTO])
 
 # Nombres antiguos, que siguen usando los modulos que no cambian de color con el tema.
 COLOR_FONDO = PALETA["fondo"]
@@ -82,6 +111,7 @@ CATEGORIAS_COLOR = (
     ("suave", "Texto secundario", "Las notas y explicaciones en pequeno"),
     ("acento", "Color principal", "Titulos, pestana activa, enlaces y el boton principal"),
     ("acento_texto", "Texto del boton principal", "El texto que va encima del color principal"),
+    ("secundario", "Color de apoyo", "Fisuras, reliquias y lo que puedes hacer ahora mismo"),
     ("aviso", "Avisos", "Lo que pide atencion: datos viejos, algo que falla"),
     ("ok", "Todo bien", "Lo que esta disponible o ha salido bien"),
 )
@@ -118,7 +148,7 @@ def paleta_de(nombre: str, personal: dict | None = None) -> dict:
         if clave in CLAVES_COLOR and color_valido(valor):
             paleta[clave] = valor.lower()
     paleta["fondo_rgb"] = _rgb(paleta["fondo"])
-    return paleta
+    return completar_paleta(paleta)
 
 
 def escala_valida(valor, pasos) -> float:
@@ -177,11 +207,17 @@ def color_rareza(rareza: str | None) -> str:
     return RAREZA.get(rareza or "", PALETA["texto"])
 
 
+def hoja_c(p, f, m) -> str:
+    """Las reglas del estilo C (roles de texto por propiedad); viven en estilo_c.py."""
+    from .estilo_c import hoja_c as reglas
+
+    return reglas(p, f, m)
+
+
 def hoja_estilos(p: dict | None = None, escala: tuple[float, float] | None = None) -> str:
     """Hoja de toda la ventana. `escala` = (interfaz, letra) para la vista previa;
     sin ella, la activa."""
-    p = p or PALETA
-    p = {"boton": p.get("panel2"), **p}  # paletas de antes de existir "boton"
+    p = completar_paleta(p or PALETA)  # paletas de antes de existir "boton" o "secundario"
     esc = escala or (ESCALA["interfaz"], ESCALA["letra"])
 
     def f(n: int) -> str:  # letra
@@ -194,25 +230,26 @@ def hoja_estilos(p: dict | None = None, escala: tuple[float, float] | None = Non
 QWidget {{ background: {p['fondo']}; color: {p['texto']};
            font-family: 'Segoe UI'; font-size: {f(14)}; }}
 QLabel, QCheckBox, QSlider, QTabBar, QSplitter {{ background: transparent; }}
-QLineEdit {{ background: {p['panel']}; border: 1px solid {p['borde']}; border-radius: {m(8)};
+QLineEdit {{ background: {p['panel']}; border: 1px solid {p['borde']}; border-radius: {m(3)};
              padding: {m(9)} {m(12)}; font-size: {f(15)}; selection-background-color: {p['acento']}; }}
 QLineEdit:focus {{ border-color: {p['acento']}; }}
-QListWidget {{ background: {p['panel']}; border: 1px solid {p['borde']}; border-radius: {m(8)};
+QListWidget {{ background: {p['panel']}; border: 1px solid {p['borde']}; border-radius: {m(3)};
                outline: none; }}
 QListWidget::item {{ padding: 0; border-bottom: 1px solid {p['borde']}; }}
 QListWidget::item:selected {{ background: {p['panel2']}; border-left: 3px solid {p['acento']}; }}
 QListWidget::item:hover {{ background: {p['panel2']}; }}
-QTextBrowser {{ background: {p['panel']}; border: 1px solid {p['borde']}; border-radius: {m(8)};
+QTextBrowser {{ background: {p['panel']}; border: 1px solid {p['borde']}; border-radius: {m(3)};
                 padding: {m(10)}; }}
 QScrollArea {{ border: none; background: transparent; }}
 QScrollArea > QWidget > QWidget {{ background: transparent; }}
 QTabBar::tab {{ background: transparent; color: {p['suave']}; padding: {m(8)} {m(18)};
-                margin-right: {m(4)}; border-bottom: 2px solid transparent; font-size: {f(15)}; }}
+                margin-right: {m(4)}; border-bottom: 2px solid transparent; font-size: {f(15)};
+                font-family: 'Bahnschrift'; font-weight: 500; }}
 QTabBar::tab:selected {{ color: {p['acento']}; border-bottom: 2px solid {p['acento']}; }}
 QTabBar::tab:hover {{ color: {p['texto']}; }}
 QTabWidget::pane {{ border: none; border-top: 1px solid {p['borde']}; }}
 QTabWidget, QTabWidget > QStackedWidget {{ background: transparent; }}
-QPushButton {{ background: {p['boton']}; border: 1px solid {p['borde']}; border-radius: {m(7)};
+QPushButton {{ background: {p['boton']}; border: 1px solid {p['borde']}; border-radius: {m(2)};
                padding: {m(6)} {m(14)}; }}
 QPushButton:hover {{ border-color: {p['acento']}; }}
 QPushButton:pressed {{ background: {p['panel']}; }}
@@ -223,17 +260,17 @@ QCheckBox {{ spacing: {m(8)}; }}
 QCheckBox::indicator {{ width: {m(16)}; height: {m(16)}; border: 1px solid {p['borde']};
                         border-radius: {m(4)}; background: {p['panel']}; }}
 QCheckBox::indicator:checked {{ background: {p['acento']}; border-color: {p['acento']}; }}
-QComboBox {{ background: {p['boton']}; border: 1px solid {p['borde']}; border-radius: {m(7)};
+QComboBox {{ background: {p['boton']}; border: 1px solid {p['borde']}; border-radius: {m(2)};
              padding: {m(5)} {m(10)}; }}
 QComboBox QAbstractItemView {{ background: {p['boton']}; selection-background-color: {p['acento']};
                                selection-color: {p['acento_texto']}; }}
-QGroupBox {{ border: 1px solid {p['borde']}; border-radius: {m(10)}; margin-top: {m(14)};
+QGroupBox {{ border: 1px solid {p['borde']}; border-radius: {m(2)}; margin-top: {m(14)};
              padding: {m(10)} {m(8)} {m(6)} {m(8)}; background: {p['panel']}; }}
 QGroupBox::title {{ subcontrol-origin: margin; left: 12px; padding: 0 {m(6)}; color: {p['acento']};
-                    font-weight: 600; font-size: {f(13)}; text-transform: uppercase; }}
-QProgressBar {{ background: {p['panel2']}; border: 1px solid {p['borde']}; border-radius: {m(7)};
+                    font-weight: 600; font-size: {f(13)}; font-family: 'Bahnschrift'; }}
+QProgressBar {{ background: {p['panel2']}; border: 1px solid {p['borde']}; border-radius: {m(2)};
                 height: {m(14)}; text-align: center; color: {p['texto']}; font-size: {f(12)}; }}
-QProgressBar::chunk {{ background: {p['acento']}; border-radius: {m(6)}; }}
+QProgressBar::chunk {{ background: {p['acento']}; border-radius: {m(1)}; }}
 QSlider::groove:horizontal {{ height: {m(4)}; background: {p['borde']}; border-radius: {m(2)}; }}
 QSlider::handle:horizontal {{ width: {m(16)}; margin: -{m(6)} 0; background: {p['acento']};
                               border-radius: {m(8)}; }}
@@ -244,7 +281,7 @@ QScrollBar:horizontal {{ height: 0; }}
 QSplitter::handle {{ background: transparent; width: {m(8)}; }}
 QToolTip {{ background: {p['panel2']}; color: {p['texto']}; border: 1px solid {p['borde']}; }}
 QStatusBar {{ color: {p['suave']}; }}
-"""
+""" + hoja_c(p, f, m)
 
 
 # app.py la aplica a toda la aplicacion al arrancar; el overlay pone encima la del tema.

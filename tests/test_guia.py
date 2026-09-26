@@ -50,7 +50,7 @@ def test_boton_guia_la_lanza_desde_el_principio(ventana):
     ventana.mostrar_guia()
     assert ventana._guia is not None
     assert ventana._guia._indice == 0
-    assert ventana._guia.contador.text() == "Paso 1 de 19"
+    assert ventana._guia.contador.text() == "Paso 1 de 21"
 
 
 def test_avanza_y_retrocede(ventana):
@@ -86,7 +86,7 @@ def test_cambia_de_pestana_sola_cuando_el_paso_lo_pide(ventana):
     # El paso de Mundo pide la pestana "mundo".
     indices = {p.pestana: i for i, p in enumerate(guia._pasos) if p.pestana == "mundo"}
     guia._ir_a_paso(next(iter(indices.values())))
-    assert ventana.pestanas.currentWidget() is ventana.mundo
+    assert ventana.pagina_actual() is ventana.mundo
 
 
 def test_cada_paso_con_objetivo_lo_resalta_dentro_de_la_ventana(ventana):
@@ -233,11 +233,11 @@ def test_la_guia_ensena_lo_nuevo_de_la_0_5(ventana):
     for titulo, (pestana, widget) in esperados.items():
         assert titulo in titulos, titulo
         guia._ir_a_paso(titulos.index(titulo))
-        assert ventana.pestanas.currentWidget() is pestana, titulo
+        assert ventana.pagina_actual() is pestana, titulo
         rect = QRect(widget.mapTo(ventana, QPoint(0, 0)), widget.size())
         assert guia._rect_resalte is not None and guia._rect_resalte.intersects(rect), titulo
     # Los atajos que salen en el texto son los que tiene configurados el usuario.
     guia._ir_a_paso(titulos.index("Build"))
     assert ventana.config.get("hotkey_build", "Ctrl+Alt+B") in guia.cuerpo.text()
-    compacto = guia._pasos[titulos.index("Modo compacto")].cuerpo
+    compacto = guia._pasos[titulos.index("Modo juego")].cuerpo
     assert "Fijar" in compacto

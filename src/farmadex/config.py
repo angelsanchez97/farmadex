@@ -46,7 +46,9 @@ POR_DEFECTO = {
     "hotkey_build": "Ctrl+Alt+B",
     "hotkey_agrietado": "Ctrl+Alt+G",
     "overlay_opacidad": 0.94,
-    "tema": "orokin",
+    # Las instalaciones nuevas estrenan el tema del rediseno C; quien ya tenia
+    # config.json conserva el tema que ya estaba guardado en ella.
+    "tema": "lua",
     "diseno_mundo": "lista",
     "overlay_geometria": None,
     # Vista compacta para el directo: cual se usaba y su propia posicion y tamano.

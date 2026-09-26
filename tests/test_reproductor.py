@@ -263,9 +263,9 @@ def ventana(app, tmp_path, monkeypatch):
 def test_guias_en_la_pestana_video_y_modo_video_recordado(ventana):
     assert ventana.buscador.reproductor == ventana.abrir_video
     ventana.abrir_video(URL)
-    assert ventana.pestanas.currentWidget() is ventana.video and ventana.video.url == URL
+    assert ventana.pagina_actual() is ventana.video and ventana.video.url == URL
     ventana.aplicar_modo("video")
-    assert ventana.modo == "video" and not ventana.pestanas.tabBar().isVisibleTo(ventana)
+    assert ventana.modo == "video" and not ventana.menu.isVisibleTo(ventana)
     assert ventana.boton_modo.text() == "Salir del video"
     ventana.setGeometry(50, 60, 500, 330)
     ventana.alternar_modo()  # Ctrl+M / "Salir del video"

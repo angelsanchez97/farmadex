@@ -339,7 +339,7 @@ def test_overframe_se_abre_en_la_pestana_web_de_la_ventana(ventana):
     assert ventana.buscador.navegador_web == ventana.abrir_web
     ventana.aplicar_modo("compacto")
     ventana.abrir_web(URL)
-    assert ventana.modo == "completo" and ventana.pestanas.currentWidget() is ventana.web
+    assert ventana.modo == "completo" and ventana.pagina_actual() is ventana.web
     assert ventana.web.url == URL and len(ventana.lanzados) == 1
     # Build emite y la ventana lo abre igual.
     ventana.builds.abrir_web.emit(URL + "x")

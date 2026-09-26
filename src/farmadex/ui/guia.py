@@ -29,7 +29,8 @@ MARGEN_VENTANA = 12
 class Paso:
     titulo: str
     cuerpo: str
-    # Atributo de VentanaOverlay que hay que activar en pestanas antes de resaltar (o None).
+    # Pagina que hay que abrir antes de resaltar (o None): cualquier destino que acepte
+    # `VentanaOverlay.ir_a` ("tablero", "metas/primes" o el atributo, como "primes").
     pestana: str | None
     # Funcion(ventana) -> QWidget a resaltar (o una tupla de widgets, que se resaltan
     # juntos en un solo recuadro), o None para un paso sin resalte (centrado).
@@ -73,6 +74,26 @@ def _pasos(ventana) -> list[Paso]:
             objetivo=None,
         ),
         Paso(
+            titulo=t("Tablero"),
+            cuerpo=t(
+                "Farmadex se abre aqui. \"Tu siguiente paso\" es la pieza de tus metas que antes puedes "
+                "conseguir: que reliquia es, donde sale y en que fisura abrirla. Al lado, las fisuras "
+                "abiertas que te sirven; debajo, tus metas y los ciclos del mundo."
+            ),
+            pestana="tablero",
+            objetivo=lambda v: getattr(getattr(v, "tablero", None), "heroe", None),
+        ),
+        Paso(
+            titulo=t("El menu"),
+            cuerpo=t(
+                "Arriba estan las secciones: Buscar, Mis metas (tus objetivos, los primes y tu perfil), "
+                "Mundo, Herramientas (build, agrietados, video y web) y Ajustes. Las que tienen varias "
+                "partes las ensenan justo debajo del menu."
+            ),
+            pestana=None,
+            objetivo=lambda v: getattr(v, "menu", None),
+        ),
+        Paso(
             titulo=t("Buscar"),
             cuerpo=t(
                 "Escribe aqui cualquier objeto, pieza, mod o reliquia, aunque tenga alguna "
@@ -98,7 +119,7 @@ def _pasos(ventana) -> list[Paso]:
             cuerpo=t(
                 "\"Buscar en la wiki\" abre la wiki oficial de lo que tengas abierto, para lo que "
                 "Farmadex no cuenta (habilidades, como se construye...). \"Guias en YouTube\" "
-                "busca videos de esa mision u objeto y te los pone en la pestana Video."
+                "busca videos de esa mision u objeto y te los pone en Herramientas > Video."
             ),
             pestana="buscador",
             objetivo=lambda v: tuple(
@@ -233,7 +254,7 @@ def _pasos(ventana) -> list[Paso]:
             objetivo=lambda v: getattr(getattr(v, "agrietados", None), "boton_leer", None),
         ),
         Paso(
-            titulo=t("Modo compacto"),
+            titulo=t("Modo juego"),
             cuerpo=t(
                 "Con Ctrl+M (o este boton) la ventana pasa a una cajita pensada para jugar o "
                 "para un directo, con solo la busqueda y lo esencial. Pulsa un resultado y sus "
@@ -351,9 +372,7 @@ class CapaGuia(QWidget):
         self._indice = max(0, min(indice, len(self._pasos) - 1))
         paso = self._pasos[self._indice]
         if paso.pestana is not None:
-            pestana = getattr(self.ventana, paso.pestana, None)
-            if pestana is not None:
-                self.ventana.pestanas.setCurrentWidget(pestana)
+            self.ventana.ir_a(paso.pestana)
         self.titulo.setText(paso.titulo)
         self.cuerpo.setText(paso.cuerpo)
         self.contador.setText(t("Paso {n} de {total}", n=self._indice + 1, total=len(self._pasos)))

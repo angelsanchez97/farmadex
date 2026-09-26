@@ -105,7 +105,7 @@ def test_las_pestanas_cambian_de_idioma_al_vuelo(castellano_al_salir, tmp_path, 
     assert mundo.tarjetas["fisuras"].title() == "Void Fissures"
     assert mundo.filtro_modo.itemText(2) == "Steel Path"
     assert mundo.filtro_modo.itemData(2) == "Camino de Acero"  # el filtro compara por clave
-    assert ajustes.tema.itemText(0) == "Void (blue)"
+    assert ajustes.tema.itemText(ajustes.tema.findData("vacio")) == "Void (blue)"
     assert ajustes.aviso_version.text() == "You are on the latest version"
 
 
@@ -147,7 +147,7 @@ def _claves_del_codigo() -> set[str]:
     from farmadex.captura import prioridad, reliquias
     from farmadex.datos import modos_mision
     from farmadex.online import worldstate
-    from farmadex.ui import glosario, pestana_buscador, pestana_mundo, pestana_perfil, pestana_primes, widgets
+    from farmadex.ui import glosario, overlay, pestana_buscador, pestana_mundo, pestana_perfil, pestana_primes, widgets
     from farmadex.ui.pestana_ajustes import PestanaAjustes
 
     for grupo in (
@@ -159,8 +159,9 @@ def _claves_del_codigo() -> set[str]:
         (tema["titulo"] for tema in widgets.TEMAS.values()),
         PestanaAjustes.MODOS_PANTALLA.values(), worldstate.CICLOS.values(),
         worldstate.ESTADOS_CICLO.values(), (reliquias.AVISO_DATOS, reliquias.AVISO_MOTOR),
-        # Titulos de las pestanas (VentanaOverlay._titulos_pestanas los pasa por t()).
-        ("Buscar", "Objetivos", "Primes", "Mundo", "Perfil", "Ajustes", "Video", "Web"),
+        # Menu superior y sub-pestanas (la ventana los pasa por t() al construirlos).
+        (titulo for _clave, titulo in overlay.SECCIONES),
+        (titulo for subs in overlay.SUBSECCIONES.values() for _clave, titulo in subs),
         pestana_primes.NOMBRES_REFINAMIENTO.values(),
         # Que hacer y como van las recompensas de cada tipo de mision.
         modos_mision.textos(),

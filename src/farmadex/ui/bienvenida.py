@@ -74,14 +74,14 @@ def _apartados(atajo: str) -> list[tuple[str, str]]:
               "exclusiva no se puede ver nada encima del juego."),
         frase("En Buscar escribe cualquier cosa, aunque sea con faltas: te dice donde se consigue, con "
               "que probabilidad y cuanto se tarda en cada sitio."),
-        frase("Con \"+ Objetivo\" lo apuntas. En Objetivos ves cuanto te falta y donde farmear cada "
-              "cosa ahora mismo."),
+        frase("Con \"+ Objetivo\" lo apuntas. En el Tablero ves tu siguiente paso, y en Mis metas cuanto "
+              "te falta y donde farmear cada cosa ahora mismo."),
         frase("Al abrir una reliquia, Farmadex lee solo las recompensas y te marca la que mas te "
               "conviene."),
         frase("En Mundo tienes lo que pasa ahora en el juego: fisuras, ciclos, invasiones, Baro "
               "Ki'Teer... Y si quieres, Windows te avisa cuando pase algo que te interesa."),
-        frase("En Build lees los mods de una build desde la pantalla del juego, y en Agrietados ves si "
-              "un mod agrietado es bueno y cuanto se pide por uno parecido."),
+        frase("En Herramientas, Build lee los mods de una build desde la pantalla del juego, y Agrietados "
+              "te dice si un mod agrietado es bueno y cuanto se pide por uno parecido."),
         frase("En Ajustes, con las secciones a la izquierda, cambias atajos, colores, tamano de letra "
               "e idioma."),
     ]

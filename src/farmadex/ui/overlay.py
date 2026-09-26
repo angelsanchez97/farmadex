@@ -10,7 +10,7 @@ from html import unescape
 
 from PySide6.QtCore import QEvent, QPoint, QRect, QSize, Qt, QThread, QTimer, QUrl, Signal
 from PySide6.QtGui import (
-    QColor, QCursor, QDesktopServices, QGuiApplication, QIcon, QKeySequence, QPainter, QPixmap, QShortcut,
+    QColor, QCursor, QDesktopServices, QFont, QGuiApplication, QIcon, QKeySequence, QPainter, QPixmap, QShortcut,
 )
 from PySide6.QtWidgets import (
     QFrame,
@@ -18,7 +18,9 @@ from PySide6.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
-    QTabWidget,
+    QSizePolicy,
+    QSpacerItem,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -72,11 +74,49 @@ from .vista_compacta import (
 from .maestria import estado_con_padre, texto_maestria
 from .reproductor import PanelVideo, PanelWeb
 from .widgets import PALETA, BarraProgreso, elegir_tema, hoja_estilos
+from .estilo_c import BotonC, EtiquetaC, Filete, SubPestanasC, refrescar_todo, transparente
+from .pestana_tablero import PestanaTablero
 
 log = obtener("overlay")
 
 # Atajo, dentro de la ventana, para pasar de la vista completa a la compacta y volver.
 ATAJO_MODO = "Ctrl+M"
+
+# -- navegacion (rediseno C) ----------------------------------------------------------
+# Menu superior: (clave, titulo). Las rutas son "seccion" o "seccion/subseccion"; ver
+# `VentanaOverlay.ir_a`, que es el UNICO sitio que cambia de pagina.
+SECCIONES = (
+    ("tablero", "Tablero"),
+    ("buscar", "Buscar"),
+    ("metas", "Mis metas"),
+    ("mundo", "Mundo"),
+    ("herramientas", "Herramientas"),
+    ("ajustes", "Ajustes"),
+)
+SUBSECCIONES = {
+    "metas": (("objetivos", "Objetivos"), ("primes", "Primes"), ("perfil", "Perfil")),
+    "herramientas": (("build", "Build"), ("agrietados", "Agrietados"), ("video", "Video"), ("web", "Web")),
+}
+# Ruta -> atributo de la ventana con la pagina (se lee al navegar: una pagina puede
+# rehacerse, como Mundo al cambiar de disposicion).
+PAGINAS = {
+    "tablero": "tablero",
+    "buscar": "buscador",
+    "metas/objetivos": "objetivos",
+    "metas/primes": "primes",
+    "metas/perfil": "perfil",
+    "mundo": "mundo",
+    "herramientas/build": "builds",
+    "herramientas/agrietados": "agrietados",
+    "herramientas/video": "video",
+    "herramientas/web": "web",
+    "ajustes": "ajustes",
+}
+# Otros nombres que acepta `ir_a`: el del atributo ("primes", "builds") o la subseccion sola.
+ALIAS_RUTAS = {
+    **{atributo: ruta for ruta, atributo in PAGINAS.items()},
+    **{ruta.split("/")[1]: ruta for ruta in PAGINAS if "/" in ruta},
+}
 
 # Franja en los bordes/esquinas donde el cursor pasa a redimensionar en vez de a arrastrar
 # o a hacer clic normal. Solo cuenta donde el raton cae sobre el propio marco (los widgets
@@ -87,6 +127,10 @@ MARGEN_REDIMENSION = 8
 # comprobado con una captura (herramientas/capturas/overlay_minimo_completo.png).
 ANCHO_MINIMO_COMPLETO = 760
 ALTO_MINIMO_COMPLETO = 420
+# Tamano con el que nace la vista completa (el de las maquetas del rediseno C); si no
+# cabe en la pantalla, `_asegurar_en_pantalla` la encoge.
+ANCHO_COMPLETO = 1280
+ALTO_COMPLETO = 800
 
 # "Modo video": Farmadex reducido a solo el reproductor, para ponerlo en una esquina encima
 # del juego. Nace arriba a la derecha con este tamano (16:9 mas la barra del panel) y
@@ -212,7 +256,7 @@ class VentanaOverlay(QWidget):
             else Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool
         )
         self.setAttribute(Qt.WA_TranslucentBackground)
-        self.resize(1100, 700)
+        self.resize(ANCHO_COMPLETO, ALTO_COMPLETO)
         self._arrastre: QPoint | None = None
         # Redimensionado a mano por los bordes: que borde se arrastra (o None) y de donde
         # partio, para poder calcular la geometria nueva a cada movimiento del raton.
@@ -233,28 +277,34 @@ class VentanaOverlay(QWidget):
         self.marco.setMouseTracking(True)
         self.marco.installEventFilter(self)
 
-        # Cabecera: titulo, arrastre y cerrar.
-        self.titulo = QLabel(f"  {NOMBRE_APP}")
+        # Cabecera (estilo C): logo y FARMADEX, el menu de secciones, y a la derecha la guia,
+        # la chincheta de la compacta, el modo juego y cerrar. Se arrastra desde cualquier hueco.
+        self.logo = QLabel()
+        self.logo.setStyleSheet("background: transparent;")
+        self._pintar_logo()
+        self.titulo = EtiquetaC(NOMBRE_APP, "titulo", tinta="acento", mayus=True)
+        fuente_titulo = self.titulo.font()
+        fuente_titulo.setLetterSpacing(QFont.AbsoluteSpacing, 5.0)
+        self.titulo.setFont(fuente_titulo)
+        self.menu = SubPestanasC([(clave, t(titulo)) for clave, titulo in SECCIONES], grande=True)
+        self.menu.cambiada.connect(self.ir_a)
         self.pista = QLabel()
         self._pintar_pista()
         self.boton_cerrar = QPushButton("×")
         self.boton_cerrar.setFixedSize(30, 26)
+        self.boton_cerrar.setToolTip(t("Esconder (Escape)"))
         self.boton_cerrar.clicked.connect(self.ocultar)
         boton_cerrar = self.boton_cerrar
-        self.boton_modo = QPushButton()
-        self.boton_modo.setFixedHeight(26)
-        self.boton_modo.setCursor(Qt.PointingHandCursor)
+        self.boton_modo = BotonC(icono="juego", pista=ATAJO_MODO)
         self.boton_modo.clicked.connect(self.alternar_modo)
-        self.boton_guia = QPushButton(t("Guia"))
-        self.boton_guia.setFixedHeight(26)
-        self.boton_guia.setCursor(Qt.PointingHandCursor)
-        self.boton_guia.setToolTip(t("Lanza la guia de uso desde el principio"))
+        # La guia, solo con su icono: el menu necesita el sitio. El texto va en el tooltip.
+        self.boton_guia = BotonC(t("Guia"), icono="ayuda")
+        self.boton_guia.poner_solo_icono(True)
+        self.boton_guia.setToolTip(t("Guia") + ": " + t("Lanza la guia de uso desde el principio"))
         self.boton_guia.clicked.connect(self.mostrar_guia)
         # Chincheta de la vista compacta: fijarla por encima del juego (se recuerda).
-        self.boton_fijar = QPushButton(t("Fijar"))
+        self.boton_fijar = BotonC(t("Fijar"), icono="pin")
         self.boton_fijar.setCheckable(True)
-        self.boton_fijar.setFixedHeight(26)
-        self.boton_fijar.setCursor(Qt.PointingHandCursor)
         self.boton_fijar.setChecked(bool(self.config.get("compacta_siempre_encima", True)))
         self.boton_fijar.toggled.connect(self.fijar_encima)
         self._reloj_encima = QTimer(self)
@@ -265,16 +315,23 @@ class VentanaOverlay(QWidget):
         self._pintar_cabecera()
 
         cabecera = QHBoxLayout()
-        cabecera.setContentsMargins(4, 4, 4, 0)
-        cabecera.addWidget(self.titulo)
+        self._cabecera = cabecera
+        cabecera.setContentsMargins(12, 6, 6, 2)
+        cabecera.setSpacing(10)
+        cabecera.addWidget(self.logo, 0, Qt.AlignVCenter)
+        cabecera.addWidget(self.titulo, 0, Qt.AlignVCenter)
+        self._hueco_menu = QSpacerItem(22, 1, QSizePolicy.Fixed, QSizePolicy.Minimum)
+        cabecera.addItem(self._hueco_menu)
+        cabecera.addWidget(self.menu, 0, Qt.AlignVCenter)
         cabecera.addStretch(1)
-        cabecera.addWidget(self.pista)
-        cabecera.addWidget(self.boton_guia)
-        cabecera.addWidget(self.boton_fijar)
-        cabecera.addWidget(self.boton_modo)
-        cabecera.addWidget(boton_cerrar)
+        cabecera.addWidget(self.boton_guia, 0, Qt.AlignVCenter)
+        cabecera.addWidget(self.boton_fijar, 0, Qt.AlignVCenter)
+        cabecera.addWidget(self.boton_modo, 0, Qt.AlignVCenter)
+        cabecera.addWidget(boton_cerrar, 0, Qt.AlignVCenter)
+        self.filete = Filete()
 
-        self.pestanas = QTabWidget()
+        # La pagina de inicio (rediseno C): lo que toca hacer ahora.
+        self.tablero = PestanaTablero()
         self.buscador = PestanaBuscador()
         self.mundo = PestanaMundo(diseno=self.config.get("diseno_mundo", DISENO_POR_DEFECTO))
         self.objetivos = PestanaObjetivos()
@@ -328,8 +385,13 @@ class VentanaOverlay(QWidget):
         self._ultima_lectura: tuple[float, int] | None = None
         self._ultima_pintada: tuple[float, int] | None = None
         self._avisos_bandeja: dict[str, float] = {}  # clave -> monotonic del ultimo aviso
-        for pestana, titulo in self._titulos_pestanas():
-            self.pestanas.addTab(pestana, t(titulo))
+        self._construir_navegacion()
+        self.tablero.buscar.connect(self._buscar_desde_tablero)
+        self.tablero.abrir_item.connect(lambda item_id: self._abrir_desde_cursor(item_id, ""))
+        self.tablero.navegar.connect(self.ir_a)
+        # Las metas se conocen desde el principio; el indice llega con los datos.
+        self.tablero.conectar(None, self.objetivos.usuario)
+        self.objetivos.cambiados.connect(self.tablero.marcar_sucio)
         self.compacta = VistaCompacta(self.buscador)
         self.compacta.abrir_completo.connect(self._abrir_completo)
         self.servicio_mundo: ServicioMundo | None = None
@@ -386,14 +448,24 @@ class VentanaOverlay(QWidget):
         self.estado = QLabel("")
         self.estado.setStyleSheet(f"color: {PALETA['suave']};")
         pie = QHBoxLayout()
+        pie.setContentsMargins(8, 0, 8, 0)
         pie.addWidget(self.estado, 1)
         pie.addWidget(self.progreso, 0)
+        pie.addWidget(self.pista, 0)
+
+        # Las secciones, con aire a los lados como en la maqueta.
+        self.zona_secciones = transparente(QWidget())
+        capa_secciones = QVBoxLayout(self.zona_secciones)
+        capa_secciones.setContentsMargins(14, 6, 14, 0)
+        capa_secciones.addWidget(self.secciones)
 
         dentro = QVBoxLayout(self.marco)
-        dentro.setContentsMargins(10, 6, 10, 8)
+        dentro.setContentsMargins(8, 6, 8, 8)
+        dentro.setSpacing(6)
         dentro.addLayout(cabecera)
+        dentro.addWidget(self.filete)
         dentro.addWidget(self.banner)
-        dentro.addWidget(self.pestanas, 1)
+        dentro.addWidget(self.zona_secciones, 1)
         dentro.addWidget(self.compacta, 1)
         dentro.addLayout(pie)
 
@@ -442,6 +514,7 @@ class VentanaOverlay(QWidget):
     def _soltar_indice(self) -> None:
         for objeto, atributo in (
             (self.buscador, "con"), (self.objetivos, "indice"), (self.perfil, "indice"), (self.mundo, "indice"),
+            (self.tablero, "indice"),
         ):
             conexion = getattr(objeto, atributo, None)
             if conexion is not None:
@@ -479,6 +552,7 @@ class VentanaOverlay(QWidget):
         self.builds.conectar_indice(indice.conectar())
         self.agrietados.conectar_indice(indice.conectar())
         self.mundo.conectar_objetivos(indice.conectar(), self.objetivos.usuario)
+        self.tablero.conectar(indice.conectar(), self.objetivos.usuario)
         self._arrancar_mundo()
         self._arrancar_captura()
         self._arrancar_comparador()
@@ -559,6 +633,8 @@ class VentanaOverlay(QWidget):
         self.hilo_mundo.started.connect(self.servicio_mundo.iniciar)
         self.servicio_mundo.actualizado.connect(self.mundo.actualizar)
         self.servicio_mundo.fallo.connect(self.mundo.marcar_desactualizado)
+        self.servicio_mundo.actualizado.connect(self.tablero.actualizar_mundo)
+        self.servicio_mundo.fallo.connect(self.tablero.marcar_desactualizado)
         self.hilo_mundo.start()
 
         self.hilo_market = QThread(self)
@@ -798,6 +874,7 @@ class VentanaOverlay(QWidget):
 
     def resizeEvent(self, evento):  # noqa: N802 - firma de Qt
         super().resizeEvent(evento)
+        self._ajustar_cabecera()
         if self.modo == "compacto" and self._avisos:
             self._elidir_banner()
         if self._guia is not None:
@@ -1272,7 +1349,7 @@ class VentanaOverlay(QWidget):
         self.mostrar()
         if self.modo != "completo":
             self.aplicar_modo("completo")
-        self.pestanas.setCurrentWidget(self.builds)
+        self.ir_a("herramientas/build")
 
     def leer_agrietado(self) -> None:
         """Atajo o boton de la pestana Agrietados: lee la tarjeta que hay bajo el cursor."""
@@ -1288,7 +1365,7 @@ class VentanaOverlay(QWidget):
         self.mostrar()
         if self.modo != "completo":
             self.aplicar_modo("completo")
-        self.pestanas.setCurrentWidget(self.agrietados)
+        self.ir_a("herramientas/agrietados")
 
     def leer_cursor(self) -> None:
         """Atajo de "leer el objeto bajo el cursor": una lectura a la vez.
@@ -1514,7 +1591,7 @@ class VentanaOverlay(QWidget):
         if self.modo == "compacto":
             self.compacta.abrir(item_id)
             return
-        self.pestanas.setCurrentWidget(self.buscador)
+        self.ir_a("buscar")
         self.buscador.abrir(item_id)
 
     def _buscar_desde_mundo(self, texto: str) -> None:
@@ -1522,13 +1599,13 @@ class VentanaOverlay(QWidget):
         self.mostrar()
         if self.modo == "compacto":
             self.aplicar_modo("completo")
-        self.pestanas.setCurrentWidget(self.buscador)
+        self.ir_a("buscar")
         self.buscador.caja.setText(texto)
 
     def _abrir_completo(self, item_id: int) -> None:
         """Enter en la vista compacta: la ficha entera de ese objeto."""
         self.aplicar_modo("completo")
-        self.pestanas.setCurrentWidget(self.buscador)
+        self.ir_a("buscar")
         self.buscador.abrir(item_id)
 
     # -- modo completo y compacto ---------------------------------------------
@@ -1546,11 +1623,13 @@ class VentanaOverlay(QWidget):
         self.modo = modo
         compacto = modo == "compacto"
         video = modo == "video"
-        self.pestanas.setVisible(not compacto)
-        # En modo video se ve solo la pestana Video, sin la barra de pestanas.
-        self.pestanas.tabBar().setVisible(not video)
+        self.zona_secciones.setVisible(not compacto)
+        # En modo video se ve solo el video: sin menu ni sub-pestanas.
+        self.menu.setVisible(not compacto and not video)
+        self.filete.setVisible(not compacto and not video)
+        self._seccion_con_sub("herramientas").subpestanas.setVisible(not video)
         if video:
-            self.pestanas.setCurrentWidget(self.video)
+            self.ir_a("herramientas/video")
         self.compacta.setVisible(compacto)
         self.estado.setVisible(not compacto and not video)
         self.pista.setVisible(not compacto and not video)
@@ -1579,7 +1658,7 @@ class VentanaOverlay(QWidget):
             if zona is not None:
                 self.move(zona.right() - ANCHO_VIDEO - 20, zona.top() + 20)
         else:
-            tamano = (ANCHO_COMPACTO, ALTO_COMPACTO) if compacto else (1100, 700)
+            tamano = (ANCHO_COMPACTO, ALTO_COMPACTO) if compacto else (ANCHO_COMPLETO, ALTO_COMPLETO)
             self.resize(*tamano)
             if compacto and self.isVisible():
                 # Sin sitio guardado, la compacta nace en la esquina superior derecha
@@ -1595,9 +1674,18 @@ class VentanaOverlay(QWidget):
             guardar(self.config)
         if video:
             return
-        caja = self.compacta.caja if compacto else self.buscador.caja
+        caja = self._caja_activa()
         caja.setFocus()
         caja.selectAll()
+
+    def _caja_activa(self):
+        """La caja de busqueda que recibe el foco al abrir: la de la compacta, la del
+        Tablero si se esta en el, o la de Buscar."""
+        if self.modo == "compacto":
+            return self.compacta.caja
+        if self.pagina_actual() is self.tablero:
+            return self.tablero.caja
+        return self.buscador.caja
 
     # -- chincheta: siempre encima en la vista compacta -----------------------
 
@@ -1653,14 +1741,14 @@ class VentanaOverlay(QWidget):
         if self.modo == "compacto":
             self.aplicar_modo("completo")
         if self.modo != "video":
-            self.pestanas.setCurrentWidget(self.video)
+            self.ir_a("herramientas/video")
         self.video.abrir(url)
 
     def abrir_web(self, url: str) -> None:
         """Una pagina web (las builds de Overframe) en la pestana Web, dentro de Farmadex."""
         if self.modo != "completo":
             self.aplicar_modo("completo")
-        self.pestanas.setCurrentWidget(self.web)
+        self.ir_a("herramientas/web")
         self.web.abrir(url)
 
     def _video_cerrado(self) -> None:
@@ -1677,16 +1765,24 @@ class VentanaOverlay(QWidget):
             self.estado.setText(t("No se pudieron borrar todos los datos del reproductor."))
 
     def _pintar_boton_modo(self) -> None:
+        """En la vista completa, MODO JUEGO (la ventana pequena para jugar); en la compacta,
+        volver a la completa; en el modo video, salir del video."""
         if self.modo == "video":
+            self.boton_modo.icono = None
+            self.boton_modo.poner_pista("")
             self.boton_modo.setText(t("Salir del video"))
-            self.boton_modo.setToolTip(t("Vuelve a la vista completa; el video sigue en la pestana Video"))
+            self.boton_modo.setToolTip(t("Vuelve a la vista completa; el video sigue en Herramientas > Video"))
             return
         compacto = self.modo == "compacto"
-        self.boton_modo.setText(t("Completa") if compacto else t("Compacta"))
+        self.boton_modo.icono = None if compacto else "juego"
+        self.boton_modo.poner_pista("" if compacto else ATAJO_MODO)
+        self.boton_modo.setText(t("Completa") if compacto else t("Modo juego"))
+        self._ajustar_cabecera()
         self.boton_modo.setToolTip(
             t("Vista completa ({atajo})", atajo=ATAJO_MODO)
             if compacto
-            else t("Vista compacta para el directo ({atajo})", atajo=ATAJO_MODO)
+            else t("Modo juego: una ventana pequena con la busqueda y lo esencial, para jugar o para "
+                   "el directo ({atajo})", atajo=ATAJO_MODO)
         )
 
     # -- mostrar y ocultar ---------------------------------------------------
@@ -1721,7 +1817,7 @@ class VentanaOverlay(QWidget):
         self.raise_()
         self.activateWindow()
         self._aplicar_encima()
-        caja = self.compacta.caja if self.modo == "compacto" else self.buscador.caja
+        caja = self._caja_activa()
         caja.setFocus()
         caja.selectAll()
         if self.servicio_mundo:
@@ -1746,22 +1842,110 @@ class VentanaOverlay(QWidget):
         self._opacidad = opacidad
         self.marco.setStyleSheet(
             f"#marco {{ background: rgba({PALETA['fondo_rgb']}, {opacidad});"
-            f" border: 1px solid {PALETA['borde']}; border-radius: 12px; }}"
+            f" border: 1px solid {PALETA['borde']}; border-radius: 6px; }}"
         )
 
-    def _titulos_pestanas(self) -> list[tuple[QWidget, str]]:
-        return [
-            (self.buscador, "Buscar"),
-            (self.objetivos, "Objetivos"),
-            (self.primes, "Primes"),
-            (self.mundo, "Mundo"),
-            (self.perfil, "Perfil"),
-            (self.builds, "Build"),
-            (self.agrietados, "Agrietados"),
-            (self.ajustes, "Ajustes"),
-            (self.video, "Video"),
-            (self.web, "Web"),
-        ]
+    # -- navegacion ------------------------------------------------------------
+
+    def _construir_navegacion(self) -> None:
+        """Una pagina por seccion del menu; MIS METAS y HERRAMIENTAS llevan dentro sus
+        sub-pestanas con las paginas de siempre."""
+        self.secciones = transparente(QStackedWidget())
+        self._contenedores: dict[str, QWidget] = {}
+        for clave, _titulo in SECCIONES:
+            if clave in SUBSECCIONES:
+                contenedor = SeccionConSub(
+                    [(sub, t(titulo)) for sub, titulo in SUBSECCIONES[clave]],
+                    {sub: getattr(self, PAGINAS[f"{clave}/{sub}"]) for sub, _t in SUBSECCIONES[clave]},
+                )
+                contenedor.subpestanas.cambiada.connect(lambda sub, c=clave: self.ir_a(f"{c}/{sub}"))
+            else:
+                contenedor = getattr(self, PAGINAS[clave])
+            self._contenedores[clave] = contenedor
+            self.secciones.addWidget(contenedor)
+        self.ir_a("tablero")
+
+    def _seccion_con_sub(self, clave: str) -> "SeccionConSub":
+        return self._contenedores[clave]
+
+    def ruta_de(self, destino) -> str | None:
+        """La ruta ("metas/primes") de un destino: una ruta, una seccion, un alias
+        ("primes", "builds") o el propio widget de la pagina. None si no existe."""
+        if isinstance(destino, QWidget):
+            for ruta, atributo in PAGINAS.items():
+                if getattr(self, atributo, None) is destino:
+                    return ruta
+            for clave, contenedor in self._contenedores.items():
+                if contenedor is destino:
+                    return clave
+            return None
+        destino = str(destino or "")
+        if destino in PAGINAS or destino in self._contenedores:
+            return destino
+        return ALIAS_RUTAS.get(destino)
+
+    def ir_a(self, destino) -> QWidget | None:
+        """Cambia de pagina. `destino`: "tablero", "buscar", "metas" (la ultima sub-pestana
+        que se vio), "metas/primes", "herramientas/video", un alias como "primes" o
+        "builds", o el widget de la pagina. Devuelve la pagina que queda a la vista.
+
+        Es el unico sitio que toca el menu y las sub-pestanas: todo lo que cambia de
+        pagina (abrir una ficha, el video, la guia, la bandeja...) pasa por aqui."""
+        ruta = self.ruta_de(destino)
+        if ruta is None:
+            log.debug("Ruta de navegacion desconocida: %r", destino)
+            return None
+        seccion, _barra, sub = ruta.partition("/")
+        contenedor = self._contenedores[seccion]
+        if isinstance(contenedor, SeccionConSub):
+            contenedor.mostrar(sub or contenedor.subpestanas.activa())
+        self.secciones.setCurrentWidget(contenedor)
+        self.menu.poner_activa(seccion)
+        return self.pagina_actual()
+
+    def pagina_actual(self) -> QWidget | None:
+        """La pagina que se ve (la de dentro de la sub-pestana si la seccion tiene)."""
+        contenedor = self.secciones.currentWidget()
+        if isinstance(contenedor, SeccionConSub):
+            return contenedor.pila.currentWidget()
+        return contenedor
+
+    def ruta_actual(self) -> str | None:
+        return self.ruta_de(self.pagina_actual())
+
+    def _buscar_desde_tablero(self, texto: str) -> None:
+        """Lo tecleado en el Tablero sigue en Buscar, con el cursor al final."""
+        self.ir_a("buscar")
+        self.buscador.caja.setFocus()
+        self.buscador.caja.setText(texto)
+        self.buscador.caja.end(False)
+
+    def _ajustar_cabecera(self) -> None:
+        """Si el menu no cabe a lo ancho, se va quitando lo accesorio, por orden: el atajo
+        del boton de modo, el nombre FARMADEX (queda el logo), aire entre las opciones del
+        menu, el texto del boton de modo (queda su icono), letra mas pequena en el menu y,
+        por ultimo, el boton de la guia (sigue en Ajustes > Ayuda)."""
+        if not hasattr(self, "_cabecera"):
+            return
+        completo = self.modo == "completo"
+        disponible = self.width() - 16  # margenes del marco
+        for nivel in range(7 if completo else 1):
+            self.boton_modo.poner_pista(ATAJO_MODO if completo and nivel < 1 else "")
+            self.titulo.setVisible(nivel < 2)
+            self._hueco_menu.changeSize(22 if nivel < 2 else 6, 1, QSizePolicy.Fixed, QSizePolicy.Minimum)
+            self.boton_guia.setVisible(self.modo != "video" and nivel < 6)
+            self.menu.compactar(nivel >= 3, menuda=nivel >= 5)
+            self.boton_modo.poner_solo_icono(completo and nivel >= 4)
+            self._cabecera.invalidate()
+            if self._cabecera.minimumSize().width() <= disponible:
+                break
+
+    def _pintar_logo(self) -> None:
+        ruta = ruta_icono().with_suffix(".svg")
+        mapa = QIcon(str(ruta)).pixmap(28, 28) if ruta.exists() else QPixmap()
+        if mapa.isNull():
+            mapa = icono_bandeja().scaled(28, 28, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        self.logo.setPixmap(mapa)
 
     def _pintar_pista(self) -> None:
         atajo = self.config.get("hotkey_overlay", "Ctrl+Alt+W")
@@ -1773,12 +1957,17 @@ class VentanaOverlay(QWidget):
         self._pintar_pista()
         self._pintar_boton_modo()
         self.boton_guia.setText(t("Guia"))
-        self.boton_guia.setToolTip(t("Lanza la guia de uso desde el principio"))
-        for i, (_, titulo) in enumerate(self._titulos_pestanas()):
-            self.pestanas.setTabText(i, t(titulo))
+        self.boton_guia.setToolTip(t("Guia") + ": " + t("Lanza la guia de uso desde el principio"))
+        self.boton_fijar.setText(t("Fijar"))
+        self.boton_cerrar.setToolTip(t("Esconder (Escape)"))
+        for clave, titulo in SECCIONES:
+            self.menu.poner_texto(clave, t(titulo))
+        for clave, subs in SUBSECCIONES.items():
+            for sub, titulo in subs:
+                self._seccion_con_sub(clave).subpestanas.poner_texto(sub, t(titulo))
         self.estado.setText("")
-        for pestana in (self.buscador, self.objetivos, self.primes, self.mundo, self.perfil, self.ajustes, self.compacta,
-                        self.video, self.web, self.builds, self.agrietados):
+        for pestana in (self.tablero, self.buscador, self.objetivos, self.primes, self.mundo, self.perfil, self.ajustes,
+                        self.compacta, self.video, self.web, self.builds, self.agrietados):
             pestana.retraducir()
         self._regenerar_avisos()
 
@@ -1787,6 +1976,7 @@ class VentanaOverlay(QWidget):
         self.buscador.repintar()
         self.objetivos.refrescar()
         self.primes.repintar()
+        self.tablero.olvidar_rutas()
 
     def _cambiar_diseno_mundo(self, diseno: str) -> None:
         """Cambio al vuelo: rehace Mundo con la disposicion nueva sin perder lo que ya se sabia."""
@@ -1812,36 +2002,24 @@ class VentanaOverlay(QWidget):
             self.servicio_mundo.actualizado.connect(nuevo.actualizar)
             self.servicio_mundo.fallo.connect(nuevo.marcar_desactualizado)
 
-        indice_pestana = self.pestanas.indexOf(anterior)
-        activa = self.pestanas.currentWidget() is anterior
-        self.pestanas.removeTab(indice_pestana)
-        self.pestanas.insertTab(indice_pestana, nuevo, t("Mundo"))
-        if activa:
-            self.pestanas.setCurrentIndex(indice_pestana)
+        posicion = self.secciones.indexOf(anterior)
+        activa = self.secciones.currentWidget() is anterior
+        self.secciones.removeWidget(anterior)
+        self.secciones.insertWidget(posicion, nuevo)
+        self._contenedores["mundo"] = nuevo
         self.mundo = nuevo
+        if activa:
+            self.ir_a("mundo")
         anterior.deleteLater()
 
     def _pintar_cabecera(self) -> None:
-        self.titulo.setStyleSheet(
-            f"color: {PALETA['acento']}; font-weight: 700; font-size: 17px; letter-spacing: 1px;"
-        )
+        """Lo de la cabecera que lleva color en su propia hoja (el resto son piezas del
+        estilo C, que leen la paleta al pintarse)."""
         self.pista.setStyleSheet(f"color: {PALETA['suave']}; font-size: 12px;")
         self.boton_cerrar.setStyleSheet(
             f"QPushButton {{ background: transparent; border: none; color: {PALETA['suave']};"
             f" font-size: 20px; font-weight: bold; padding: 0; }}"
             f" QPushButton:hover {{ color: {PALETA['texto']}; }}"
-        )
-        self.boton_modo.setStyleSheet(
-            f"QPushButton {{ background: transparent; border: 1px solid {PALETA['borde']};"
-            f" border-radius: 6px; color: {PALETA['suave']}; font-size: 12px; padding: 0 8px; }}"
-            f" QPushButton:hover {{ color: {PALETA['texto']}; border-color: {PALETA['acento']}; }}"
-        )
-        self.boton_guia.setStyleSheet(self.boton_modo.styleSheet())
-        # Fijada se ve encendida (color de acento), suelta como los otros botones.
-        self.boton_fijar.setStyleSheet(
-            self.boton_modo.styleSheet()
-            + f" QPushButton:checked {{ color: {PALETA['acento']}; border-color: {PALETA['acento']};"
-            f" font-weight: 700; }}"
         )
 
     def cambiar_tema(self, nombre: str) -> None:
@@ -1865,6 +2043,9 @@ class VentanaOverlay(QWidget):
         self.web.repintar()
         self.builds.repintar()
         self.agrietados.repintar()
+        self.tablero.repintar()
+        # Las piezas del estilo C se vuelven a medir con la escala nueva y se repintan.
+        refrescar_todo(self)
         # Mundo genera su HTML con la paleta dentro; retraducir lo vuelve a pintar entero.
         self.mundo.retraducir()
         self._regenerar_avisos()
@@ -2013,6 +2194,36 @@ class VentanaOverlay(QWidget):
 
         market.cerrar_compartido()
         super().close()
+
+
+class SeccionConSub(QWidget):
+    """Seccion del menu con sub-pestanas (MIS METAS, HERRAMIENTAS): la fila de
+    sub-pestanas arriba (con `subpestanas.derecha` libre para los controles de cada
+    pagina) y las paginas de siempre debajo, sin tocarlas."""
+
+    def __init__(self, opciones: list[tuple[str, str]], paginas: dict[str, QWidget], parent=None):
+        super().__init__(parent)
+        transparente(self)
+        self.subpestanas = SubPestanasC(opciones)
+        self.pila = transparente(QStackedWidget())
+        self.paginas = dict(paginas)
+        for clave, _texto in opciones:
+            self.pila.addWidget(self.paginas[clave])
+        capa = QVBoxLayout(self)
+        capa.setContentsMargins(0, 0, 0, 0)
+        capa.setSpacing(8)
+        fila_sub = QHBoxLayout()
+        fila_sub.setContentsMargins(4, 2, 0, 0)
+        fila_sub.addWidget(self.subpestanas)
+        capa.addLayout(fila_sub)
+        capa.addWidget(self.pila, 1)
+
+    def mostrar(self, clave: str | None) -> None:
+        pagina = self.paginas.get(clave or "")
+        if pagina is None:
+            return
+        self.pila.setCurrentWidget(pagina)
+        self.subpestanas.poner_activa(clave)
 
 
 def poner_encima_sin_foco(widget: QWidget) -> bool:

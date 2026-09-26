@@ -108,7 +108,7 @@ class Aplicacion:
 
     def _abrir_ajustes(self) -> None:
         self.ventana.mostrar()
-        self.ventana.pestanas.setCurrentWidget(self.ventana.ajustes)
+        self.ventana.ir_a("ajustes")
 
     def _aviso_bandeja(self, texto: str) -> None:
         self.bandeja.showMessage(NOMBRE_APP, texto, self.icono, 10000)

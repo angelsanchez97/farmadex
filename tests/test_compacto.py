@@ -45,12 +45,12 @@ def test_nace_completa_y_alterna_a_compacta(ventana):
     from farmadex.config import cargar
 
     assert ventana.modo == "completo"
-    assert ventana.pestanas.isVisibleTo(ventana) and not ventana.compacta.isVisibleTo(ventana)
-    assert ventana.boton_modo.text() == "Compacta"
+    assert ventana.zona_secciones.isVisibleTo(ventana) and not ventana.compacta.isVisibleTo(ventana)
+    assert ventana.boton_modo.text() == "Modo juego"
 
     ventana.alternar_modo()
     assert ventana.modo == "compacto"
-    assert ventana.compacta.isVisibleTo(ventana) and not ventana.pestanas.isVisibleTo(ventana)
+    assert ventana.compacta.isVisibleTo(ventana) and not ventana.zona_secciones.isVisibleTo(ventana)
     assert ventana.height() == vista_compacta.ALTO and ventana.width() == vista_compacta.ANCHO
     assert ventana.boton_modo.text() == "Completa"
     assert cargar()["overlay_modo"] == "compacto"
@@ -102,7 +102,7 @@ def test_el_atajo_y_el_idioma(ventana):
 
     assert ATAJO_MODO in ventana.boton_modo.toolTip()
     ventana.cambiar_idioma("en")
-    assert ventana.boton_modo.text() == "Compact"
+    assert ventana.boton_modo.text() == "Game mode"
     assert "Enter" in ventana.compacta.pie.text()
 
 
@@ -115,7 +115,7 @@ def test_enter_en_la_compacta_abre_la_ficha_completa(ventana):
     QApplication.sendEvent(ventana.compacta.caja, evento)
     assert recibidos == [7]
     assert ventana.modo == "completo"
-    assert ventana.pestanas.currentWidget() is ventana.buscador
+    assert ventana.pagina_actual() is ventana.buscador
 
 
 def test_sin_indice_la_compacta_no_rompe(ventana):
