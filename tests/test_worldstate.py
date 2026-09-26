@@ -352,3 +352,27 @@ def test_con_warframestat_al_dia_no_se_toca_el_respaldo(desfasado, traductor):
     servicio, buenos, fallos = _servicio_con({url: desfasado, URL_DE: AssertionError("no debia pedirse")}, traductor)
     servicio.refrescar()
     assert len(buenos) == 1 and buenos[0].fuente == "warframestat" and fallos == []
+
+
+def test_el_traductor_casa_objetos_desde_otro_hilo(tmp_path):
+    """El servicio del mundo casa recompensas en su hilo: antes fallaba con
+    'SQLite objects created in a thread can only be used in that same thread'."""
+    import sqlite3
+    import threading
+
+    from farmadex.online.worldstate import Traductor
+
+    ruta = tmp_path / "i.sqlite"
+    con = sqlite3.connect(ruta)
+    con.executescript(
+        "CREATE TABLE nodos(unique_name, nombre_en, nombre_es, planeta_en, planeta_es, mision_en, faccion_en);"
+        "CREATE TABLE glosario(dominio, en, es);"
+    )
+    con.commit()
+    tr = Traductor(con)
+    resultado = {}
+    hilo = threading.Thread(target=lambda: resultado.setdefault("con", tr._con()))
+    hilo.start()
+    hilo.join()
+    assert resultado["con"] is not con and resultado["con"] is not None
+    assert tr._con() is con

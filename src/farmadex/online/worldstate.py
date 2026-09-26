@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import re
 import sqlite3
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 
 from PySide6.QtCore import QObject, QTimer, Signal
 
@@ -209,6 +211,16 @@ class Traductor:
 
     def __init__(self, con: sqlite3.Connection | None):
         self.con = con
+        # El servicio del mundo consulta desde su propio hilo y SQLite no deja usar una
+        # conexion en otro hilo que el suyo: cada hilo abre la suya, de solo lectura.
+        self._hilo_con = threading.get_ident()
+        self._locales = threading.local()
+        self._ruta = ""
+        if con is not None:
+            try:
+                self._ruta = next((f for _, n, f in con.execute("PRAGMA database_list") if n == "main"), "") or ""
+            except sqlite3.Error:
+                self._ruta = ""
         self.nodos: dict[tuple[str, str], tuple[str, str]] = {}
         # Por id de DE ("SolNode48"): lo que hace falta para leer el worldState crudo.
         self.por_id: dict[str, dict] = {}
@@ -232,6 +244,16 @@ class Traductor:
                 self.glosario[(dominio, en)] = es
         except sqlite3.Error as e:  # pragma: no cover - indice a medio construir
             log.warning("Sin traducciones para el mundo: %s", e)
+
+    def _con(self) -> sqlite3.Connection | None:
+        """La conexion valida para el hilo que pregunta."""
+        if self.con is None or threading.get_ident() == self._hilo_con or not self._ruta:
+            return self.con
+        con = getattr(self._locales, "con", None)
+        if con is None:
+            con = sqlite3.connect(f"file:{Path(self._ruta).as_posix()}?mode=ro", uri=True)
+            self._locales.con = con
+        return con
 
     def termino(self, dominio: str, en: str | None) -> str:
         if not en:
@@ -265,7 +287,7 @@ class Traductor:
         if self.con is None:
             return ""
         try:
-            fila = self.con.execute(
+            fila = self._con().execute(
                 "SELECT p.nombre_es, p.nombre_en FROM items i JOIN items p ON p.id = i.padre_id WHERE i.id = ?",
                 (item_id,),
             ).fetchone()
@@ -281,9 +303,9 @@ class Traductor:
         try:
             fila = None
             if unique_name:
-                fila = self.con.execute(sql.format("unique_name = ?"), (unique_name,)).fetchone()
+                fila = self._con().execute(sql.format("unique_name = ?"), (unique_name,)).fetchone()
             if not fila and nombre_en:
-                fila = self.con.execute(sql.format("nombre_en = ?"), (nombre_en,)).fetchone()
+                fila = self._con().execute(sql.format("nombre_en = ?"), (nombre_en,)).fetchone()
         except sqlite3.Error as e:  # pragma: no cover - indice a medio construir
             log.warning("No se pudo casar '%s' con el indice: %s", nombre_en, e)
             return None
