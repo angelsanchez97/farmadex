@@ -10,7 +10,7 @@ from html import unescape
 
 from PySide6.QtCore import QEvent, QPoint, QRect, QSize, Qt, QThread, QTimer, QUrl, Signal
 from PySide6.QtGui import (
-    QColor, QCursor, QDesktopServices, QGuiApplication, QKeySequence, QPainter, QPixmap, QShortcut,
+    QColor, QCursor, QDesktopServices, QGuiApplication, QIcon, QKeySequence, QPainter, QPixmap, QShortcut,
 )
 from PySide6.QtWidgets import (
     QFrame,
@@ -2052,8 +2052,21 @@ def _a_logicas(recompensas: list) -> list:
     return recompensas
 
 
+def ruta_icono() -> "Path":
+    """recursos/iconos/farmadex.ico, tanto en el .exe (_MEIPASS) como desde el codigo."""
+    from pathlib import Path
+
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[3]))
+    return base / "recursos" / "iconos" / "farmadex.ico"
+
+
 def icono_bandeja() -> QPixmap:
-    """Icono sencillo dibujado a mano para no depender de un fichero."""
+    """El icono del programa (el libro dorado); si faltase el fichero, uno dibujado a mano."""
+    ruta = ruta_icono()
+    if ruta.exists():
+        mapa = QIcon(str(ruta)).pixmap(64, 64)
+        if not mapa.isNull():
+            return mapa
     mapa = QPixmap(64, 64)
     mapa.fill(QColor(0, 0, 0, 0))
     pintor = QPainter(mapa)

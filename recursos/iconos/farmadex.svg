@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+<!-- Propuesta 5: libro de consulta dorado (la "dex") con una gema en la tapa -->
+<defs>
+  <linearGradient id="fondo" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#262015"/><stop offset="1" stop-color="#0e0c08"/></linearGradient>
+  <linearGradient id="oro" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fbe3a0"/><stop offset="0.5" stop-color="#e6b450"/><stop offset="1" stop-color="#a0701c"/></linearGradient>
+  <radialGradient id="nucleo" cx="0.5" cy="0.42" r="0.62"><stop offset="0" stop-color="#f0ffff"/><stop offset="0.45" stop-color="#5fe3f0"/><stop offset="1" stop-color="#11707e"/></radialGradient>
+</defs>
+<rect x="10" y="10" width="236" height="236" rx="48" fill="url(#fondo)" stroke="#5e4822" stroke-width="6"/>
+<rect x="70" y="46" width="142" height="178" rx="12" fill="#efe6cf"/>
+<path d="M200 60 L200 212 M190 58 L190 214" stroke="#b8a986" stroke-width="3"/>
+<rect x="52" y="34" width="142" height="178" rx="14" fill="url(#oro)" stroke="#6e4d14" stroke-width="4"/>
+<rect x="52" y="34" width="30" height="178" rx="12" fill="#9c6e1c"/>
+<rect x="94" y="50" width="86" height="146" rx="6" fill="none" stroke="#7a5616" stroke-width="5"/>
+<path d="M137 84 L170 123 L137 162 L104 123 Z" fill="url(#nucleo)" stroke="#2a200c" stroke-width="6" stroke-linejoin="round"/>
+</svg>

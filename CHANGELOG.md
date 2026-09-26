@@ -1,5 +1,12 @@
 # Cambios
 
+## 0.5.1
+
+- Icono nuevo: un libro de consulta dorado con una gema, en vez de la F. Sale
+  en el programa, en la barra de tareas, junto al reloj y en los avisos.
+  Si Windows sigue enseñando el viejo en el acceso directo, es su caché de
+  iconos: se actualiza solo al rato o al reiniciar.
+
 ## 0.5.0
 
 Esta versión sale casi entera de los comentarios de un tester muy detallista.
