@@ -177,14 +177,59 @@ PREFIJOS: dict[str, str] = {a.prefijo.lower(): a.slug for a in ATRIBUTOS}
 SUFIJOS: dict[str, str] = {a.sufijo.lower(): a.slug for a in ATRIBUTOS}
 
 
+# Nombres de las estadisticas en frances, aleman y polaco, de warframe.market (/v2/riven/attributes,
+# 2026-09-27), mas las formas que se leyeron en una tarjeta real en aleman y que ahi no estan
+# ("Einschlag", "Magazingröße"). Portugues e italiano: warframe.market los trae en ingles.
+ALIAS_IDIOMAS: dict[str, tuple[str, ...]] = {
+    'base_damage_/_melee_damage': ('Dégâts', 'Schaden', 'Obrażeniae',),
+    'multishot': ('Tir Multiple', 'Mehrfachschuss', 'Wielostrzał',),
+    'critical_chance': ('Chance Critique', 'Krit. Chance', 'Szansa na Trafienie Krytyczne',),
+    'critical_damage': ('Dégâts Critique', 'Krit. Schaden', 'Obrażenia Krytycznee',),
+    'status_chance': ('Chance de Statut', 'Statuschance', 'Szansa Statusu',),
+    'status_duration': ('Durée de Statut', 'Statusdauer', 'Czas Trwania Statusu',),
+    'fire_rate_/_attack_speed': ("Cadence de Tir / Vitesse d'attaque", 'Schussrate / Angriffsgeschwindigkeit', 'Szybkostrzelność / Szybkość Ataku',),
+    'magazine_capacity': ('Taille du Chargeur', 'Magazinkapazität', 'Pojemność Magazynka', 'Magazingröße',),
+    'reload_speed': ('Vitesse de Rechargement', 'Nachladegeschwindigkeit', 'Prędkość Przeładowania',),
+    'ammo_maximum': ('Chargeur maximum', 'Maximale Munition', 'Maksymalna Amunicja',),
+    'punch_through': ('Pénétration', 'Durchdringung', 'Przebicie na Wylot',),
+    'recoil': ('Recul', 'Waffenrückstoß', 'Odrzut Broni',),
+    'zoom': ('Zoom', 'Przybliżenie',),
+    'projectile_speed': ('Vitesse des Projectiles', 'Projektilgeschwindigkeit', 'Prędkość Pocisku',),
+    'impact_damage': ("Dégâts d'Impact", 'Einschlagsschaden', 'Obrażeń Miażdżących', 'Einschlag',),
+    'puncture_damage': ('Dégâts de Perforation', 'Durchschlagsschaden', 'Obrażenia Przebijające',),
+    'slash_damage': ('Dégâts Tranchant', 'Schnittschaden', 'Obrażenia Tnące',),
+    'cold_damage': ('Dégâts de Glace', 'Kälteschaden', 'Obrażeń Zimna',),
+    'heat_damage': ('Dégâts de Feu', 'Feuerschaden', 'Obrażenia Ogniowych',),
+    'electric_damage': ('Dégâts Électrique', 'Elektroschaden', 'Obrażenia Elektryczne',),
+    'toxin_damage': ('Dégâts de Poison', 'Giftschaden', 'Obrażenia Toksyczne',),
+    'damage_vs_grineer': ('Dégâts aux Grineer', 'Schaden gegen Grineer', 'Obrażeń Zadawanych Grineer',),
+    'damage_vs_corpus': ('Dégâts aux Corpus', 'Schaden gegen Corpus', 'Obrażeń Zadawanych Corpus',),
+    'damage_vs_infested': ('Dégâts aux Infestés', 'Schaden gegen Befallene', 'Obrażeń Zadawanych Pladze',),
+    'range': ('Portée', 'Reichweite', 'Zasięg',),
+    'combo_duration': ('Durée de Combo', 'Kombo-Dauer', 'Czas Trwania Kombo',),
+    'channeling_damage': ('Combo initial', 'Anfängliche Kombo', 'Początkowa Wartość Kombo',),
+    'channeling_efficiency': ('Efficacité des Attaques Lourdes', 'Heavy Attack Efficiency',),
+    'finisher_damage': ('Dégâts de Coup de Grâce', 'Todesstoß-Schaden', 'Obrażenia Dobicia',),
+    'critical_chance_on_slide_attack': ('Chance de critique sur attaque glissée', 'Krit. Chance bei Rutschangriff', 'Szansa Obrażeń Krytycznych Podczas Ataku w Ślizgu',),
+    'chance_to_gain_extra_combo_count': ('Chance de Points de Combo Additionnels', 'Zusätzliche Kombo-Zähler Chance', 'Dodatkowy punkt Licznika Kombo',),
+}
+
+
 def nombres_para_casar() -> list[tuple[str, str]]:
-    """(texto normalizado, slug) de todos los nombres y alias, para casar lo leido."""
+    """(texto normalizado, slug) de todos los nombres y alias, para casar lo leido.
+
+    Con el juego en frances, aleman o polaco la tarjeta dice "+113,2% de Tir Multiple",
+    "+115.6 % Krit. Chance": sin esos nombres la estadistica quedaba sin identificar (sin
+    inventar, pero sin evaluar). La "ł" polaca sale del OCR como "t" o "l".
+    """
     salida = []
     for a in ATRIBUTOS:
-        for texto in (a.nombre_en, a.nombre_es, *a.alias):
+        for texto in (a.nombre_en, a.nombre_es, *a.alias, *ALIAS_IDIOMAS.get(a.slug, ())):
             clave = normalizar(texto)
-            if clave:
-                salida.append((clave, a.slug))
+            if not clave:
+                continue
+            for variante in dict.fromkeys((clave, clave.replace("ł", "t"), clave.replace("ł", "l"))):
+                salida.append((variante, a.slug))
     return salida
 
 

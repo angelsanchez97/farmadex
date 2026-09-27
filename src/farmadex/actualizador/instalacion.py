@@ -46,6 +46,10 @@ PARAMETRO_AUTO = "/AUTOACTUALIZAR=1"
 # del propio instalador, para que el usuario sepa que algo esta pasando mientras
 # Farmadex esta cerrado.
 PARAMETROS = ["/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS", PARAMETRO_AUTO]
+# Arrancado con Windows en la bandeja (el usuario puede estar jugando): ni la ventana
+# de progreso del setup (/VERYSILENT) y, al acabar, Farmadex vuelve a la bandeja sin
+# ventana (instalador.iss le pasa --bandeja si recibe este parametro).
+PARAMETRO_BANDEJA = "/BANDEJA=1"
 RUTA_PENDIENTE = DIR_DESCARGAS / "pendiente.json"
 RUTA_FALLIDA = DIR_DESCARGAS / "fallida.json"
 ERROR_ALREADY_EXISTS = 183
@@ -158,11 +162,16 @@ def otra_instancia_abierta() -> bool:
         return False
 
 
-def parametros_instalador(ruta_setup: Path | str, ruta_log: Path | None = None) -> list[str]:
+def parametros_instalador(
+    ruta_setup: Path | str, ruta_log: Path | None = None, en_bandeja: bool = False
+) -> list[str]:
     """La linea de ordenes del setup en modo actualizacion automatica."""
     if ruta_log is None:
         ruta_log = DIR_LOGS / "instalador.log"
-    return [str(ruta_setup), *PARAMETROS, f"/LOG={ruta_log}"]
+    parametros = list(PARAMETROS)
+    if en_bandeja:
+        parametros = ["/VERYSILENT" if p == "/SILENT" else p for p in parametros] + [PARAMETRO_BANDEJA]
+    return [str(ruta_setup), *parametros, f"/LOG={ruta_log}"]
 
 
 def instalar_silencioso(
@@ -170,6 +179,7 @@ def instalar_silencioso(
     etiqueta: str,
     ejecutable_actual: str | Path | None = None,
     borrar_al_acabar: bool = True,
+    en_bandeja: bool = False,
 ) -> bool:
     """Lanza el setup en silencio y apunta que version se esta instalando.
 
@@ -178,6 +188,7 @@ def instalar_silencioso(
     actual, que al arrancar ve la instalacion pendiente sin cumplir y lo avisa.
     `borrar_al_acabar` False deja el setup donde estaba (el de la carpeta de
     compilaciones no es nuestro: solo se borran los que descarga Farmadex).
+    `en_bandeja` instala sin ninguna ventana y deja Farmadex en la bandeja al acabar.
     """
     ruta_setup = Path(ruta_setup)
     if not ruta_setup.exists():
@@ -191,7 +202,7 @@ def instalar_silencioso(
             "version": etiqueta, "setup": str(ruta_setup), "momento": time.time(),
             "borrar_setup": bool(borrar_al_acabar),
         })
-        orden = _linea_de_ordenes(ruta_setup, Path(ejecutable_actual))
+        orden = _linea_de_ordenes(ruta_setup, Path(ejecutable_actual), en_bandeja=en_bandeja)
         banderas = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(subprocess, "DETACHED_PROCESS", 0)
         subprocess.Popen(orden, close_fds=True, creationflags=banderas)  # noqa: S603 - ruta verificada por SHA-256
     except OSError as e:
@@ -202,7 +213,7 @@ def instalar_silencioso(
     return True
 
 
-def _linea_de_ordenes(ruta_setup: Path, ejecutable_actual: Path) -> str:
+def _linea_de_ordenes(ruta_setup: Path, ejecutable_actual: Path, en_bandeja: bool = False) -> str:
     """cmd ejecuta el setup y, solo si devuelve error, vuelve a abrir el Farmadex actual.
 
     Va como cadena, no como lista: cmd necesita sus propias comillas y `||`. Se
@@ -211,8 +222,10 @@ def _linea_de_ordenes(ruta_setup: Path, ejecutable_actual: Path) -> str:
     "Ana&Luis" partia la orden en dos. Los parametros del setup van sin comillas,
     tal y como se probaron.
     """
-    setup = " ".join(_comillas(p) for p in parametros_instalador(ruta_setup))
+    setup = " ".join(_comillas(p) for p in parametros_instalador(ruta_setup, en_bandeja=en_bandeja))
     exe = _comillas(str(ejecutable_actual))
+    if en_bandeja:
+        exe += " --bandeja"
     cmd = _comillas(os.environ.get("ComSpec") or "cmd.exe")
     return f'{cmd} /d /c "{setup} || start "" {exe}"'
 

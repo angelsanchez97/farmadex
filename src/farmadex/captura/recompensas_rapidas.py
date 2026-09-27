@@ -61,6 +61,8 @@ RE_DE_PEGADO = re.compile(r"\b([Dd]e[l]?)(?=[A-Z])")  # "DeFang"
 RE_DE_PEGADO_ANTES = re.compile(r"(?<=[a-z])(De[l]?)\b")  # "PlanoDe"
 # El juego escribe el plano delante ("Plano de Fang Prime"); el catalogo, detras.
 RE_PLANO_DELANTE = re.compile(r"^plano\s*de\s+")
+# "2 X Forma (Schéma)" y, pegado por el OCR, "2XForma(Schema".
+RE_CANTIDAD_DELANTE = re.compile(r"^\s*\d{1,2}\s*[xX×]\s*(?=[A-ZÁÉÍÓÚ])")
 
 
 def escalar_fila(imagen):
@@ -126,6 +128,10 @@ def ids_conocidas(con: sqlite3.Connection, rutas: list[str]) -> set[int]:
 def variantes_texto(texto: str) -> list[str]:
     """El texto leido y sus arreglos tipicos: "De" pegado y "Plano de X" -> "X plano"."""
     salida = [texto]
+    # "2 X Forma (Schéma)": la Forma doble lleva la cantidad delante (captura real en frances).
+    sin_cantidad = RE_CANTIDAD_DELANTE.sub("", texto)
+    if sin_cantidad != texto and sin_cantidad:
+        salida.append(sin_cantidad)
     despegado = RE_DE_PEGADO.sub(r"\1 ", RE_DE_PEGADO_ANTES.sub(r" \1", texto))
     if despegado != texto:
         salida.append(despegado)
@@ -304,6 +310,10 @@ def casar_fila(
     return salida
 
 
+def _reconocidas(recompensas) -> int:
+    return sum(1 for r in recompensas if r.item_id != SIN_IDENTIFICAR)
+
+
 def desplazar(r: Reconocido, dx: int, dy: int) -> Reconocido:
     x, y, w, h = r.caja
     return Reconocido(r.texto_ocr, r.item_id, r.nombre, r.puntuacion, (x + dx, y + dy, w, h))
@@ -358,13 +368,16 @@ def leer_pantalla(
     tiempos["fila"] = f"{imagen.shape[1]}x{imagen.shape[0]}"
     tiempos["geometria"] = grupos is not None
     en_pantalla = [desplazar(r, region.x, region.y) for r in encontrados]
-    completa = bool(en_pantalla) and (esperadas is None or len(en_pantalla) >= esperadas)
+    # Cuentan las tarjetas reconocidas, no las leidas: con la escala del HUD por debajo
+    # del 100 % la fila fija corta los nombres por arriba ("RhinoPr rime", "ystemes") y
+    # salian cuatro tarjetas sin reconocer que se daban por buenas sin mirar la franja.
+    completa = bool(en_pantalla) and (esperadas is None or _reconocidas(en_pantalla) >= esperadas)
     if completa or lento is None:
         return Lectura(en_pantalla, "fila" if en_pantalla else "nada", tiempos)
     otros = lento(ventana, tiempos)
     if otros is None:
         otros = []
-    if len(otros) > len(en_pantalla):
+    if (_reconocidas(otros), len(otros)) > (_reconocidas(en_pantalla), len(en_pantalla)):
         log.info("La fila de nombres dio %d tarjetas y la franja entera %d: se usa la franja",
                  len(en_pantalla), len(otros))
         return Lectura(otros, "franja", tiempos)

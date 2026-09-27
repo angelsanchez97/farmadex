@@ -491,6 +491,9 @@ def leer_franja(imagen, motor: MotorOCR, casador: Casador, conocidas: Casador | 
         for l in lineas:
             l.x, l.y = int(l.x / escala), int(l.y / escala)
             l.ancho, l.alto = int(l.ancho / escala), int(l.alto / escala)
+    for l in lineas:
+        # "2 X Forma (Schéma)": la cantidad de la Forma doble no es parte del nombre.
+        l.texto = RE_CANTIDAD_DELANTE.sub("", l.texto) or l.texto
     tiempos["_lineas"] = lineas
     tiempos["escala"] = escala
     tiempos["ocr"] = tiempos.get("ocr", 0.0) + time.perf_counter() - t0
@@ -519,6 +522,7 @@ def _se_tocan(a, b) -> bool:
 
 
 RE_NOMBRE_PLAUSIBLE = re.compile(r"^[^\d]{6,}$")
+RE_CANTIDAD_DELANTE = rapidas.RE_CANTIDAD_DELANTE
 
 
 def _letras(texto: str) -> int:
@@ -653,13 +657,20 @@ def texto_platino(r: Recompensa) -> str:
 
 
 def _quitar_repetidos(encontrados: list[Reconocido]) -> list[Reconocido]:
-    """El OCR parte los nombres en varias lineas: se queda la mejor por objeto."""
-    mejores: dict[int, Reconocido] = {}
-    for r in encontrados:
-        previo = mejores.get(r.item_id)
-        if previo is None or r.puntuacion > previo.puntuacion:
-            mejores[r.item_id] = r
-    return sorted(mejores.values(), key=lambda r: r.caja[0])
+    """El OCR parte los nombres en varias lineas: se queda la mejor por objeto y tarjeta.
+
+    Solo se juntan las lecturas del mismo objeto que caen en la misma columna: dos
+    jugadores pueden llevarse la misma pieza (captura real en frances con tres "Rhino
+    Prime - Systèmes (Schéma)" de cuatro), y quedarse con una sola dejaba las otras como
+    tarjetas sin identificar.
+    """
+    salida: list[Reconocido] = []
+    for r in sorted(encontrados, key=lambda r: -r.puntuacion):
+        x, _, ancho, _ = r.caja
+        if any(o.item_id == r.item_id and min(x + ancho, o.caja[0] + o.caja[2]) > max(x, o.caja[0]) for o in salida):
+            continue
+        salida.append(r)
+    return sorted(salida, key=lambda r: r.caja[0])
 
 
 def completar(

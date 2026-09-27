@@ -625,6 +625,7 @@ class PestanaAjustes(QWidget):
     ver_guia = Signal()
     estilo_recompensas_cambiado = Signal(str)
     prioridad_recompensas_cambiada = Signal(str)
+    barra_tareas_cambiada = Signal(bool)  # Ajustes > General > "Mostrar en la barra de tareas"
     ocr_modo_cambiado = Signal(str)  # "auto", "rapido", "ligero" o "windows" (captura/ocr.py)
 
     def __init__(self, parent=None):
@@ -792,6 +793,10 @@ class PestanaAjustes(QWidget):
         self._fijo(self.iniciar_windows.setText, "Iniciar con Windows (escondido en la bandeja)")
         self.iniciar_windows.setChecked(bool(self.config.get("iniciar_con_windows", False)))
         self.iniciar_windows.toggled.connect(self._cambiar_arranque)
+        self.barra_tareas = QCheckBox()
+        self._fijo(self.barra_tareas.setText, "Mostrar en la barra de tareas")
+        self.barra_tareas.setChecked(bool(self.config.get("mostrar_barra_tareas", True)))
+        self.barra_tareas.toggled.connect(self._cambiar_barra_tareas)
         self.aviso_arranque = EtiquetaC("", "pequeno", envolver=True)
         self._pintar_aviso_arranque()
 
@@ -803,6 +808,11 @@ class PestanaAjustes(QWidget):
             "Farmadex se abre solo al encender el PC, sin ventana, listo para el atajo."
         ))
         general.addRow(self.aviso_arranque)
+        general.addRow(self.barra_tareas)
+        general.addRow(self._nota(
+            "Farmadex sale abajo, en la barra de Windows, con su icono: al pulsarlo se minimiza o vuelve."
+            " El modo juego nunca sale ahí."
+        ))
         self._meter("general", self._grupo("General"), general)
 
         # -- version ----------------------------------------------------------------
@@ -822,14 +832,27 @@ class PestanaAjustes(QWidget):
         self._fijo(self.auto_actualizar.setText, "Actualizar automáticamente (se instala al cerrar Farmadex)")
         self.auto_actualizar.setChecked(bool(self.config.get("actualizar_automaticamente", True)))
         self.auto_actualizar.toggled.connect(lambda v: self._guardar("actualizar_automaticamente", v))
+        # Al abrir: instala la version nueva antes de ensenar la ventana. Cuelga de la
+        # de arriba: sin actualizacion automatica no se instala nada solo.
+        self.actualizar_al_abrir = QCheckBox()
+        self._fijo(self.actualizar_al_abrir.setText, "Actualizar al abrir Farmadex")
+        self.actualizar_al_abrir.setChecked(bool(self.config.get("actualizar_al_abrir", True)))
+        self.actualizar_al_abrir.setEnabled(self.auto_actualizar.isChecked())
+        self.actualizar_al_abrir.toggled.connect(lambda v: self._guardar("actualizar_al_abrir", v))
+        self.auto_actualizar.toggled.connect(self.actualizar_al_abrir.setEnabled)
         version = QVBoxLayout()
         version.setSpacing(px(6, False))
         version.addWidget(self.etiqueta_version)
         version.addWidget(self.aviso_version)
         version.addWidget(self.auto_actualizar)
+        version.addWidget(self.actualizar_al_abrir)
         version.addWidget(self._nota(
             "La versión nueva se baja sola, se comprueba y se instala al cerrar Farmadex, "
             "sustituyendo a la anterior. Tus objetivos y ajustes se conservan."
+        ))
+        version.addWidget(self._nota(
+            "Con «Actualizar al abrir», si al abrir Farmadex hay una versión nueva, se instala antes de "
+            "empezar. Si Farmadex se abre solo con Windows, no sale ninguna ventana."
         ))
         version.addLayout(fila(self.boton_comprobar, self.boton_instalar, self.boton_reiniciar, None,
                                espacio=px(8, False)))
@@ -1527,6 +1550,10 @@ class PestanaAjustes(QWidget):
     def _guardar(self, clave: str, valor) -> None:
         self.config[clave] = valor
         guardar(self.config)
+
+    def _cambiar_barra_tareas(self, mostrar: bool) -> None:
+        self._guardar("mostrar_barra_tareas", bool(mostrar))
+        self.barra_tareas_cambiada.emit(bool(mostrar))
 
     def _abrir_acerca(self) -> None:
         abrir_acerca_de(self.window())

@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QTimer, Signal
+from PySide6.QtCore import QObject, QTimer, Signal, Slot
 
 from ..config import PLATAFORMA
 from ..idiomas import t
@@ -800,7 +800,17 @@ class ServicioMundo(QObject):
         self.temporizador.start(self.SEGUNDOS_VISIBLE * 1000)
         self.refrescar()
 
+    @Slot(bool)
     def cadencia(self, visible: bool) -> None:
+        """Cambia cada cuanto se pide el mundo. Solo por senal (`ir_a`/`Signal.emit`):
+
+        `self.temporizador` vive en el hilo de este servicio (`moveToThread`), y con
+        el timer activo `setInterval()` lo para y lo vuelve a arrancar por dentro. Una
+        llamada de Python normal desde el hilo de la interfaz tocaria ese temporizador
+        desde otro hilo: Qt lo deja pasar sin excepcion, pero avisa por qWarning
+        ("Timers cannot be stopped/started from another thread"), justo lo que se vio
+        en los registros de dos usuarios al esconder o ensenar la ventana.
+        """
         if self.temporizador:
             self.temporizador.setInterval(
                 (self.SEGUNDOS_VISIBLE if visible else self.SEGUNDOS_OCULTO) * 1000
@@ -856,6 +866,10 @@ class ServicioMundo(QObject):
             self.fallo.emit(t("la API no dice de cuando son sus datos"))
 
     def cerrar(self) -> None:
-        if self.temporizador:
-            self.temporizador.stop()
+        """Cierra el cliente HTTP. Se llama desde el hilo de la interfaz, justo antes de
+        parar `hilo_mundo` (`VentanaOverlay.cerrar_de_verdad`): no toca `self.temporizador`
+        (vive en ese hilo) porque pararlo aqui seria el mismo cruce de hilos de
+        `cadencia()` (ver su docstring); al parar el hilo justo despues, el temporizador
+        deja de sonar igualmente sin necesidad de detenerlo a mano.
+        """
         self.cliente.cerrar()

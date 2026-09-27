@@ -38,6 +38,9 @@ ESPERA_REINTENTO = 1.0
 TROZO = 256 * 1024
 # Un instalador de Farmadex ronda los 150 MB; mas de 1 GB es que algo no cuadra.
 TAMANO_MAXIMO = 1024 * 1024 * 1024
+# Apunte del instalador ya bajado y comprobado (version, fichero y huella): lo lee el
+# arranque para instalarlo antes de abrir la ventana (actualizador/al_abrir.py).
+NOMBRE_LISTA = "lista.json"
 
 
 class ErrorDescarga(RuntimeError):
@@ -107,6 +110,7 @@ def descargar(
     if destino.exists() and sha256_de(destino) == huella:
         if progreso:
             progreso(destino.stat().st_size, destino.stat().st_size)
+        apuntar_lista(carpeta, version.etiqueta, destino, huella)
         return destino
     if destino.exists():
         destino.unlink()
@@ -135,7 +139,49 @@ def descargar(
 
     parcial.replace(destino)
     log.info("Instalador %s descargado y comprobado: %s", version.etiqueta, destino)
+    apuntar_lista(carpeta, version.etiqueta, destino, huella)
     return destino
+
+
+def apuntar_lista(carpeta: Path | str, etiqueta: str, destino: Path, huella: str) -> None:
+    """Deja escrito que instalador esta listo, para instalarlo al abrir Farmadex."""
+    import json
+
+    ruta = Path(carpeta) / NOMBRE_LISTA
+    try:
+        ruta.write_text(
+            json.dumps({"version": etiqueta, "fichero": destino.name, "sha256": huella}), encoding="utf-8"
+        )
+    except OSError as e:
+        # Sin apunte no se pierde nada: se instala al cerrar, como siempre.
+        log.info("No se pudo apuntar el instalador listo: %s", e)
+
+
+def leer_lista(carpeta: Path | str = DIR_DESCARGAS) -> tuple[str, Path, str] | None:
+    """(version, ruta, huella) del instalador apuntado como listo, o None."""
+    import json
+
+    carpeta = Path(carpeta)
+    try:
+        datos = json.loads((carpeta / NOMBRE_LISTA).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(datos, dict):
+        return None
+    etiqueta = str(datos.get("version") or "")
+    # Solo el nombre: nada de rutas que salgan de la carpeta de descargas.
+    fichero = Path(str(datos.get("fichero") or "")).name
+    huella = str(datos.get("sha256") or "").lower()
+    if not etiqueta or not fichero or not re.fullmatch(r"[0-9a-f]{64}", huella):
+        return None
+    return etiqueta, carpeta / fichero, huella
+
+
+def borrar_lista(carpeta: Path | str = DIR_DESCARGAS) -> None:
+    try:
+        (Path(carpeta) / NOMBRE_LISTA).unlink(missing_ok=True)
+    except OSError:
+        pass
 
 
 def _con_reintentos(cliente: httpx.Client, url: str, parcial: Path, progreso, cancelado, intentos: int) -> None:

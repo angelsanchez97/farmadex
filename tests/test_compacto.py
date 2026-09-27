@@ -173,7 +173,7 @@ def test_los_avisos_se_reescriben_al_cambiar_de_idioma_y_de_tema(ventana):
 def test_la_compacta_espera_a_que_se_termine_de_escribir(ventana, monkeypatch):
     """Cada tecla no busca ni pide precio: se espera un momento, como en Buscar."""
     busquedas = []
-    monkeypatch.setattr(ventana.compacta, "_buscar", busquedas.append)
+    monkeypatch.setattr(ventana.compacta, "_buscar_en_fondo", busquedas.append)
     ventana.alternar_modo()
     for i in range(1, 6):
         ventana.compacta.caja.setText("rhino"[:i])

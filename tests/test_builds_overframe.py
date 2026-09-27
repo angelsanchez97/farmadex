@@ -297,7 +297,10 @@ def test_boton_overframe_en_build_con_el_equipo_reconocido(app, tmp_path, monkey
     p.abrir_web.connect(emitidas.append)
 
     p.mostrar_build(Build(equipados=[Reconocido("Vitality", 2, "Vitalidad", 100.0, (0, 0, 1, 1))]))
-    assert p.boton_overframe.isHidden() and p.url_overframe() == ""
+    # Siempre a la vista; sin equipo no abre nada y lleva al buscador para elegirlo a mano.
+    assert not p.boton_overframe.isHidden() and p.url_overframe() == ""
+    p.boton_overframe.click()
+    assert emitidas == [] and "buscador" in p.estado.text()
     p.mostrar_build(Build(equipo=Reconocido("EXCALIBUR", 1, "Excalibur", 100.0, (0, 0, 1, 1))))
     assert not p.boton_overframe.isHidden()
     p.boton_overframe.click()

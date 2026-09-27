@@ -14,7 +14,7 @@ from .config import cargar, crear_carpetas
 from .hotkeys import GestorHotkeys
 from .registro_log import configurar, instalar_gancho_excepciones, obtener
 from .ui import rueda
-from .ui.overlay import VentanaOverlay, icono_bandeja
+from .ui.overlay import VentanaOverlay, icono_bandeja, icono_ventana
 from .ui.widgets import HOJA_ESTILOS
 
 # "Farmadex.exe --cerrar": pide al Farmadex abierto que se cierre (lo usa quien
@@ -42,6 +42,8 @@ class Aplicacion:
         rueda.instalar(self.qt)
 
         self.icono = QIcon(icono_bandeja())
+        # El libro tambien en la barra de tareas y en Alt+Tab (ventana y avisos).
+        self.qt.setWindowIcon(icono_ventana())
         self.ventana = VentanaOverlay()
         self.ventana.cerrar_programa.connect(self.salir)
         self.ventana.ajustes.hotkeys_cambiadas.connect(self.recargar_hotkeys)
@@ -314,6 +316,15 @@ def main(argv: list[str] | None = None) -> int:
                  "se le ha pedido que se ensene" if llego else "no contesta; este se cierra igualmente")
         return 0
     instancia.escuchar()
+
+    # Actualizar al abrir: si hay version nueva, se instala antes de construir la
+    # ventana (el setup vuelve a abrir Farmadex al acabar). Nunca impide arrancar.
+    from .actualizador import al_abrir
+
+    if al_abrir.actualizar_al_abrir(cargar(), argumentos, en_bandeja=en_bandeja):
+        instancia.soltar()
+        vigilar_cierre(0)
+        return 0
 
     try:
         aplicacion = Aplicacion(argumentos, en_bandeja=en_bandeja, instancia=instancia)

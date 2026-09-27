@@ -48,6 +48,21 @@ foreach ($ruta in $sobra) {
     }
 }
 
+# rapidfuzz cae en silencio a Python puro si en el .exe le falta alguna pieza de sus modulos
+# compilados (paso con la DLL de rapidfuzz.libs): casar nombres y buscar se vuelven cien veces
+# mas lentos y el programa parece congelado. El propio .exe lo comprueba; si falla, no se publica.
+Write-Host "  Comprobando que rapidfuzz va compilado dentro del .exe..."
+$prueba = Start-Process "dist\Farmadex\Farmadex.exe" -ArgumentList "--comprobar-rapidfuzz" -PassThru -WindowStyle Hidden
+$null = $prueba.Handle  # sin tocar Handle, PowerShell 5.1 pierde el ExitCode tras WaitForExit(ms)
+if (-not $prueba.WaitForExit(60000)) {
+    Stop-Process -Id $prueba.Id -Force -ErrorAction SilentlyContinue
+    throw "El .exe no respondio a --comprobar-rapidfuzz en 60 s"
+}
+if ($prueba.ExitCode -ne 0) {
+    throw "El .exe usa rapidfuzz en Python puro (codigo $($prueba.ExitCode)): revisa rapidfuzz en farmadex.spec"
+}
+Write-Host "  rapidfuzz compilado: bien"
+
 Write-Host "`n[4/5] Zip portable" -ForegroundColor Cyan
 $zip = "dist\Farmadex-$version-portable.zip"
 Compress-Archive -Path "dist\Farmadex\*" -DestinationPath $zip -Force

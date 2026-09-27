@@ -33,16 +33,29 @@ ALTO_MINIMO_LECTURA = 500
 
 
 def armas_conocidas(con=None) -> list[ArmaConocida]:
-    """Las armas con agrietado, con su nombre en castellano si el indice lo tiene."""
-    armas = mercado.compartido().armas()
+    """Las armas con agrietado, con su nombre en castellano si el indice lo tiene y en los
+    otros idiomas del juego que traiga (frances, aleman, portugues, italiano, polaco)."""
+    return armas_con_nombres(mercado.compartido().armas(), con)
+
+
+def armas_con_nombres(armas, con=None) -> list[ArmaConocida]:
     nombres_es: dict[str, str] = {}
+    otros: dict[str, list[str]] = {}
     if con is not None and armas:
         try:
             filas = con.execute("SELECT unique_name, nombre_es FROM items WHERE nombre_es IS NOT NULL")
             nombres_es = {u: n for u, n in filas if n}
         except Exception as e:  # noqa: BLE001 - sin nombres en castellano se lee igual
             log.debug("Sin nombres en castellano para las armas: %s", e)
-    return [ArmaConocida(a.slug, nombres_es.get(a.unique_name) or a.nombre_en, a.nombre_en) for a in armas]
+        try:
+            filas = con.execute("SELECT i.unique_name, n.nombre FROM items_nombres n JOIN items i ON i.id = n.item_id")
+            for unico, nombre in filas:
+                if nombre and nombre not in otros.setdefault(unico, []):
+                    otros[unico].append(nombre)
+        except Exception as e:  # noqa: BLE001 - indice viejo sin otros idiomas
+            log.debug("Sin nombres en otros idiomas para las armas: %s", e)
+    return [ArmaConocida(a.slug, nombres_es.get(a.unique_name) or a.nombre_en, a.nombre_en,
+                         tuple(otros.get(a.unique_name, ()))) for a in armas]
 
 
 class LectorAgrietado(LectorBase):

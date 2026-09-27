@@ -122,11 +122,11 @@
     "Duviri": "Duviri"
   },
   "rareza": {
-    "Common": "Comun",
-    "Uncommon": "Poco comun",
+    "Common": "Común",
+    "Uncommon": "Poco común",
     "Rare": "Raro",
     "Legendary": "Legendario",
-    "Very Common": "Muy comun",
+    "Very Common": "Muy común",
     "Ultra Rare": "Ultra raro"
   },
   "refinamiento": {
@@ -136,9 +136,9 @@
     "Radiant": "Radiante"
   },
   "rotacion": {
-    "A": "Rotacion A",
-    "B": "Rotacion B",
-    "C": "Rotacion C"
+    "A": "Rotación A",
+    "B": "Rotación B",
+    "C": "Rotación C"
   },
   "tipo_fuente": {
     "reliquia": "Reliquias",

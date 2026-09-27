@@ -45,10 +45,10 @@ def test_nombre_y_glosa_siguen_al_idioma(castellano_al_salir):
     idiomas.cargar("es")
     assert idiomas.nombre(fila) == "Sistemas"
     assert idiomas.nombre(fila, "padre") == "Ash Prime"
-    assert idiomas.glosa("Comun", "Common") == "Comun"
+    assert idiomas.glosa("Común", "Common") == "Común"
     idiomas.cargar("fr")
     assert idiomas.nombre(fila) == "Systems"
-    assert idiomas.glosa("Comun", "Common") == "Commun"
+    assert idiomas.glosa("Común", "Common") == "Commun"
     # Un termino que el catalogo no trae sale en el ingles del juego, no en castellano.
     assert idiomas.glosa("Defensa movil", "Mobile Defense") == "Mobile Defense"
 

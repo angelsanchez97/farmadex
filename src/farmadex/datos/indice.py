@@ -807,14 +807,11 @@ def buscar(con: sqlite3.Connection, texto: str, limite: int = 40) -> list[dict]:
 
     mejor_nivel = min((c[0] for c in candidatos.values()), default=9)
     if mejor_nivel > 1 or len(candidatos) < 3:
-        textos, ids, idiomas = _candidatos_difusos(con)
+        textos, ids, idiomas, ordenados = _candidatos_difusos(con)
         # token_sort_ratio: mismos aciertos que WRatio con las faltas tipicas, en un
         # tercio del tiempo, y no prefiere 'erra' a 'serration' para 'serracion'.
-        for _, puntos, i in rf_process.extract(
-            normal, textos, scorer=fuzz.token_sort_ratio, limit=limite * 3,
-            score_cutoff=CORTE_DIFUSO,
-        ):
-            anotar(ids[i], 4, float(puntos), textos[i], idiomas[i])
+        for i, puntos in _parecidos(normal, textos, limite * 3, ordenados):
+            anotar(ids[i], 4, puntos, textos[i], idiomas[i])
     if not candidatos:
         return []
 
@@ -909,17 +906,49 @@ def _items_con_fuentes(con: sqlite3.Connection) -> frozenset:
     return guardado[1]
 
 
-# Textos de la tabla 'busqueda' por fichero de indice: (construido_en, textos, ids, idiomas).
+# Textos de la tabla 'busqueda' por fichero de indice:
+# (construido_en, textos, ids, idiomas, textos con las palabras ordenadas).
 # Cargarlos y normalizarlos en cada busqueda difusa costaba 80-90 ms; cacheados, 15.
-_CACHE_DIFUSO: dict[str, tuple[str, list[str], list[int], list[str]]] = {}
+_CACHE_DIFUSO: dict[str, tuple[str, list[str], list[int], list[str], list[str]]] = {}
 
 
-def _candidatos_difusos(con: sqlite3.Connection) -> tuple[list[str], list[int], list[str]]:
+def _palabras_ordenadas(texto: str) -> str:
+    return " ".join(sorted(texto.split()))
+
+
+def _parecidos(normal: str, textos: list[str], limite: int,
+               ordenados: list[str] | None = None) -> list[tuple[int, float]]:
+    """(posicion, puntos) de los `limite` textos mas parecidos, de mas a menos.
+
+    Da exactamente lo mismo que `rf_process.extract(..., scorer=fuzz.token_sort_ratio)`,
+    pero mucho mas deprisa y sin trabar la ventana:
+    - token_sort_ratio es `ratio` sobre las palabras ordenadas; ordenar las ~100.000 del
+      indice en cada busqueda era casi todo el coste (~45 ms). Con `ordenados` hecho una
+      vez (y cacheado) queda en ~5 ms.
+    - `cdist` suelta el GIL mientras compara; `extract` no, y la ventana se quedaba sin
+      responder aunque la busqueda fuese en otro hilo.
+    """
+    import numpy as np
+
+    if ordenados is None:
+        ordenados = [_palabras_ordenadas(t) for t in textos]
+    puntos = rf_process.cdist(
+        [_palabras_ordenadas(normal)], ordenados, scorer=fuzz.ratio, score_cutoff=CORTE_DIFUSO,
+        dtype=np.float64, workers=1,
+    )[0]
+    elegidos = np.flatnonzero(puntos >= CORTE_DIFUSO).tolist()
+    elegidos.sort(key=lambda i: (-puntos[i], i))
+    return [(i, float(puntos[i])) for i in elegidos[:limite]]
+
+
+def _candidatos_difusos(con: sqlite3.Connection) -> tuple[list[str], list[int], list[str], list[str]]:
     ruta, version = _version_indice(con)
     guardado = _CACHE_DIFUSO.get(ruta) if ruta else None
     if guardado is None or guardado[0] != version:
         filas = con.execute("SELECT texto, item_id, idioma FROM busqueda").fetchall()
-        guardado = (version, [f[0] for f in filas], [f[1] for f in filas], [f[2] for f in filas])
+        textos = [f[0] for f in filas]
+        guardado = (version, textos, [f[1] for f in filas], [f[2] for f in filas],
+                    [_palabras_ordenadas(t) for t in textos])
         if ruta:
             _CACHE_DIFUSO[ruta] = guardado
-    return guardado[1], guardado[2], guardado[3]
+    return guardado[1], guardado[2], guardado[3], guardado[4]

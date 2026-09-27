@@ -148,8 +148,12 @@ class RellenoFilas(QObject):
         documento = self.vista.document()
         maqueta = documento.documentLayout()
         self._aplicando = True
+        # Primero se mide todo y luego se pinta todo de una vez, dentro de un solo bloque de
+        # edicion: cambiar el fondo celda a celda rehacia la maqueta del documento en cada
+        # una y una ficha con muchas fuentes (Sierra, reliquias) tardaba ~0,3 s en abrirse.
+        cambios = []
         try:
-            for tabla, fila, valor in self._filas():
+            for tabla, fila, valor in list(self._filas()):
                 relleno = tabla.format().cellPadding()
                 # La primera columna es la franja de rareza: se respeta su color.
                 celdas = [tabla.cellAt(fila, c) for c in range(1, tabla.columns())]
@@ -168,6 +172,14 @@ class RellenoFilas(QObject):
                     formato = celda.format()
                     if formato.background() != pincel:
                         formato.setBackground(pincel)
+                        cambios.append((celda, formato))
+            if cambios:
+                cursor = QTextCursor(documento)
+                cursor.beginEditBlock()
+                try:
+                    for celda, formato in cambios:
                         celda.setFormat(formato)
+                finally:
+                    cursor.endEditBlock()
         finally:
             self._aplicando = False

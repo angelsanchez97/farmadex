@@ -66,6 +66,8 @@ POR_DEFECTO = {
     "overlay_geometria_video": None,
     # Chincheta de la vista compacta (modo juego): encima del juego aunque se haga clic en el.
     "compacta_siempre_encima": True,
+    # Boton de Farmadex en la barra de tareas de Windows (el modo juego nunca sale en ella).
+    "mostrar_barra_tareas": True,
     # Tarjetas HUD del modo juego (siguiente pieza y fisura util) encendidas.
     "modo_juego_tarjetas": True,
     # Mis metas > Primes: orden de la rejilla, si entran los de la Boveda y con que
@@ -131,6 +133,9 @@ POR_DEFECTO = {
     # Descargar la version nueva sola e instalarla al cerrar Farmadex (o al pulsar
     # "Reiniciar y actualizar"). Apagado, solo se avisa con el enlace de descarga.
     "actualizar_automaticamente": True,
+    # Al abrir Farmadex (no al arrancar con Windows), si hay version nueva se instala
+    # antes de ensenar la ventana, con una ventanita de progreso. Necesita la de arriba.
+    "actualizar_al_abrir": True,
     "carpeta_actualizaciones": str(DIR_ACTUALIZACIONES),
     "ruta_eelog": str(Path(os.environ.get("LOCALAPPDATA", Path.home())) / "Warframe" / "EE.log"),
 }

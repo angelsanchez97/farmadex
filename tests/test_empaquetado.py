@@ -76,3 +76,28 @@ def test_los_scripts_de_empaquetado_no_llevan_caracteres_de_control():
     for fichero in list(raiz.glob("*.ps1")) + list(raiz.glob("*.iss")) + list(raiz.glob("*.spec")):
         malos = re.findall(rb"[\x00-\x08\x0b\x0c\x0e-\x1f]", fichero.read_bytes())
         assert not malos, f"{fichero.name} lleva caracteres de control: {malos}"
+
+
+def test_rapidfuzz_lleva_su_carpeta_libs_al_exe():
+    """Los compilados de rapidfuzz enlazan contra un msvcp140-<huella>.dll que vive en
+    site-packages/rapidfuzz.libs. Sin esa carpeta en el .exe, rapidfuzz caia en silencio a
+    Python puro y buscar o casar nombres tardaba segundos."""
+    assert 'collect_delvewheel_libs_directory("rapidfuzz"' in SPEC
+
+
+def test_construir_comprueba_que_rapidfuzz_va_compilado_en_el_exe():
+    assert "--comprobar-rapidfuzz" in PS1
+    assert "ExitCode -ne 0" in PS1
+
+
+def test_el_arranque_sabe_comprobar_rapidfuzz_sin_abrir_la_aplicacion():
+    import subprocess
+    import sys
+
+    salida = subprocess.run(
+        [sys.executable, str(RAIZ / "empaquetado" / "arranque.py"), "--comprobar-rapidfuzz"],
+        env={**__import__("os").environ, "PYTHONPATH": str(RAIZ / "src")},
+        capture_output=True, timeout=60,
+    )
+    # En el entorno de desarrollo rapidfuzz va compilado: 0. Con Python puro saldria 3.
+    assert salida.returncode == 0, salida.stderr

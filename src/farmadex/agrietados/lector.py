@@ -30,8 +30,9 @@ RE_STAT = re.compile(
     r"^\s*(?P<signo>[+\-−–—]|f|t)?\s*(?P<valor>(?:\d{1,3}|[Oo](?=[.,]))(?:[.,]\d{1,2})?)\s*(?P<unidad>%|96|9|s|m)?\s*(?P<resto>.*)$"
 )
 # "MR 8", "MR=13", "MASTERY 9", "MASTERY品9", "RM 8", "MAESTRIA 12".
-RE_MR = re.compile(r"(?i)\b(?:MR|RM|MASTERY|MAESTR[IÍ]A)\D{0,4}(\d{1,2})\b")
-RE_MR_SOLO = re.compile(r"(?i)^(?:MR|RM|MASTERY|MAESTR[IÍ]A)\W*$")
+# En frances pone "PM 11" (captura real de YouTube, 2025).
+RE_MR = re.compile(r"(?i)\b(?:MR|RM|PM|MASTERY|MAESTR[IÍ]A)\D{0,4}(\d{1,2})\b")
+RE_MR_SOLO = re.compile(r"(?i)^(?:MR|RM|PM|MASTERY|MAESTR[IÍ]A)\W*$")
 # El icono de variar se lee como "0" u "O" y detras van las veces: "011", "O4", "050".
 RE_VARIADO = re.compile(r"^[0O]\s?(\d{1,3})$")
 RE_SOLO_DIGITOS = re.compile(r"^[\dOo\-–~+\s]+[A-Za-z]?$")
@@ -82,6 +83,9 @@ class ArmaConocida:
     slug: str
     nombre: str  # como lo escribe el juego (en ingles o espanol)
     nombre_en: str
+    # El nombre en frances, aleman, portugues, italiano y polaco (del indice): con el juego
+    # en frances, el "Laser Rifle" de un companero es "Fusil Laser".
+    otros_nombres: tuple[str, ...] = ()
 
 
 class LectorTarjeta:
@@ -91,7 +95,7 @@ class LectorTarjeta:
         self.armas = armas
         self._claves: dict[str, ArmaConocida] = {}
         for arma in armas:
-            for nombre in (arma.nombre, arma.nombre_en):
+            for nombre in (arma.nombre, arma.nombre_en, *arma.otros_nombres):
                 clave = normalizar(nombre)
                 if clave:
                     self._claves.setdefault(clave, arma)
@@ -237,6 +241,9 @@ class LectorTarjeta:
             tarjeta.estadisticas.append(self._interpretar_stat(texto, confianza_ocr))
 
     def _interpretar_stat(self, texto: str, confianza_ocr: float) -> EstadisticaLeida:
+        multiplicador = RE_MULTIPLICADOR.match(texto)
+        if multiplicador:
+            return self._interpretar_multiplicador(texto, multiplicador, confianza_ocr)
         m = RE_STAT.match(texto)
         if not m:
             return EstadisticaLeida(texto, None, None, False, 0.0)
@@ -267,6 +274,22 @@ class LectorTarjeta:
             negativo = False
             signo_dudoso = True
         return EstadisticaLeida(texto, valor, slug, negativo, confianza_ocr * (puntos / 100.0), signo_dudoso)
+
+    def _interpretar_multiplicador(self, texto: str, m: re.Match, confianza_ocr: float) -> EstadisticaLeida:
+        """"x1,4 points de Dégâts aux Infestés" (tarjeta real en frances, 2025): el dano a
+        una faccion va como multiplicador. x1.4 es +40 % y x0.53, -47 %."""
+        cifra = m.group("valor").replace(",", ".").translate(str.maketrans("lIiO", "1110"))
+        try:
+            factor = float(cifra)
+        except ValueError:
+            return EstadisticaLeida(texto, None, None, False, 0.0)
+        porcentaje = round((factor - 1) * 100, 1)
+        resto = RE_PUNTOS_DE.sub("", m.group("resto") or "")
+        slug, puntos = self._casar_atributo(resto)
+        if slug is None or not slug.startswith("damage_vs_"):
+            # Solo el dano a facciones va asi: otra cosa es una mala lectura.
+            return EstadisticaLeida(texto, abs(porcentaje), None, porcentaje < 0, confianza_ocr * 0.5)
+        return EstadisticaLeida(texto, abs(porcentaje), slug, porcentaje < 0, confianza_ocr * (puntos / 100.0))
 
     def _casar_atributo(self, texto: str) -> tuple[str | None, float]:
         # Fuera los iconos de elemento que el OCR convierte en letras sueltas ("*Cold",
@@ -373,7 +396,7 @@ class LectorTarjeta:
 def _separar_pie_pegado(lineas: list[Leido]) -> list[Leido]:
     """"+7.9%StatusChance MASTERY8" son dos lineas que el OCR junto: se separan."""
     salida = []
-    for linea in lineas:
+    for linea in _separar_stats_pegadas(lineas):
         texto = linea.texto.strip()
         m = RE_MR.search(texto)
         if m and m.start() > 0 and _parece_stat(texto[: m.start()]):
@@ -384,7 +407,36 @@ def _separar_pie_pegado(lineas: list[Leido]) -> list[Leido]:
     return salida
 
 
+# Una segunda estadistica pegada detras de otra en la misma linea: "+115.6%Krit.Chance
+# +37.4.% Nachladegeschwindigk" (tarjeta real en aleman; las palabras largas parten la
+# linea y el OCR junta las dos). Ninguna estadistica lleva dentro " +37.4 %".
+RE_OTRA_STAT = re.compile(r"\s+(?=[+\-−–]\s?\d{1,3}(?:[.,]\d{1,2})?\.?\s*%|[xX×]\s?[\dlI][.,]\d)")
+# El dano a una faccion como multiplicador: "x1,4 points de Degats aux Infestes", "x0,53...";
+# el OCR lee a veces el 1 como "l".
+RE_MULTIPLICADOR = re.compile(r"^\s*[xX×]\s?(?P<valor>[\dlIiO][.,]\d{1,2})\s*(?P<resto>.*)$")
+RE_PUNTOS_DE = re.compile(r"(?i)^\s*points?\s*de\s*")
+
+
+def _separar_stats_pegadas(lineas: list[Leido]) -> list[Leido]:
+    salida = []
+    for linea in lineas:
+        # "37.4.%": un punto colado delante del "%".
+        trozos = [re.sub(r"(?<=\d)\.(?=\s*%)", "", t) for t in RE_OTRA_STAT.split(linea.texto.strip()) if t]
+        # El nombre de la segunda puede seguir en la linea de abajo ("+37.4 %" / "Nachlade...").
+        if len(trozos) > 1 and all(_parece_stat(t) for t in trozos):
+            for i, trozo in enumerate(trozos):
+                salida.append(Leido(trozo, linea.x, linea.y + i, linea.ancho, linea.alto, linea.confianza))
+            continue
+        if len(trozos) == 1 and trozos[0] != linea.texto.strip():
+            linea = Leido(trozos[0], linea.x, linea.y, linea.ancho, linea.alto, linea.confianza)
+        salida.append(linea)
+    return salida
+
+
 def _parece_stat(texto: str) -> bool:
+    multiplicador = RE_MULTIPLICADOR.match(texto)
+    if multiplicador:
+        return bool(re.search(r"[A-Za-zÁÉÍÓÚÑáéíóúñ]{3,}", multiplicador.group("resto") or ""))
     m = RE_STAT.match(texto)
     if not m:
         return False

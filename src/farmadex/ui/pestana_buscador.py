@@ -52,6 +52,7 @@ from . import (
     builds_overframe, colores_tipo, desglose_tiempo, enlaces_wiki, ficha_detalles, glosario, guias_youtube,
     pestana_primes, relleno_filas,
 )
+from .busqueda_fondo import BusquedaEnFondo
 from .estilo_c import (
     COLOR_ERA,
     BarraTeclas,
@@ -94,6 +95,50 @@ ORDEN_TIPOS = [
 
 REFINAMIENTOS = ("Intact", "Exceptional", "Flawless", "Radiant")
 ERAS = ("Lith", "Meso", "Neo", "Axi", "Requiem", "Omnia")
+
+
+# Espera tras la ultima tecla antes de buscar: corta para que los resultados lleguen
+# enseguida, suficiente para no buscar (ni pedir precio al mercado) a cada letra.
+RETARDO_TECLAS_MS = 100
+
+
+def calcular_busqueda(con: sqlite3.Connection, texto: str) -> dict:
+    """La parte pesada de Buscar, sin tocar la ventana: se puede hacer en otro hilo.
+
+    "como sacar citrine prime" busca "citrine prime"; "el ultimo warframe" no es un
+    nombre sino una pregunta por lo nuevo, salvo que sea exactamente un objeto.
+    """
+    consulta = consultas.limpiar(texto)
+    calculado = {
+        "objetos": indice.buscar(con, consulta),
+        "filtro": consultas.intencion_novedad(consulta),
+        "encontradas": misiones.buscar(con, consulta),
+    }
+    # Sin nada, la ficha propone parecidos: tambien cuestan, se dejan hechos aqui.
+    if not calculado["objetos"] and not calculado["encontradas"]:
+        calculado["sugerencias"] = buscar_sugerencias(con, texto)
+    return calculado
+
+
+def buscar_sugerencias(con: sqlite3.Connection, texto: str) -> list[dict]:
+    """Objetos parecidos a una busqueda fallida: se prueba cada palabra por separado.
+
+    `como consigo rhino` no encuentra nada entero, pero `rhino` si. Se devuelven
+    los primeros resultados de cada palabra util, sin repetir.
+    """
+    vistos: set[int] = set()
+    salida: list[dict] = []
+    palabras = [p for p in texto.split() if len(p) >= 3 and p.lower() not in PALABRAS_VACIAS]
+    for palabra in palabras:
+        if palabra.lower() == texto.lower():
+            continue
+        for r in indice.buscar(con, palabra, limite=MAX_SUGERENCIAS):
+            if r["item_id"] not in vistos:
+                vistos.add(r["item_id"])
+                salida.append(r)
+            if len(salida) >= MAX_SUGERENCIAS:
+                return salida
+    return salida
 
 
 def era_de(nombre_en: str | None) -> str:
@@ -287,6 +332,7 @@ class PestanaBuscador(QWidget):
         self._nota_novedad: dict | None = None
         # Lo ultimo que se busco sin exito, para volver a pintar el aviso al cambiar de idioma.
         self._sin_resultados: str | None = None
+        self._sugerencias_hechas: dict[str, list[dict]] = {}
         # Imagenes que la ficha abierta esta esperando (al llegar, se repinta).
         self._imagenes_ficha: set[str] = set()
         self.pedestal: Pedestal | None = None
@@ -415,10 +461,13 @@ class PestanaBuscador(QWidget):
         self._repintado_imagenes.setInterval(150)
         self._repintado_imagenes.timeout.connect(lambda: self._montar(conservar_scroll=True))
 
+        # Al escribir se espera un momento a que se deje de teclear y la busqueda va a un hilo
+        # aparte (busqueda_fondo): la caja nunca se atasca y solo se ensena la ultima.
+        self._busqueda = BusquedaEnFondo(self)
         self._temporizador = QTimer(self)
         self._temporizador.setSingleShot(True)
-        self._temporizador.setInterval(180)
-        self._temporizador.timeout.connect(self._buscar)
+        self._temporizador.setInterval(RETARDO_TECLAS_MS)
+        self._temporizador.timeout.connect(self._buscar_en_fondo)
 
         self.caja.textChanged.connect(lambda _: self._temporizador.start())
         self.caja.textChanged.connect(lambda _: self._actualizar_boton_wiki())
@@ -435,6 +484,9 @@ class PestanaBuscador(QWidget):
         self.caja.setEnabled(listo)
         self.aviso.setText(mensaje)
         self.aviso.setVisible(bool(mensaje))
+        # Lo que estuviera buscando el hilo era sobre el indice de antes.
+        self._busqueda.cancelar()
+        self._sugerencias_hechas.clear()
         if listo:
             self.con = indice.conectar()
             self.caja.setFocus()
@@ -841,22 +893,44 @@ class PestanaBuscador(QWidget):
     # -- busqueda ---------------------------------------------------------
 
     def _buscar(self) -> None:
+        """Busca ya, en primer plano (Enter, volver atras). Lo tecleado va por _buscar_en_fondo."""
+        if not self.con:
+            return
+        self._temporizador.stop()
+        self._busqueda.cancelar()
+        texto = self.caja.text().strip()
+        self._aplicar_busqueda(texto, calcular_busqueda(self.con, texto) if len(texto) >= 2 else None)
+
+    def _buscar_en_fondo(self) -> None:
+        """Lo que salta al dejar de teclear: lo pesado en otro hilo, la ventana libre."""
         if not self.con:
             return
         texto = self.caja.text().strip()
-        self.lista.clear()
         if len(texto) < 2:
+            self._buscar()  # portada: no hay nada que buscar
+            return
+
+        def al_terminar(calculado: dict) -> None:
+            if self.caja.text().strip() == texto:
+                self._aplicar_busqueda(texto, calculado)
+
+        self._busqueda.pedir(self.con, lambda con: calcular_busqueda(con, texto), al_terminar)
+
+    def _aplicar_busqueda(self, texto: str, calculado: dict | None) -> None:
+        self.lista.clear()
+        if calculado and "sugerencias" in calculado:
+            if len(self._sugerencias_hechas) > 20:
+                self._sugerencias_hechas.clear()
+            self._sugerencias_hechas[texto] = calculado["sugerencias"]
+        if calculado is None:
             self._resultados = []
             self._pintar_resultados()
             self._vaciar_ficha()
             self._poner_portada()
             return
-        # "como sacar citrine prime" busca "citrine prime"; "el ultimo warframe" no es un
-        # nombre sino una pregunta por lo nuevo, salvo que sea exactamente un objeto.
-        consulta = consultas.limpiar(texto)
-        objetos = indice.buscar(self.con, consulta)
+        objetos = calculado["objetos"]
         mejor_objeto = min((r["nivel"] for r in objetos), default=9)
-        filtro = consultas.intencion_novedad(consulta)
+        filtro = calculado["filtro"]
         if filtro and mejor_objeto > 0 and self._buscar_novedades(filtro):
             return
         # Nodos y tipos de mision: delante solo si casan mejor que el mejor objeto que se
@@ -864,7 +938,7 @@ class PestanaBuscador(QWidget):
         # Lo que no tiene fuentes no cuenta: el reto de Onda nocturna "Supervivencia" no
         # puede tapar al tipo de mision.
         mejor_farmeable = min((r["nivel"] for r in objetos if r["peso"][2] == 0), default=9)
-        encontradas = misiones.buscar(self.con, consulta)
+        encontradas = calculado["encontradas"]
         self._resultados = (
             [m for m in encontradas if m["nivel"] < mejor_farmeable]
             + objetos
@@ -1010,26 +1084,12 @@ class PestanaBuscador(QWidget):
         self._poner_barra_teclas()
 
     def sugerencias(self, texto: str) -> list[dict]:
-        """Objetos parecidos a una busqueda fallida: se prueba cada palabra por separado.
-
-        `como consigo rhino` no encuentra nada entero, pero `rhino` si. Se devuelven
-        los primeros resultados de cada palabra util, sin repetir.
-        """
+        """Objetos parecidos a una busqueda fallida (ver `buscar_sugerencias`). Si la
+        busqueda en segundo plano ya las calculo, no se repiten en el hilo de la ventana."""
         if not self.con:
             return []
-        vistos: set[int] = set()
-        salida: list[dict] = []
-        palabras = [p for p in texto.split() if len(p) >= 3 and p.lower() not in PALABRAS_VACIAS]
-        for palabra in palabras:
-            if palabra.lower() == texto.lower():
-                continue
-            for r in indice.buscar(self.con, palabra, limite=MAX_SUGERENCIAS):
-                if r["item_id"] not in vistos:
-                    vistos.add(r["item_id"])
-                    salida.append(r)
-                if len(salida) >= MAX_SUGERENCIAS:
-                    return salida
-        return salida
+        hechas = self._sugerencias_hechas.get(texto)
+        return hechas if hechas is not None else buscar_sugerencias(self.con, texto)
 
     def _html_sin_resultados(self, texto: str) -> str:
         p = PALETA
@@ -2332,7 +2392,13 @@ class PestanaBuscador(QWidget):
         p = PALETA
         agrupadas: dict[str, list[dict]] = {}
         for f in relaciones.fuentes_de(con, item_id):
-            agrupadas.setdefault(f["tipo"], []).append(f)
+            # Un jefe de asesinato (f["jefe"]) tiene nodo y modo como cualquier mision: si
+            # se queda en "enemigos" (la tabla de los que sueltan por muerte, sin sitio fijo)
+            # desaparece de la lista de Misiones aunque "Como conseguirlo" lo recomiende el
+            # primero, porque su tiempo es mejor que el de las misiones normales. Se agrupa
+            # con las misiones para que salga siempre en su misma seccion, por tiempo.
+            clave_grupo = "mision" if f.get("jefe") else f["tipo"]
+            agrupadas.setdefault(clave_grupo, []).append(f)
         hay_estimacion = False
         # Una sola escala para toda la ficha: el mismo tiempo se rellena igual en
         # Misiones que en Contratos, y las secciones se comparan entre si.

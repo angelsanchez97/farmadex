@@ -945,6 +945,11 @@ def avisar_si_rapidfuzz_lento() -> None:
     else:
         log.warning("rapidfuzz va en Python puro (%s, %s): casar los nombres leidos sera muy lento",
                     fuzz.ratio.__module__, rf_process.cdist.__module__)
+        # El motivo real (una DLL que no carga, un modulo que falta) rapidfuzz se lo calla.
+        try:
+            import rapidfuzz.fuzz_cpp  # noqa: F401
+        except Exception as error:  # noqa: BLE001 - solo es para el registro
+            log.warning("  motivo: %r", error)
 
 
 @dataclass
@@ -1001,7 +1006,9 @@ class Casador:
         # Palabras genericas y la palabra local de "Blueprint" en cada idioma, sacadas
         # del glosario de componentes (WFCD no trae esa palabra traducida en ningun sitio).
         self.genericas = set(GENERICAS)
-        self.palabras_plano = ["plano", "blueprint"]
+        # "Schéma" es como pone el juego en frances el plano en la pantalla de recompensas
+        # ("Lex Prime (Schéma)", captura real de 2025); el glosario solo trae "Plan".
+        self.palabras_plano = ["plano", "blueprint", "schema"]
         for idioma, en, valor in con.execute(
             "SELECT idioma, en, valor FROM glosario_idiomas WHERE dominio = 'componente'"
         ):
@@ -1440,13 +1447,22 @@ class Casador:
 
 
 def _con_sinonimos(clave: str) -> list[str]:
-    """La clave y sus variantes con sinonimos (mango <-> empunadura)."""
+    """La clave y sus variantes con sinonimos (mango <-> empunadura) y con las letras que
+    el OCR no tiene escritas como las lee: la "ł" polaca sale "t" o "l" ("Mroczne Wtokna",
+    "Ograniczony Umyst" en capturas reales), la "ß" alemana "ss" o "b" y la "œ" "oe"."""
     salida = [clave]
     palabras = clave.split()
     for i, p in enumerate(palabras):
         if p in SINONIMOS:
             salida.append(" ".join(palabras[:i] + [SINONIMOS[p]] + palabras[i + 1:]))
+    for letra, como in LETRAS_SIN_OCR.items():
+        if letra in clave:
+            salida += [s.replace(letra, c) for s in list(salida) for c in como]
     return salida
+
+
+# Letras de los nombres que el reconocedor del OCR no tiene y como las lee.
+LETRAS_SIN_OCR = {"ł": ("t", "l"), "ß": ("ss", "b"), "œ": ("oe",)}
 
 
 def _lleva_lo_distintivo(clave: str, compacta: str, genericas=GENERICAS) -> bool:

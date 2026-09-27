@@ -29,8 +29,9 @@ from ..datos import indice, items, relaciones
 from ..idiomas import es_castellano, glosa, nombre as nombre_idioma, t
 from ..registro_log import obtener
 from . import ficha_detalles, glosario
+from .busqueda_fondo import BusquedaEnFondo
 from .estilo_c import BotonC, EtiquetaC, PanelC, Rombo, Tecla, fila, icono, px, transparente
-from .pestana_buscador import PestanaBuscador, _con_padre, _etiqueta, categoria_es, era_de
+from .pestana_buscador import RETARDO_TECLAS_MS, PestanaBuscador, _con_padre, _etiqueta, categoria_es, era_de
 from .resultados_desplegables import ResultadosDesplegables
 from .tooltip_reliquia import marcar, reliquia_de_ruta
 from .widgets import COLOR_BOVEDA, COLOR_DISPONIBLE, PALETA, color_rareza
@@ -190,8 +191,10 @@ class VistaCompacta(QWidget):
         # (medido); el precio del objeto bueno llegaba el ultimo, varios segundos despues.
         self._temporizador = QTimer(self)
         self._temporizador.setSingleShot(True)
-        self._temporizador.setInterval(180)
-        self._temporizador.timeout.connect(lambda: self._buscar(self.caja.text()))
+        # La busqueda en si va a un hilo aparte (busqueda_fondo): escribir no se atasca.
+        self._busqueda = BusquedaEnFondo(self)
+        self._temporizador.setInterval(RETARDO_TECLAS_MS)
+        self._temporizador.timeout.connect(lambda: self._buscar_en_fondo(self.caja.text()))
         self.caja.textChanged.connect(lambda _: self._temporizador.start())
         # Al escribir, las tarjetas dejan sitio en el acto (sin esperar a la busqueda).
         self.caja.textChanged.connect(lambda _: self._colocar())
@@ -413,8 +416,12 @@ class VistaCompacta(QWidget):
     def con(self):
         return self.buscador.con
 
-    def _buscar(self, texto: str) -> None:
+    def _buscar(self, texto: str, resultados: list[dict] | None = None) -> None:
+        """Busca ya, en primer plano; con `resultados`, ensena los que trajo el hilo."""
         texto = texto.strip()
+        if resultados is None:
+            self._temporizador.stop()
+            self._busqueda.cancelar()
         self._resultados = []
         self._indice_actual = -1
         self._datos = None
@@ -424,13 +431,26 @@ class VistaCompacta(QWidget):
         if not self.con or len(texto) < 2:
             self.repintar()
             return
-        self._resultados = indice.buscar(self.con, texto)
+        self._resultados = resultados if resultados is not None else indice.buscar(self.con, texto)
         self.lista.poner(self._resultados)
         if self._resultados:
             self._mostrar(0)
         else:
             self._sin_resultados = texto
             self.repintar()
+
+    def _buscar_en_fondo(self, texto: str) -> None:
+        """Lo que salta al dejar de teclear: el indice se recorre en otro hilo."""
+        texto = texto.strip()
+        if not self.con or len(texto) < 2:
+            self._buscar(texto)
+            return
+
+        def al_terminar(resultados: list[dict]) -> None:
+            if self.caja.text().strip() == texto:
+                self._buscar(texto, resultados)
+
+        self._busqueda.pedir(self.con, lambda con: indice.buscar(con, texto), al_terminar)
 
     def _mostrar(self, posicion: int) -> None:
         self._indice_actual = posicion

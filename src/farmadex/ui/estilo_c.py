@@ -96,6 +96,8 @@ ICONO = {
 
 # Glifos de MIS METAS (marcar hecho, editar, leer la pantalla, importar).
 ICONO.update({"hecho": "", "editar": "", "leer": "", "importar": "", "menos": ""})
+# Minimizar la ventana (ChromeMinimize), junto a la x de la cabecera.
+ICONO["minimizar"] = ""
 
 
 def px(tamano: float, letra: bool = True) -> int:
@@ -1202,6 +1204,8 @@ class BotonGlifo(QPushButton, PiezaC):
         super().__init__(texto, parent)
         transparente(self)
         self.glifo, self.tinta, self.tam = ICONO.get(glifo, glifo), tinta, tam
+        # Pixeles (sin escalar) que baja el glifo: para casarlo con un vecino de texto.
+        self.bajar = 0
         self.setCursor(Qt.PointingHandCursor)
         self.setFlat(True)
         self.refrescar_estilo()
@@ -1226,7 +1230,7 @@ class BotonGlifo(QPushButton, PiezaC):
             tinta = color(self.tinta)
         p.setFont(fuente_iconos(self.tam))
         p.setPen(tinta)
-        p.drawText(QRectF(self.rect()), Qt.AlignCenter, self.glifo)
+        p.drawText(QRectF(self.rect()).translated(0, px(self.bajar, False)), Qt.AlignCenter, self.glifo)
         p.end()
 
     def enterEvent(self, evento):  # noqa: N802

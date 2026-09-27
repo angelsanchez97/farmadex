@@ -76,7 +76,7 @@ from .vista_compacta import (
 from .maestria import estado_con_padre, texto_maestria
 from .reproductor import PanelVideo, PanelWeb
 from .widgets import PALETA, BarraProgreso, elegir_tema, hoja_estilos
-from .estilo_c import BotonC, EtiquetaC, Filete, SubPestanasC, refrescar_todo, transparente
+from .estilo_c import BotonC, BotonGlifo, EtiquetaC, Filete, SubPestanasC, refrescar_todo, transparente
 from .pestana_tablero import PestanaTablero
 from .tooltip_reliquia import AyudaHoverApp, ServicioTarjeta
 from .ocultar_captura import OcultadorVentanas
@@ -237,6 +237,10 @@ class VentanaOverlay(QWidget):
     cerrar_programa = Signal()
     # Lectura bajo el cursor pedida al hilo de captura (numero de solicitud).
     _pedir_lectura_cursor = Signal(int)
+    # Cadencia del mundo (True=visible, False=oculto), en cola hasta el hilo de
+    # ServicioMundo: llamar a `cadencia()` a pelo desde este hilo tocaria su
+    # QTimer desde fuera de su hilo (ver ServicioMundo.cadencia).
+    _cadencia_mundo = Signal(bool)
     # Aviso que tiene que verse aunque la ventana este escondida (lo ensena la bandeja):
     # reliquia abierta en pantalla completa exclusiva, lector de pantalla que no carga...
     aviso_bandeja = Signal(str)
@@ -255,11 +259,12 @@ class VentanaOverlay(QWidget):
         elegir_tema(self.config.get("tema", ""))
         self.setStyleSheet(hoja_estilos())
         self.setWindowTitle(f"{NOMBRE_APP} {VERSION}")
-        self.setWindowFlags(
-            Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool | Qt.WindowDoesNotAcceptFocus
-            if False
-            else Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool
-        )
+        # Las banderas definitivas (barra de tareas, siempre encima) las pone
+        # `_aplicar_encima` al fijar el modo, mas abajo; hasta entonces, sin marco y encima.
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
+        # Con su icono (el libro) en la barra de tareas de Windows.
+        self.setWindowIcon(icono_ventana())
+        self._en_barra_tareas = bool(self.config.get("mostrar_barra_tareas", True))
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.resize(ANCHO_COMPLETO, ALTO_COMPLETO)
         self._arrastre: QPoint | None = None
@@ -296,10 +301,15 @@ class VentanaOverlay(QWidget):
         self.pista = QLabel()
         self._pintar_pista()
         self.boton_cerrar = QPushButton("×")
-        self.boton_cerrar.setFixedSize(30, 26)
+        self.boton_cerrar.setFixedSize(26, 26)
         self.boton_cerrar.setToolTip(t("Esconder (Escape)"))
         self.boton_cerrar.clicked.connect(self.ocultar)
         boton_cerrar = self.boton_cerrar
+        # Minimizar: a la barra de tareas (o solo a la bandeja si no sale en ella).
+        self.boton_minimizar = BotonGlifo("minimizar", t("Minimizar"), tam=12)
+        self.boton_minimizar.bajar = 4  # a la altura del centro de la x, que es texto
+        self.boton_minimizar.clicked.connect(self.minimizar)
+        self._pintar_tooltip_minimizar()
         self.boton_modo = BotonC(icono="juego", pista=ATAJO_MODO)
         self.boton_modo.clicked.connect(self.alternar_modo)
         # La guia, solo con su icono: el menu necesita el sitio. El texto va en el tooltip.
@@ -332,7 +342,12 @@ class VentanaOverlay(QWidget):
         cabecera.addWidget(self.boton_guia, 0, Qt.AlignVCenter)
         cabecera.addWidget(self.boton_fijar, 0, Qt.AlignVCenter)
         cabecera.addWidget(self.boton_modo, 0, Qt.AlignVCenter)
-        cabecera.addWidget(boton_cerrar, 0, Qt.AlignVCenter)
+        # Minimizar y cerrar, juntos como en cualquier ventana de Windows.
+        self._botones_ventana = QHBoxLayout()
+        self._botones_ventana.setSpacing(0)
+        self._botones_ventana.addWidget(self.boton_minimizar, 0, Qt.AlignVCenter)
+        self._botones_ventana.addWidget(boton_cerrar, 0, Qt.AlignVCenter)
+        cabecera.addLayout(self._botones_ventana)
         self.filete = Filete()
 
         # La pagina de inicio (rediseno C): lo que toca hacer ahora.
@@ -376,6 +391,7 @@ class VentanaOverlay(QWidget):
         self.ajustes.diseno_mundo_cambiado.connect(self._cambiar_diseno_mundo)
         self.ajustes.ritmo_cambiado.connect(self._cambiar_ritmo)
         self.ajustes.salir.connect(self.cerrar_programa.emit)
+        self.ajustes.barra_tareas_cambiada.connect(self.poner_en_barra_tareas)
         self.ajustes.instalar_version.connect(self._instalar_version)
         self.ajustes.pedir_diagnostico.connect(self.mostrar_diagnostico)
         self.ajustes.guardar_informe.connect(self.guardar_informe)
@@ -652,6 +668,8 @@ class VentanaOverlay(QWidget):
         con.close()
         self.servicio_mundo.moveToThread(self.hilo_mundo)
         self.hilo_mundo.started.connect(self.servicio_mundo.iniciar)
+        # En cola hasta su hilo: nunca una llamada directa (ver ServicioMundo.cadencia).
+        self._cadencia_mundo.connect(self.servicio_mundo.cadencia)
         self.servicio_mundo.actualizado.connect(self.mundo.actualizar)
         self.servicio_mundo.fallo.connect(self.mundo.marcar_desactualizado)
         self.servicio_mundo.actualizado.connect(self.tablero.actualizar_mundo)
@@ -1718,6 +1736,7 @@ class VentanaOverlay(QWidget):
         self.boton_guia.setVisible(not video)
         self.boton_fijar.setVisible(compacto)
         self.video.boton_modo.setVisible(not video)
+        self._pintar_tooltip_minimizar()
         self._pintar_boton_modo()
         if guardar_config:
             log.info("Vista cambiada a %s", modo)
@@ -1791,22 +1810,55 @@ class VentanaOverlay(QWidget):
             if self.boton_fijar.isChecked()
             else t("Pulsa para que se quede siempre por encima del juego.")
         )
-        if bool(self.windowFlags() & Qt.WindowStaysOnTopHint) != encima:
+        banderas = self._banderas_ventana()
+        if self.windowFlags() != banderas:
             visible = self.isVisible()
-            # Cambiar las banderas de una ventana ya creada la esconde: se vuelve a ensenar.
-            self.setWindowFlag(Qt.WindowStaysOnTopHint, encima)
-            if visible:
+            minimizada = self.isMinimized()
+            # Cambiar las banderas de una ventana ya creada la esconde: se vuelve a ensenar
+            # (minimizada si lo estaba).
+            self.setWindowFlags(banderas)
+            if visible and minimizada:
+                self.showMinimized()
+            elif visible:
                 self.show()
                 self.raise_()
-        fijada_compacta = self.modo == "compacto" and encima and self.isVisible()
+        fijada_compacta = self.modo == "compacto" and encima and self.isVisible() and not self.isMinimized()
         if fijada_compacta and not self._reloj_encima.isActive():
             self._reloj_encima.start()
         elif not fijada_compacta and self._reloj_encima.isActive():
             self._reloj_encima.stop()
 
+    def _en_barra(self) -> bool:
+        """Si sale en la barra de tareas: si el usuario lo quiere (Ajustes > General) y no
+        esta en modo juego, que es un HUD encima de la partida y no una ventana."""
+        return self._en_barra_tareas and self.modo != "compacto"
+
+    def _banderas_ventana(self) -> Qt.WindowFlags:
+        """Sin marco siempre; encima segun la chincheta; y ventana normal (con boton en la
+        barra de tareas) o ventana de herramienta (sin el)."""
+        banderas = Qt.FramelessWindowHint
+        if self._quiere_encima():
+            banderas |= Qt.WindowStaysOnTopHint
+        if self._en_barra():
+            # Sin la pista de minimizar, Windows no la esconde al pulsar su boton en la
+            # barra (una ventana sin marco no trae ese estilo). No pinta ningun boton.
+            banderas |= Qt.Window | Qt.WindowMinimizeButtonHint
+        else:
+            banderas |= Qt.Tool
+        return banderas
+
+    def poner_en_barra_tareas(self, mostrar: bool) -> None:
+        """Ajustes > General > "Mostrar en la barra de tareas", en caliente."""
+        self._en_barra_tareas = bool(mostrar)
+        self.config["mostrar_barra_tareas"] = self._en_barra_tareas
+        log.info("Barra de tareas: %s", "se muestra" if mostrar else "no se muestra")
+        self._aplicar_encima()
+        self._pintar_tooltip_minimizar()
+
     def _reforzar_encima(self) -> None:
         """Vuelve a ponerla por encima sin robarle el foco al juego (solo Windows)."""
-        if not (self.isVisible() and self.modo == "compacto" and self._quiere_encima()):
+        if not (self.isVisible() and not self.isMinimized() and self.modo == "compacto"
+                and self._quiere_encima()):
             self._reloj_encima.stop()
             return
         poner_encima_sin_foco(self)
@@ -1871,10 +1923,43 @@ class VentanaOverlay(QWidget):
     # -- mostrar y ocultar ---------------------------------------------------
 
     def alternar(self) -> None:
-        self.ocultar() if self.isVisible() else self.mostrar()
+        # Minimizada sigue "visible" para Qt: el atajo y la bandeja la devuelven.
+        self.ocultar() if self.isVisible() and not self.isMinimized() else self.mostrar()
+
+    def minimizar(self) -> None:
+        """Boton de la cabecera: la minimiza sin cerrarla. Vuelve con el atajo, con el
+        icono de la bandeja o, si sale en ella, desde la barra de tareas."""
+        self._guardar_geometria()
+        self._reloj_encima.stop()
+        self.showMinimized()
+
+    def _restaurar_si_minimizada(self, activar: bool) -> None:
+        """Quita el minimizado antes de ensenarla. Sin activar (juego en pantalla completa
+        exclusiva) se le pide a Windows que la restaure sin quitarle el foco a nadie."""
+        if not self.isMinimized():
+            return
+        if not activar and self.isVisible() and restaurar_sin_foco(self):
+            return
+        self.setWindowState(self.windowState() & ~Qt.WindowMinimized)
+
+    def changeEvent(self, evento):  # noqa: N802 - firma de Qt
+        # Minimizar o restaurar (desde la cabecera, la barra de tareas o el atajo): el
+        # refuerzo de "siempre encima" y el ritmo del mundo siguen a la ventana.
+        if evento.type() == QEvent.WindowStateChange and hasattr(self, "_reloj_encima"):
+            minimizada = self.isMinimized()
+            if minimizada:
+                self._reloj_encima.stop()
+            elif self.isVisible():
+                self._aplicar_encima()
+            if self.servicio_mundo is not None and self.isVisible():
+                self._cadencia_mundo.emit(not minimizada)
+        super().changeEvent(evento)
 
     def mostrar(self) -> None:
         modo = self._refrescar_modo_pantalla()
+        # Las banderas (barra de tareas, encima) se ponen antes de ensenarla: cambiarlas
+        # con la ventana ya en pantalla la esconde y la vuelve a crear.
+        self._aplicar_encima()
         if modo == pantalla.MODO_EXCLUSIVO:
             libre = self._pantalla_libre()
             if libre is not None:
@@ -1883,18 +1968,20 @@ class VentanaOverlay(QWidget):
                 if not libre.intersects(self.frameGeometry()):
                     self.move(libre.center() - QPoint(self.width() // 2, self.height() // 2))
                 self.setAttribute(Qt.WA_ShowWithoutActivating, True)
+                self._restaurar_si_minimizada(activar=False)
                 self.show()
                 self.raise_()
                 self.estado.setText(
                     t("Warframe está en pantalla completa exclusiva: el overlay se abre en el otro monitor.")
                 )
                 if self.servicio_mundo:
-                    self.servicio_mundo.cadencia(visible=True)
+                    self._cadencia_mundo.emit(True)
                 return
             self.estado.setText(
                 t("Warframe está en pantalla completa exclusiva: el overlay no puede verse encima del juego.")
             )
         self.setAttribute(Qt.WA_ShowWithoutActivating, False)
+        self._restaurar_si_minimizada(activar=True)
         self._asegurar_en_pantalla()
         self.show()
         self.raise_()
@@ -1904,17 +1991,20 @@ class VentanaOverlay(QWidget):
         caja.setFocus()
         caja.selectAll()
         if self.servicio_mundo:
-            self.servicio_mundo.cadencia(visible=True)
+            self._cadencia_mundo.emit(True)
 
     def ocultar(self) -> None:
         self._guardar_geometria()
         self.hide()
         self._reloj_encima.stop()
         if self.servicio_mundo:
-            self.servicio_mundo.cadencia(visible=False)
+            self._cadencia_mundo.emit(False)
 
     def _guardar_geometria(self) -> None:
         g = self.geometry()
+        if self.isMinimized() and g.x() <= -30000:
+            # Windows aparca las minimizadas en (-32000, -32000): eso no es un sitio.
+            return
         # Lo que la compacta crecio por el banner no es tamano elegido por el usuario.
         alto = g.height() - (self._alto_banner_compacto if self.modo == "compacto" else 0)
         self.config[self._clave_geometria()] = [g.x(), g.y(), g.width(), alto]
@@ -2026,7 +2116,9 @@ class VentanaOverlay(QWidget):
         for nivel in range(7 if completo else 1):
             self.boton_modo.poner_pista(ATAJO_MODO if completo and nivel < 1 else "")
             self.titulo.setVisible(nivel < 2)
-            self._hueco_menu.changeSize(22 if nivel < 2 else 6, 1, QSizePolicy.Fixed, QSizePolicy.Minimum)
+            # El hueco separa el nombre del menu: sin menu (modo juego, video) sobra.
+            hueco = (22 if nivel < 2 else 6) if completo else 0
+            self._hueco_menu.changeSize(hueco, 1, QSizePolicy.Fixed, QSizePolicy.Minimum)
             self.boton_guia.setVisible(self.modo != "video" and nivel < 6)
             self.menu.compactar(nivel >= 3, menuda=nivel >= 5)
             self.boton_modo.poner_solo_icono(completo and nivel >= 4)
@@ -2044,8 +2136,20 @@ class VentanaOverlay(QWidget):
     def _pintar_pista(self) -> None:
         atajo = self.config.get("hotkey_overlay", "Ctrl+Alt+W")
         self.pista.setText(t("{atajo} o Escape para cerrar", atajo=atajo) + "  ")
+        self._pintar_tooltip_minimizar()
         if hasattr(self, "compacta"):
             self.compacta._poner_tecla()
+
+    def _pintar_tooltip_minimizar(self) -> None:
+        if not hasattr(self, "boton_minimizar"):
+            return
+        atajo = self.config.get("hotkey_overlay", "Ctrl+Alt+W")
+        if self._en_barra():
+            texto = t("Minimizar: vuelve con {atajo}, desde la barra de tareas o con el icono de la bandeja",
+                      atajo=atajo)
+        else:
+            texto = t("Minimizar: vuelve con {atajo} o con el icono de la bandeja", atajo=atajo)
+        self.boton_minimizar.setToolTip(texto)
 
     def cambiar_idioma(self, codigo: str) -> None:
         """Cambio al vuelo: todo lo que esta en pantalla se vuelve a escribir."""
@@ -2056,6 +2160,8 @@ class VentanaOverlay(QWidget):
         self.boton_guia.setToolTip(t("Guía") + ": " + t("Lanza la guía de uso desde el principio"))
         self.boton_fijar.setText(t("Fijar"))
         self.boton_cerrar.setToolTip(t("Esconder (Escape)"))
+        self.boton_minimizar.setText(t("Minimizar"))
+        self._pintar_tooltip_minimizar()
         for clave, titulo in SECCIONES:
             self.menu.poner_texto(clave, t(titulo))
         for clave, subs in SUBSECCIONES.items():
@@ -2361,6 +2467,23 @@ def poner_encima_sin_foco(widget: QWidget) -> bool:
         return False
 
 
+def restaurar_sin_foco(widget: QWidget) -> bool:
+    """ShowWindow(SW_SHOWNOACTIVATE): saca una ventana del minimizado sin activarla, para
+    no quitarle el foco al juego (Windows minimiza el juego en exclusiva si lo pierde)."""
+    if sys.platform != "win32" or QGuiApplication.platformName() != "windows":
+        return False
+    try:
+        import ctypes
+
+        SW_SHOWNOACTIVATE = 4
+        user32 = ctypes.WinDLL("user32")
+        user32.ShowWindow.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        user32.ShowWindow(ctypes.c_void_p(int(widget.winId())), SW_SHOWNOACTIVATE)
+        return not widget.isMinimized()
+    except (AttributeError, OSError, ValueError):
+        return False
+
+
 def _texto_plano(html_aviso: str) -> str:
     """El aviso sin etiquetas HTML, para la linea unica de la compacta y su tooltip."""
     return " ".join(unescape(re.sub(r"<[^>]+>", " ", html_aviso)).split())
@@ -2382,6 +2505,16 @@ def ruta_icono() -> "Path":
 
     base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[3]))
     return base / "recursos" / "iconos" / "farmadex.ico"
+
+
+def icono_ventana() -> QIcon:
+    """El icono de la ventana (barra de tareas y Alt+Tab): el .ico con todos sus tamanos."""
+    ruta = ruta_icono()
+    if ruta.exists():
+        icono = QIcon(str(ruta))
+        if not icono.isNull():
+            return icono
+    return QIcon(icono_bandeja())
 
 
 def icono_bandeja() -> QPixmap:

@@ -3,7 +3,7 @@
 # cada vez que se abre.
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_all, collect_data_files
+from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_delvewheel_libs_directory
 
 RAIZ = Path(SPECPATH).parent
 
@@ -23,9 +23,19 @@ datos = [
 # hay que arrastrar el paquete entero o al arrancar falta la mitad.
 ocr_datos, ocr_binarios, ocr_ocultos = collect_all("rapidocr_onnxruntime")
 onnx_datos, onnx_binarios, onnx_ocultos = collect_all("onnxruntime")
-datos += ocr_datos + onnx_datos
+# rapidfuzz elige en tiempo de ejecucion entre sus modulos compilados (*_cpp, *_cpp_avx2) y
+# los de Python puro. Sin arrastrar el paquete entero, en el .exe faltaba alguna pieza que
+# importan los compilados y caia a Python puro: casar una build tardaba segundos (0.6.1).
+rf_datos, rf_binarios, rf_ocultos = collect_all("rapidfuzz")
+# Pero la causa real era otra: los compilados de rapidfuzz enlazan contra una copia
+# renombrada del runtime de C++ (msvcp140-<huella>.dll) que viene en site-packages/rapidfuzz.libs,
+# y rapidfuzz/__init__ solo la encuentra si esa carpeta esta junto al paquete. PyInstaller la
+# metia en numpy.libs (numpy trae el mismo fichero), rapidfuzz.libs no existia en el .exe,
+# el compilado no cargaba y rapidfuzz caia en silencio a Python puro. construir.ps1 lo vigila.
+rf_datos, rf_binarios = collect_delvewheel_libs_directory("rapidfuzz", datas=rf_datos, binaries=rf_binarios)
+datos += ocr_datos + onnx_datos + rf_datos
 
-ocultos = ocr_ocultos + onnx_ocultos + [
+ocultos = ocr_ocultos + onnx_ocultos + rf_ocultos + [
     "farmadex",
     "farmadex.app",
     "rapidocr_onnxruntime",
@@ -75,7 +85,7 @@ excluidos = [
 analisis = Analysis(
     [str(RAIZ / "empaquetado/arranque.py")],
     pathex=[str(RAIZ / "src")],
-    binaries=ocr_binarios + onnx_binarios,
+    binaries=ocr_binarios + onnx_binarios + rf_binarios,
     datas=datos,
     hiddenimports=ocultos,
     hookspath=[],
