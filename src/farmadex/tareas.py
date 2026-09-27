@@ -43,6 +43,12 @@ class TareaDatos(QThread):
         self.forzar = forzar
 
     def run(self) -> None:  # noqa: D102
+        # Reconstruir el indice tras actualizar es trabajo pesado de CPU y disco: con
+        # prioridad baja el PC (y el juego) siguen respondiendo mientras tanto.
+        try:
+            QThread.currentThread().setPriority(QThread.LowPriority)
+        except Exception:  # noqa: BLE001 - la prioridad es un detalle, nunca un fallo
+            pass
         try:
             resumen = indice.construir(progreso=self.progreso.emit, forzar=self.forzar)
             if resumen.get("reconstruido"):

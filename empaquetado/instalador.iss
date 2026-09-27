@@ -59,9 +59,8 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 [Run]
 Filename: "{tmp}\vc_redist.x64.exe"; Parameters: "/install /quiet /norestart"; \
   StatusMsg: "Instalando el runtime de Visual C++..."; Check: FaltaVCRedist; Flags: skipifdoesntexist waituntilterminated
-; Windows guarda en cache los iconos de los accesos directos: sin esto, tras cambiar el
-; icono del programa el del Escritorio seguia saliendo el viejo hasta reiniciar.
-Filename: "{sys}\ie4uinit.exe"; Parameters: "-show"; Flags: runhidden skipifdoesntexist waituntilterminated
+; (Aqui habia un "ie4uinit -show" para refrescar los iconos: en algun PC dejaba el Escritorio
+; congelado un rato al actualizar. Lo sustituye el IconFilename explicito de [Icons].)
 Filename: "{app}\{#NombreApp}.exe"; Description: "Abrir {#NombreApp}"; Flags: nowait postinstall skipifsilent
 ; Actualizacion automatica lanzada por el propio Farmadex (/SILENT /AUTOACTUALIZAR=1):
 ; la entrada de arriba se salta con skipifsilent (vale para /SILENT y /VERYSILENT),
