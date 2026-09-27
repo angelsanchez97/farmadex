@@ -101,7 +101,7 @@ def es_castellano() -> bool:
 SEPARADOR_CONTEXTO = "||"
 
 
-def t(texto: str, **valores) -> str:
+def t(texto: str, /, **valores) -> str:
     """Traduce un texto de la interfaz. Los huecos `{asi}` se rellenan con `valores`.
 
     Una clave "Tablero||menu" es el texto "Tablero" con un contexto propio: en castellano

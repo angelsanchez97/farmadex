@@ -252,6 +252,27 @@ def probar_ocr() -> int:
     return 0 if any("ASH" in t.upper() for t in textos) else 2
 
 
+_avisos_error: list = []
+
+
+def avisar_error(texto: str) -> None:
+    """Aviso de un fallo inesperado SIN bloquear el programa.
+
+    Antes era un QMessageBox.critical modal: en pantalla completa sin bordes quedaba
+    detras del juego y Farmadex parecia muerto (0.6.0, al leer una build). Ahora es
+    una ventana no modal, encima de todo, y el programa sigue funcionando.
+    """
+    from PySide6.QtCore import Qt
+
+    caja = QMessageBox(QMessageBox.Critical, f"{NOMBRE_APP}: error", texto)
+    caja.setWindowFlag(Qt.WindowStaysOnTopHint, True)
+    caja.setModal(False)
+    caja.setAttribute(Qt.WA_DeleteOnClose, True)
+    caja.finished.connect(lambda *_: _avisos_error.remove(caja) if caja in _avisos_error else None)
+    _avisos_error.append(caja)
+    caja.show()
+
+
 def main(argv: list[str] | None = None) -> int:
     argumentos = argv if argv is not None else sys.argv
     # El reproductor de guias es este mismo programa con --video (farmadex/video.py): va
@@ -275,9 +296,7 @@ def main(argv: list[str] | None = None) -> int:
     # El gancho va antes de construir nada: un fallo al montar la ventana tiene que
     # quedar en el log aunque el ejecutable no tenga consola. Si aun no hay
     # QApplication, el dialogo falla y el propio gancho lo traga; el log queda.
-    instalar_gancho_excepciones(
-        lambda texto: QMessageBox.critical(None, f"{NOMBRE_APP}: error", texto)
-    )
+    instalar_gancho_excepciones(avisar_error)
     qt = QApplication.instance() or QApplication(argumentos)
     if ARGUMENTO_CERRAR in argumentos:
         return cerrar_la_abierta()

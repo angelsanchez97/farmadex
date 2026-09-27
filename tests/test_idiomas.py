@@ -177,3 +177,10 @@ def test_todo_lo_que_pasa_por_t_esta_en_cada_catalogo(ruta):
     catalogo = json.loads(ruta.read_text(encoding="utf-8"))
     faltan = sorted(_claves_del_codigo() - set(catalogo))
     assert not faltan, f"faltan {len(faltan)} claves en {ruta.stem}.json: {faltan}"
+
+
+def test_t_admite_un_hueco_llamado_texto():
+    """Leer una build se caia con 'got multiple values for argument texto' (0.6.0)."""
+    from farmadex.idiomas import t
+
+    assert t('"{texto}" (sin identificar)', texto="HAALVU") == '"HAALVU" (sin identificar)'
