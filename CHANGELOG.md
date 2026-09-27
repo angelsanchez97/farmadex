@@ -1,5 +1,15 @@
 # Cambios
 
+## 0.6.2
+
+- Farmadex ya no se lee a sí mismo: si su ventana está encima del juego, se aparta un instante
+  al leer la pantalla (builds, rivens, recompensas, lo que hay bajo el cursor) y vuelve a salir.
+  En los directos se sigue viendo con normalidad.
+- Leer una build es mucho más rápido: buscar lo leído entre todos los objetos del juego ya no
+  tarda segundos.
+- La build vuelve a enseñar el warframe o el arma, y la lista de "sin identificar" ya no se llena
+  de rótulos y estadísticas.
+
 ## 0.6.1
 
 **Arreglos importantes**

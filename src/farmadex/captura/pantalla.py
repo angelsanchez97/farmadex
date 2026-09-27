@@ -7,6 +7,8 @@ no se lee memoria del juego, no se inyecta nada y no se envia ninguna entrada.
 from __future__ import annotations
 
 import ctypes
+import os
+import time
 from ctypes import wintypes
 from dataclasses import dataclass
 
@@ -254,7 +256,30 @@ def escala_fisica_logica(hwnd: int | None = None) -> float:
 
 
 def capturar(region: Region):
-    """Devuelve la region como array numpy BGR, o None si no se pudo capturar."""
+    """Devuelve la region como array numpy BGR, o None si no se pudo capturar.
+
+    Farmadex esta siempre encima del juego, y una captura de pantalla recoge lo que
+    se ve: con la ventana (o las etiquetas, el panel, la tarjeta de reliquia...) encima
+    de lo que hay que leer, el OCR leia Farmadex en vez del juego. Por eso, justo antes
+    de capturar, las ventanas de Farmadex que tapan la region se hacen invisibles un
+    instante (ver `ocultando`). No se usa la exclusion de captura de Windows
+    (WDA_EXCLUDEFROMCAPTURE) porque tambien las quitaria del directo en OBS.
+    """
+    with ocultando(region):
+        return _capturar_crudo(region)
+
+
+def capturar_sin_ocultar(region: Region):
+    """Como `capturar`, pero sin tocar las ventanas de Farmadex (lecturas periodicas).
+
+    La lectura pasiva mira la pantalla cada poco: esconder Farmadex en cada vuelta lo
+    haria parpadear todo el rato. Esas lecturas usan esto y luego `descartar_propias`.
+    """
+    return _capturar_crudo(region)
+
+
+def _capturar_crudo(region: Region):
+    """La region tal cual esta en pantalla ahora mismo, como array numpy BGR, o None."""
     try:
         import mss
         import numpy as np
@@ -271,6 +296,160 @@ def capturar(region: Region):
     except Exception as e:  # noqa: BLE001 - mss lanza de todo segun el driver
         log.warning("No se pudo capturar la pantalla: %s", e)
         return None
+
+
+# -- nuestras propias ventanas ----------------------------------------------------
+#
+# El mecanismo de esconder vive en la interfaz (ui/ocultar_captura.py), que es la que
+# puede tocar las ventanas desde el hilo de Qt; aqui solo hay un gancho para que este
+# modulo siga sin depender de Qt. Sin ocultador registrado (herramientas, pruebas),
+# `capturar` captura sin mas.
+
+_ocultador = None
+
+
+def registrar_ocultador(ocultador) -> None:
+    """`ocultador.ocultar(region) -> ficha | None` y `ocultador.restaurar(ficha)`; None lo quita."""
+    global _ocultador
+    _ocultador = ocultador
+
+
+class ocultando:
+    """`with ocultando(region):` esconde lo nuestro que tape `region` y lo devuelve al salir.
+
+    Pase lo que pase dentro (excepcion incluida), al salir se piden restaurar las
+    ventanas. Si el ocultador falla, se captura igual: mejor una lectura con Farmadex
+    delante que ninguna.
+    """
+
+    def __init__(self, region: Region):
+        self.region = region
+        self.ficha = None
+        self.ocultador = None
+        self.segundos = 0.0  # lo que ha costado esconder (y esperar al compositor)
+
+    def __enter__(self):
+        self.ocultador = _ocultador
+        if self.ocultador is None:
+            return self
+        t0 = time.perf_counter()
+        try:
+            self.ficha = self.ocultador.ocultar(self.region)
+        except Exception:  # noqa: BLE001 - la captura va por delante
+            log.exception("No se pudo esconder Farmadex antes de capturar")
+            self.ficha = None
+        self.segundos = time.perf_counter() - t0
+        return self
+
+    def __exit__(self, *_exc):
+        ficha, self.ficha = self.ficha, None
+        if ficha is not None and self.ocultador is not None:
+            try:
+                self.ocultador.restaurar(ficha)
+            except Exception:  # noqa: BLE001 - el temporizador de seguridad la devuelve igual
+                log.exception("No se pudo devolver Farmadex tras capturar")
+        return False
+
+
+def interseccion(a: Region, b: Region) -> Region | None:
+    x0, y0 = max(a.x, b.x), max(a.y, b.y)
+    x1, y1 = min(a.x + a.ancho, b.x + b.ancho), min(a.y + a.alto, b.y + b.alto)
+    if x1 <= x0 or y1 <= y0:
+        return None
+    return Region(x0, y0, x1 - x0, y1 - y0)
+
+
+def ventanas_propias() -> list[Region]:
+    """Rectangulos (pixeles fisicos) de las ventanas visibles de este proceso.
+
+    Solo Win32, sin Qt: vale desde cualquier hilo. Las que estan a opacidad 0 (las que
+    se acaban de esconder) no cuentan.
+    """
+    try:
+        user32 = ctypes.windll.user32
+    except AttributeError:  # pragma: no cover - fuera de Windows
+        return []
+    pid_propio = os.getpid()
+    encontradas: list[Region] = []
+
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def visitar(hwnd, _):
+        try:
+            if not user32.IsWindowVisible(hwnd) or user32.IsIconic(hwnd):
+                return True
+            pid = wintypes.DWORD()
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+            if pid.value != pid_propio:
+                return True
+            alfa, banderas = ctypes.c_ubyte(255), wintypes.DWORD(0)
+            if (user32.GetLayeredWindowAttributes(hwnd, None, ctypes.byref(alfa), ctypes.byref(banderas))
+                    and banderas.value & LWA_ALPHA and alfa.value == 0):
+                return True
+            marco = region_marco(hwnd)
+            if marco and marco.ancho > 0 and marco.alto > 0:
+                encontradas.append(marco)
+        except Exception:  # noqa: BLE001 - una ventana rara no para la enumeracion
+            pass
+        return True
+
+    user32.EnumWindows(visitar, 0)
+    return encontradas
+
+
+LWA_ALPHA = 0x2
+# Si lo nuestro tapa mas de esta parte de la region, la lectura pasiva no se hace.
+TAPADO_MAXIMO = 0.5
+
+
+def descartar_propias(imagen, region: Region, propias: list[Region] | None = None,
+                      tapado_maximo: float = TAPADO_MAXIMO):
+    """Pinta de negro lo que tapan nuestras ventanas; None si tapan demasiado.
+
+    Para las lecturas periodicas, que no esconden Farmadex: asi el OCR no lee nuestros
+    textos como si fueran del juego (ni el video del panel hace creer que la pantalla
+    no para de cambiar). Si la parte tapada pasa de `tapado_maximo`, no merece la pena
+    leer y se devuelve None. Devuelve una copia si toca algo; si no, la misma imagen.
+    """
+    if imagen is None:
+        return None
+    if propias is None:
+        propias = ventanas_propias()
+    tapes = [c for c in (interseccion(region, p) for p in propias) if c is not None]
+    if not tapes:
+        return imagen
+    import numpy as np
+
+    alto, ancho = imagen.shape[:2]
+    fx, fy = ancho / max(1, region.ancho), alto / max(1, region.alto)
+    mascara = np.zeros((alto, ancho), dtype=bool)
+    for c in tapes:
+        x0, y0 = int((c.x - region.x) * fx), int((c.y - region.y) * fy)
+        x1 = int(round((c.x + c.ancho - region.x) * fx))
+        y1 = int(round((c.y + c.alto - region.y) * fy))
+        mascara[max(0, y0):max(0, y1), max(0, x0):max(0, x1)] = True
+    if mascara.mean() > tapado_maximo:
+        return None
+    copia = imagen.copy()
+    copia[mascara] = 0
+    return copia
+
+
+def esperar_composicion(fotogramas: int = 2) -> None:
+    """Espera a que el compositor de Windows (DWM) pinte `fotogramas` veces.
+
+    Tras cambiar la opacidad de una ventana, la pantalla no cambia hasta que DWM
+    compone el siguiente fotograma; capturar antes seria capturar la ventana aun
+    visible. DwmFlush bloquea hasta la siguiente composicion; con dos se cubre el caso
+    de que el cambio llegase justo cuando un fotograma ya se estaba componiendo.
+    Medido en el PC de pruebas: 4-12 ms por llamada (1-2 fotogramas).
+    """
+    try:
+        dwm = ctypes.windll.dwmapi
+        for _ in range(fotogramas):
+            if dwm.DwmFlush() != 0:
+                raise OSError("DwmFlush")
+    except (AttributeError, OSError):
+        time.sleep(fotogramas / 60.0)  # sin DWM a mano: dos fotogramas a 60 Hz
 
 
 def region_objetivo() -> Region:

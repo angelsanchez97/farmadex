@@ -63,6 +63,10 @@ def _configuracion_limpia():
     config._compartida = None
     yield
     config._compartida = None
+    # El ocultador de capturas que registra la ventana tampoco viaja de una prueba a otra.
+    from farmadex.captura import pantalla
+
+    pantalla.registrar_ocultador(None)
 
 
 @pytest.fixture()

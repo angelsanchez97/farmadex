@@ -129,7 +129,9 @@ class LectorPasivo(QObject):
             region = pantalla.region_ventana(hwnd)
             if region is None:
                 return
-            imagen = pantalla.capturar(region)
+            # Sin esconder Farmadex (cada 1,5 s lo haria parpadear): lo que tapan nuestras
+            # ventanas se pinta de negro y, si tapan casi todo, esta vuelta no se lee.
+            imagen = pantalla.descartar_propias(pantalla.capturar_sin_ocultar(region), region)
             if imagen is None or not self.detector.observar(imagen):
                 return
             self._ocupado = True

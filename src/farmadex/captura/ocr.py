@@ -887,11 +887,9 @@ def agrupar_bloques(lineas: list[Leido], holgura: float = 0.9) -> list[list[Leid
 RE_RANGO_TARJETA = re.compile(r"^\d{1,2}\W?[A-Za-z]?\W?$")
 
 
-def _casar_trozo(bloque: list[Leido], casador: "Casador", umbral: int):
-    """El bloque sin los rangos de tarjeta de arriba y de abajo, si asi casa (y quedan
-    2 lineas o mas): ((desde, hasta), Reconocido), o None. Solo se quitan rangos: con
-    trozos cualquiera, la descripcion de un mod ("+5% de capacidad de / cargador")
-    acababa casando con otro mod."""
+def _limites_trozo(bloque: list[Leido]) -> tuple[int, int] | None:
+    """(desde, hasta) del bloque sin los rangos de tarjeta de los extremos, o None si
+    no queda un trozo de 2 lineas o mas distinto del bloque entero."""
     desde, hasta = 0, len(bloque)
     while desde < hasta and RE_RANGO_TARJETA.match(bloque[desde].texto.strip()):
         desde += 1
@@ -899,6 +897,18 @@ def _casar_trozo(bloque: list[Leido], casador: "Casador", umbral: int):
         hasta -= 1
     if hasta - desde < 2 or (desde, hasta) == (0, len(bloque)):
         return None
+    return desde, hasta
+
+
+def _casar_trozo(bloque: list[Leido], casador: "Casador", umbral: int):
+    """El bloque sin los rangos de tarjeta de arriba y de abajo, si asi casa (y quedan
+    2 lineas o mas): ((desde, hasta), Reconocido), o None. Solo se quitan rangos: con
+    trozos cualquiera, la descripcion de un mod ("+5% de capacidad de / cargador")
+    acababa casando con otro mod."""
+    limites = _limites_trozo(bloque)
+    if limites is None:
+        return None
+    desde, hasta = limites
     trozo = bloque[desde:hasta]
     texto = " ".join(l.texto for l in trozo)
     item_id, nombre, puntos = casador.casar(texto, umbral)
@@ -913,6 +923,44 @@ def _caja_union(lineas: list[Leido]) -> tuple[int, int, int, int]:
     x1 = max(l.x + l.ancho for l in lineas)
     y1 = max(l.y + l.alto for l in lineas)
     return x0, y0, x1 - x0, y1 - y0
+
+
+_avisado_rapidfuzz = False
+
+
+def rapidfuzz_en_cpp() -> bool:
+    """Si rapidfuzz usa su version compilada. Si no la encuentra (empaquetado roto, DLL
+    que no carga) cae en silencio a Python puro, unas 100 veces mas lento: medido con el
+    indice real, casar una pantalla de mejoras pasaba de ~30 ms a ~8 s."""
+    return not fuzz.ratio.__module__.endswith("_py") and not rf_process.cdist.__module__.endswith("_py")
+
+
+def avisar_si_rapidfuzz_lento() -> None:
+    global _avisado_rapidfuzz
+    if _avisado_rapidfuzz:
+        return
+    _avisado_rapidfuzz = True
+    if rapidfuzz_en_cpp():
+        log.info("Casado de nombres con rapidfuzz compilado (%s)", fuzz.ratio.__module__)
+    else:
+        log.warning("rapidfuzz va en Python puro (%s, %s): casar los nombres leidos sera muy lento",
+                    fuzz.ratio.__module__, rf_process.cdist.__module__)
+
+
+@dataclass
+class _Consulta:
+    """Un texto leido ya preparado para la busqueda aproximada en el catalogo."""
+
+    texto: str
+    consulta: str
+    compacta: str
+    ordenada: str
+    con_plano: bool
+
+
+# Hilos para la preseleccion en lote (`Casador.precasar`): el juego va a la vez, asi que
+# no se cogen todos los nucleos.
+HILOS_CASADO = HILOS_OCR
 
 
 class Casador:
@@ -1072,7 +1120,56 @@ class Casador:
             memo[clave_memo] = hecho
         return hecho
 
+    def calentar(self) -> None:
+        """Deja hecho de antemano lo que la primera lectura construiria sobre la marcha
+        (listas ordenadas, palabras de los nombres, los hilos de la busqueda): sin esto
+        la primera lectura de la sesion pagaba ~250 ms de mas."""
+        avisar_si_rapidfuzz_lento()
+        self._ordenadas_de("claves")
+        self._ordenadas_de("claves_alias")
+        self._es_palabra_de_nombre("")
+        self.precasar(["calentar casador"], 82)
+        self._memo.pop(("calentar casador", 82), None)
+
+    def precasar(self, textos, umbral: int = 82) -> None:
+        """Casa de una vez todos los `textos` que aun no esten en la memoria.
+
+        Lo caro de un texto que no casa es la preseleccion aproximada contra los
+        ~10.000 nombres (4-5 pasadas de `rf_process.extract`, ~2 ms por texto, y
+        una pantalla trae 50-80 textos que no son nombres). Aqui esa preseleccion
+        se hace para todos a la vez con `rf_process.cdist` en varios hilos (en C++,
+        sin el GIL). El resultado es el mismo que llamando a `casar` uno a uno; las
+        llamadas siguientes a `casar` salen de la memoria.
+        """
+        memo = self.__dict__.get("_memo")
+        if memo is None:
+            memo = self._memo = {}
+        pendientes: dict[str, _Consulta] = {}
+        for texto in dict.fromkeys(textos):
+            if (texto, umbral) in memo or texto in pendientes:
+                continue
+            consulta = self._consulta(texto)
+            if isinstance(consulta, _Consulta):
+                pendientes[texto] = consulta
+            else:
+                memo[(texto, umbral)] = consulta
+        if not pendientes:
+            return
+        if len(memo) + len(pendientes) >= self.MEMO_MAXIMO:
+            memo.clear()
+        lotes = self._preseleccionar_lote(list(pendientes.values()))
+        for (texto, consulta), posibles in zip(pendientes.items(), lotes):
+            memo[(texto, umbral)] = self._decidir(consulta, umbral, posibles)
+
     def _casar(self, texto: str, umbral: int) -> tuple[int | None, str, float]:
+        consulta = self._consulta(texto)
+        if not isinstance(consulta, _Consulta):
+            return consulta
+        return self._decidir(consulta, umbral, self._preseleccion(consulta))
+
+    def _consulta(self, texto: str):
+        """Lo leido ya normalizado para buscarlo, o el resultado si no hace falta buscar
+        (vacio, sin letras, exacto o solo palabras genericas)."""
         nada = (None, "", 0.0)
         clave = normalizar(RE_ETIQUETAS.sub(" ", texto or ""))
         if not clave or len(clave) < 3:
@@ -1162,13 +1259,14 @@ class Casador:
         # Solo palabras genericas ("BLUEPRINT", "PRIME SYSTEMS"): no hay objeto.
         if all(p in self.genericas for p in consulta.split()) or compacta in self.genericas:
             return nada
-        # Cuanto mas corto lo leido, menos erratas caben: "BLADE" no es "Blaze".
-        umbral_efectivo = max(float(umbral), 96.0 - len(compacta))
+        return _Consulta(texto, consulta, compacta, _orden_libre(consulta), con_plano)
 
+    def _preseleccion(self, q: "_Consulta") -> set[str]:
+        """Las claves del catalogo que merece la pena puntuar (busqueda aproximada)."""
+        consulta, compacta, ordenada, con_plano = q.consulta, q.compacta, q.ordenada, q.con_plano
         # token_sort_ratio(a, b) es ratio() entre las dos con las palabras ordenadas; con
         # los nombres ya ordenados de antemano (`_ordenadas_de`) sale lo mismo en ~6
         # veces menos tiempo: era lo que mas costaba de cada texto que no casa.
-        ordenada = _orden_libre(consulta)
         claves = self.claves
         posibles = {
             claves[m[2]] for m in rf_process.extract(
@@ -1208,7 +1306,53 @@ class Casador:
                     scorer=fuzz.ratio, limit=8, score_cutoff=80,
                 )
             }
+        return posibles
 
+    def _preseleccionar_lote(self, consultas: list["_Consulta"]) -> list[set[str]]:
+        """`_preseleccion` de muchas consultas a la vez: mismas listas, mismos cortes y
+        los mismos 8 mejores por lista (empates por posicion, como `extract`)."""
+        import numpy as np
+
+        posibles: list[set[str]] = [set() for _ in consultas]
+
+        def pasada(indices: list[int], textos: list[str], opciones: list[str], a_clave, corte: int) -> None:
+            if not indices or not opciones:
+                return
+            matriz = rf_process.cdist(textos, opciones, scorer=fuzz.ratio, score_cutoff=corte,
+                                      workers=HILOS_CASADO)
+            for fila, i in enumerate(indices):
+                puntos = matriz[fila]
+                elegidos = np.flatnonzero(puntos >= corte)
+                if len(elegidos) > 8:
+                    elegidos = elegidos[np.lexsort((elegidos, -puntos[elegidos]))[:8]]
+                posibles[i].update(a_clave(int(j)) for j in elegidos)
+
+        todas = list(range(len(consultas)))
+        claves = self.claves
+        pasada(todas, [q.ordenada for q in consultas], self._ordenadas_de("claves"), claves.__getitem__, 55)
+        con_plano = [i for i, q in enumerate(consultas) if q.con_plano]
+        if con_plano:
+            claves_alias = self.claves_alias
+            pasada(con_plano, [consultas[i].ordenada for i in con_plano], self._ordenadas_de("claves_alias"),
+                   claves_alias.__getitem__, 55)
+            compactas_alias = list(self.alias_compacto_a_clave)
+            pasada(con_plano, [consultas[i].compacta for i in con_plano], compactas_alias,
+                   lambda j: self.alias_compacto_a_clave[compactas_alias[j]], 55)
+        compactas = self.claves_compactas
+        pasada(todas, [q.compacta for q in consultas], compactas,
+               lambda j: self.compactos_a_clave[compactas[j]], 55)
+        largas = [i for i, q in enumerate(consultas) if len(q.compacta) >= 8]
+        ordenadas = self.claves_ordenadas
+        pasada(largas, ["".join(sorted(consultas[i].compacta)) for i in largas], ordenadas,
+               lambda j: self.ordenadas[ordenadas[j]], 80)
+        return posibles
+
+    def _decidir(self, q: "_Consulta", umbral: int, posibles: set[str]) -> tuple[int | None, str, float]:
+        """Puntua la preseleccion y decide (o no, si hay dudas)."""
+        nada = (None, "", 0.0)
+        texto, consulta, compacta, con_plano = q.texto, q.consulta, q.compacta, q.con_plano
+        # Cuanto mas corto lo leido, menos erratas caben: "BLADE" no es "Blaze".
+        umbral_efectivo = max(float(umbral), 96.0 - len(compacta))
         puntuadas = sorted(
             ((self._puntuar(consulta, compacta, c), c) for c in posibles), reverse=True
         )
@@ -1393,7 +1537,22 @@ def casar_lineas(lineas: list[Leido], casador: Casador, umbral: int = 82,
     separado ninguna linea dice que mod es.
     """
     salida = []
-    for bloque in agrupar_bloques(lineas):
+    bloques = agrupar_bloques(lineas)
+    precasar = getattr(casador, "precasar", None)
+    if precasar is not None:
+        # Todos los textos que se van a probar, casados de una vez (ver Casador.precasar):
+        # lo de abajo ya sale de la memoria.
+        textos = []
+        for bloque in bloques:
+            if len(bloque) > 1:
+                textos.append(" ".join(l.texto for l in bloque))
+                if subbloques:
+                    limites = _limites_trozo(bloque)
+                    if limites is not None:
+                        textos.append(" ".join(l.texto for l in bloque[limites[0]:limites[1]]))
+            textos.extend(l.texto for l in bloque)
+        precasar(textos, umbral)
+    for bloque in bloques:
         if len(bloque) > 1:
             texto = " ".join(l.texto for l in bloque)
             item_id, nombre, puntos = casador.casar(texto, umbral)

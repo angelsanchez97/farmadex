@@ -151,14 +151,44 @@ def cabecera(lineas: list[Leido]) -> tuple[str, Leido | None]:
         m = es_cabecera(linea.texto)
         if m:
             return m.group(1).strip(), linea
+    # La letra de la cabecera es muy espaciada: a veces el OCR la parte en dos cajas
+    # ("MEJORAS /" y "EXCALIBUR [30]", o "MEJORAS" y "/EXCALIBUR [30]") con un hueco
+    # mayor del que `unir_filas` junta. Se prueba cada palabra de cabecera con lo que
+    # tiene a su derecha en la misma fila.
+    for linea in lineas:
+        if not _es_palabra_cabecera(linea.texto):
+            continue
+        derecha = [l for l in lineas if l is not linea and l.x >= linea.x + linea.ancho * 0.5
+                   and min(l.y + l.alto, linea.y + linea.alto) - max(l.y, linea.y) >= 0.5 * min(l.alto, linea.alto)]
+        if not derecha:
+            continue
+        vecina = min(derecha, key=lambda l: l.x)
+        texto = f"{linea.texto.strip()} {vecina.texto.strip()}"
+        if not re.search(r"[/:]", texto):
+            texto = f"{linea.texto.strip()} / {vecina.texto.strip()}"
+        m = es_cabecera(texto)
+        if m:
+            x0, y0 = min(linea.x, vecina.x), min(linea.y, vecina.y)
+            x1 = max(linea.x + linea.ancho, vecina.x + vecina.ancho)
+            y1 = max(linea.y + linea.alto, vecina.y + vecina.alto)
+            return m.group(1).strip(), Leido(texto, x0, y0, x1 - x0, y1 - y0, min(linea.confianza, vecina.confianza))
     return "", None
+
+
+def _es_palabra_cabecera(texto: str) -> bool:
+    """"MEJORAS", "MEJORAS /", "+UPGRADES:" (con erratas): la palabra de la cabecera sola."""
+    compacta = re.sub(r"[^A-Z0-9|]", "", unicodedata.normalize("NFKD", texto).upper()).translate(_CIFRAS_POR_LETRAS)
+    if len(compacta) < 5:
+        return False
+    return any(compacta[:3] == p[:3] and fuzz.ratio(compacta, p) >= 80 for p in PALABRAS_CABECERA)
 
 
 # Restos del rango y de las formas pegados detras del nombre: "HAALVU3O", "HAALVU303OI",
 # "HAALVU3O 3OI", "HAALVU3013=". Empiezan por una cifra (o un borde de corchete).
 RE_RANGO_PEGADO = re.compile(r"(?<=[A-Za-z])(?:\s|[\[\(=|])*\d[\s\dOIl|=\-\]\[)(]*$")
 # "UNRANKED HYDROID" (sin rango) delante, "NIDUS RANK 29" detras (interfaz vieja).
-RE_SIN_RANGO = re.compile(r"(?i)^(?:UNRANKED|SIN\s*RANGO)\s*|\s*(?:RANK|RANGO)\s*\d+\s*$")
+# El rango puede salir con letras por cifras: "LIMBO PRIME RANGO 3O".
+RE_SIN_RANGO = re.compile(r"(?i)^(?:UNRANKED|SIN\s*RANGO)\s*|\s*(?:RANK|RANGO)\s*\d[\dOIl|]*\s*$")
 
 
 def _nombres_de_equipo(nombre: str) -> list[str]:
@@ -243,8 +273,10 @@ def separar_build(
         texto = linea.texto.strip()
         if (linea.x, linea.y, linea.ancho, linea.alto) in reconocidas_cajas:
             continue
-        if _es_interfaz(texto):
+        if _es_interfaz(texto) or not _puede_ser_nombre(texto):
             continue
+        if linea_cabecera is not None and texto in linea_cabecera.texto:
+            continue  # media cabecera partida en dos cajas
         # Solo nombres: dos letras seguidas como minimo y no un numero.
         if len(re.sub(r"[^A-Za-zÁÉÍÓÚÑáéíóúñ]", "", texto)) >= 4 and not es_cabecera(texto):
             build.sin_identificar.append(texto)
@@ -268,7 +300,28 @@ _PALABRAS_INTERFAZ = {
     "impact", "impacto", "puncture", "perforacion", "perforación", "slash", "cortante", "polarity",
     "polaridad", "exilus", "aura", "arcane", "arcano", "arcanes", "arcanos", "riven", "agrietado",
     "disposition", "disposicion", "disposición", "sort", "ordenar", "by", "por", "name", "nombre",
+    # Palabras de enlace de los rotulos ("VELOCIDAD AL CORRER", "MAX. DE ENERGIA").
+    "de", "del", "al", "la", "el", "los", "las", "of", "the", "max", "correr", "tutorial", "drenaje",
 }
+
+
+RE_ESTADISTICA = re.compile(r"%|^[+\-]\s*\d")
+
+
+def _puede_ser_nombre(texto: str) -> bool:
+    """Si una linea sin reconocer puede ser el nombre de un mod (para "sin identificar").
+
+    Los nombres de las tarjetas van con mayusculas y minusculas ("Continuidad Prime");
+    los rotulos de la interfaz, en mayusculas ("BONIFICACIONES DE RANGO", "TUTORIAL",
+    "ORDENAR POR: DRENAJE"). Tampoco son nombres las estadisticas ("+50% MAX. DE
+    ENERGIA") ni las frases de ayuda (mas de seis palabras).
+    """
+    if RE_ESTADISTICA.search(texto):
+        return False
+    letras = [c for c in texto if c.isalpha()]
+    if letras and all(c.isupper() for c in letras):
+        return False
+    return len(texto.split()) <= 6
 
 
 def _es_interfaz(texto: str) -> bool:
@@ -299,6 +352,8 @@ class LectorBuild(LectorBase):
         con = indice.conectar()
         try:
             self.casador = crear_casador(con)
+            # Una vez al arrancar, en el hilo de captura: la primera lectura ya no lo paga.
+            self.casador.calentar()
             marcas = ", ".join("?" for _ in CATEGORIAS_BUILD)
             self._categorias = dict(
                 con.execute(f"SELECT id, categoria FROM items WHERE categoria IN ({marcas})", CATEGORIAS_BUILD)

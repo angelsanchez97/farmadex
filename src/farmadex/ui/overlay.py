@@ -79,6 +79,7 @@ from .widgets import PALETA, BarraProgreso, elegir_tema, hoja_estilos
 from .estilo_c import BotonC, EtiquetaC, Filete, SubPestanasC, refrescar_todo, transparente
 from .pestana_tablero import PestanaTablero
 from .tooltip_reliquia import AyudaHoverApp, ServicioTarjeta
+from .ocultar_captura import OcultadorVentanas
 
 log = obtener("overlay")
 
@@ -728,6 +729,9 @@ class VentanaOverlay(QWidget):
             lambda _i: self.hover_reliquias.cambiar_modo(self.ajustes.hover_reliquia_modo.currentData()))
         self.ajustes.hover_reliquia_tecla.currentIndexChanged.connect(
             lambda _i: self.hover_reliquias.cambiar_tecla(self.ajustes.hover_reliquia_tecla.currentData()))
+        # Antes de cada captura, Farmadex se esconde un instante si tapa lo que se va a leer.
+        self.ocultador = OcultadorVentanas(self)
+        pantalla.registrar_ocultador(self.ocultador)
         self.hilo_captura.start()
         self.hover_reliquias.iniciar()
 
@@ -2271,6 +2275,8 @@ class VentanaOverlay(QWidget):
         if self.hilo_captura:
             self.hilo_captura.quit()
             self.hilo_captura.wait(3000)
+            pantalla.registrar_ocultador(None)
+            self.ocultador.restaurar_todo()
         if self.hilo_comparador:
             self.servicio_comparador.cerrar()
             self.hilo_comparador.quit()
