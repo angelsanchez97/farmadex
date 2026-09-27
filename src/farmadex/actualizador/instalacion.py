@@ -111,6 +111,26 @@ def senalar_en_ejecucion() -> None:
         log.debug("Sin mutex de ejecucion: %s", e)
 
 
+def otros_procesos_farmadex() -> list[int]:
+    """PIDs de otros Farmadex.exe vivos (para el registro cuando algo bloquea la actualizacion)."""
+    if os.name != "nt":
+        return []
+    try:
+        salida = subprocess.run(
+            ["tasklist", "/FI", "IMAGENAME eq Farmadex.exe", "/FO", "CSV", "/NH"],
+            capture_output=True, text=True, timeout=5,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return []
+    pids = []
+    for linea in salida.splitlines():
+        partes = [c.strip('"') for c in linea.split('","')]
+        if len(partes) > 1 and partes[1].isdigit() and int(partes[1]) != os.getpid():
+            pids.append(int(partes[1]))
+    return pids
+
+
 def otra_instancia_abierta() -> bool:
     """True si otro Farmadex tiene el mutex de ejecucion.
 

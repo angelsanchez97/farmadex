@@ -51,6 +51,7 @@ from ..captura.cursor import LectorCursor, TurnoLecturas
 from ..captura.lector_pasivo import LectorPasivo
 from ..captura.ocr import modo_de_config
 from ..captura.reliquias import DisparadorAutomatico, LectorRecompensas, Recompensa, completar, resumir
+from ..captura.reliquia_hover import HoverReliquias, LectorHoverReliquia
 from ..online.servicio_market import ServicioMarket
 from ..online.worldstate import ServicioMundo
 from .pestana_agrietados import PestanaAgrietados
@@ -77,6 +78,7 @@ from .reproductor import PanelVideo, PanelWeb
 from .widgets import PALETA, BarraProgreso, elegir_tema, hoja_estilos
 from .estilo_c import BotonC, EtiquetaC, Filete, SubPestanasC, refrescar_todo, transparente
 from .pestana_tablero import PestanaTablero
+from .tooltip_reliquia import AyudaHoverApp, ServicioTarjeta
 
 log = obtener("overlay")
 
@@ -414,6 +416,12 @@ class VentanaOverlay(QWidget):
         for vista in (self.etiquetas_pequenas, self.panel_recompensas):
             vista.prioridad = self.prioridad_recompensas
         self.vigilante: VigilanteEELog | None = None
+        # Tabla de una reliquia al dejar el raton encima: una sola tarjeta para la app
+        # (cualquier enlace o texto marcado de una reliquia) y para el juego (OCR).
+        self.tarjeta_reliquia = ServicioTarjeta(usuario=lambda: self.objetivos.usuario, parent=self)
+        self.ayuda_reliquias = AyudaHoverApp(self.tarjeta_reliquia, parent=self)
+        self.ayuda_reliquias.instalar()
+        self.hover_reliquias: HoverReliquias | None = None
         self._version_encontrada = None
         # Lo que se sabe del juego: cabecera de EE.log (build, modo) y modo de pantalla.
         self.cabecera_juego = None
@@ -556,6 +564,7 @@ class VentanaOverlay(QWidget):
                 self, f"{NOMBRE_APP}", t("No se pudieron preparar los datos ({motivo})", motivo=mensaje)
             )
             return
+        self.tarjeta_reliquia.olvidar_indice()
         self.buscador.habilitar(True)
         self.objetivos.conectar_indice(indice.conectar())
         self.primes.conectar_indice(indice.conectar())
@@ -702,7 +711,25 @@ class VentanaOverlay(QWidget):
         self.lector_pasivo.pagina_inventario.connect(self._pagina_inventario_leida)
         self.ajustes.perfil_pasivo.toggled.connect(self.lector_pasivo.activar_perfil)
         self.ajustes.inventario_pasivo.toggled.connect(self.lector_pasivo.activar_inventario)
+        # Tabla de la reliquia bajo el raton en el juego (Ajustes > Reliquias): mismo hilo y motor.
+        self.lector_hover = LectorHoverReliquia(motor)
+        self.lector_hover.moveToThread(self.hilo_captura)
+        self.hover_reliquias = HoverReliquias(
+            self._mostrar_reliquia_juego, self.tarjeta_reliquia.ocultar,
+            activo=bool(self.config.get("hover_reliquia", True)),
+            modo=self.config.get("hover_reliquia_modo", "auto"),
+            tecla=self.config.get("hover_reliquia_tecla", "alt"),
+            sobre_farmadex=self._cursor_sobre_farmadex, parent=self,
+        )
+        self.hover_reliquias.pedir_lectura.connect(self.lector_hover.leer)
+        self.lector_hover.leida.connect(self.hover_reliquias.leida)
+        self.ajustes.hover_reliquia.toggled.connect(self.hover_reliquias.activar)
+        self.ajustes.hover_reliquia_modo.currentIndexChanged.connect(
+            lambda _i: self.hover_reliquias.cambiar_modo(self.ajustes.hover_reliquia_modo.currentData()))
+        self.ajustes.hover_reliquia_tecla.currentIndexChanged.connect(
+            lambda _i: self.hover_reliquias.cambiar_tecla(self.ajustes.hover_reliquia_tecla.currentData()))
         self.hilo_captura.start()
+        self.hover_reliquias.iniciar()
 
         self.disparador = DisparadorAutomatico(bool(self.config.get("ocr_reliquias_auto", True)))
         self.disparador.disparar.connect(self.leer_recompensas)
@@ -713,7 +740,7 @@ class VentanaOverlay(QWidget):
         self.ajustes.prioridad_recompensas_cambiada.connect(self.cambiar_prioridad_recompensas)
         # Cambio de modo de OCR en Ajustes: cada lector rehace su motor en el hilo de captura.
         for lector in (self.lector_recompensas, self.lector_cursor, self.lector_build,
-                       self.lector_agrietado, self.lector_pasivo):
+                       self.lector_agrietado, self.lector_pasivo, self.lector_hover):
             self.ajustes.ocr_modo_cambiado.connect(lector.cambiar_motor)
 
         # Botin que EE.log deja claro (reliquia en solitario) va directo a los objetivos.
@@ -742,6 +769,7 @@ class VentanaOverlay(QWidget):
         self._temporizador_conocidas.setInterval(150)  # las lineas "gets reward" salen juntas
         self._temporizador_conocidas.timeout.connect(self._recompensas_conocidas)
         self.vigilante.pantalla.connect(self.lector_pasivo.pantalla_juego)
+        self.vigilante.pantalla.connect(self.hover_reliquias.pantalla_juego)
         self.vigilante.arranque.connect(self._arranque_juego)
         self.vigilante.start()
 
@@ -1116,6 +1144,18 @@ class VentanaOverlay(QWidget):
             QDesktopServices.openUrl(QUrl(href))
 
     def _reiniciar_y_actualizar(self) -> None:
+        # "A veces no va": que quede en el registro que se pulso y por que no hizo nada.
+        log.info(
+            "Pulsado Reiniciar y actualizar (lista=%s, ya lanzado=%s)",
+            bool(self.actualizacion_lista), self._instalador_lanzado,
+        )
+        if self._instalador_lanzado:
+            # Un segundo clic mientras el setup arranca: se vuelve a pedir el cierre.
+            QTimer.singleShot(0, self.cerrar_programa.emit)
+            return
+        if not self.actualizacion_lista:
+            self._aviso("version", t("La actualización todavía se está descargando; espera un momento."))
+            return
         if self._lanzar_instalacion_pendiente(a_mano=True):
             self.estado.setText(t("Instalando... Farmadex se va a cerrar."))
             QTimer.singleShot(500, self.cerrar_programa.emit)
@@ -1135,7 +1175,10 @@ class VentanaOverlay(QWidget):
             # El setup esperaria a un Farmadex que no se va a cerrar, se rendiria y
             # ese abandono quedaria apuntado como fallo de la version. Se deja la
             # descarga tal cual: la instala el ultimo Farmadex que se cierre.
-            log.info("Hay otro Farmadex abierto: la actualizacion %s se instalara mas tarde", version.etiqueta)
+            log.info(
+                "Hay otro Farmadex abierto: la actualizacion %s se instalara mas tarde (procesos: %s)",
+                version.etiqueta, instalacion.otros_procesos_farmadex(),
+            )
             self._aviso(
                 "version",
                 t(
@@ -1603,6 +1646,22 @@ class VentanaOverlay(QWidget):
             if texto:
                 marcas[r.item_id] = (texto, estado.estado)
         return marcas
+
+    def _mostrar_reliquia_juego(self, reliquia_id: int, refinamiento: str, _x: int, _y: int) -> None:
+        """El OCR ha reconocido una reliquia bajo el raton en el juego: su tabla junto al cursor."""
+        if self.modo_pantalla == pantalla.MODO_EXCLUSIVO:
+            return  # en pantalla completa exclusiva no se puede pintar encima
+        self.tarjeta_reliquia.mostrar(reliquia_id, QCursor.pos(), refinamiento or None)
+
+    def _cursor_sobre_farmadex(self, _x: int, _y: int) -> bool:
+        """El raton esta encima de una ventana de Farmadex (ahi no se lee el juego)."""
+        from PySide6.QtWidgets import QApplication
+
+        w = QApplication.widgetAt(QCursor.pos())
+        if w is None or w is self.tarjeta_reliquia.tarjeta:
+            return False
+        # El fondo transparente del modo juego no tapa el juego: solo cuenta lo pintado.
+        return not (w.isWindow() and w.testAttribute(Qt.WA_TranslucentBackground))
 
     def _abrir_desde_cursor(self, item_id: int, nombre: str) -> None:
         self.mostrar()
@@ -2204,6 +2263,11 @@ class VentanaOverlay(QWidget):
             self._lanzar_instalacion_pendiente()
         if self.vigilante:
             self.vigilante.parar()
+        if self.hover_reliquias is not None:
+            self.hover_reliquias.parar()
+        self.ayuda_reliquias.quitar()
+        self.tarjeta_reliquia.ocultar()
+        self.tarjeta_reliquia.cerrar()
         if self.hilo_captura:
             self.hilo_captura.quit()
             self.hilo_captura.wait(3000)
