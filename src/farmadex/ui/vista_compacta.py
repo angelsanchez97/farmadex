@@ -32,6 +32,7 @@ from . import ficha_detalles, glosario
 from .estilo_c import BotonC, EtiquetaC, PanelC, Rombo, Tecla, fila, icono, px, transparente
 from .pestana_buscador import PestanaBuscador, _con_padre, _etiqueta, categoria_es, era_de
 from .resultados_desplegables import ResultadosDesplegables
+from .tooltip_reliquia import marcar, reliquia_de_ruta
 from .widgets import COLOR_BOVEDA, COLOR_DISPONIBLE, PALETA, color_rareza
 
 log = obtener("modo_juego")
@@ -296,6 +297,8 @@ class VistaCompacta(QWidget):
         else:
             self.tarjeta_pieza.poner(t("Siguiente pieza"), "", t("Sin metas todavía"),
                                      t("Añade objetivos en Mis metas y aquí verás tu siguiente pieza."))
+        # La linea "Reliquia Lith S19 · ..." ensena la tabla de la reliquia al dejar el raton.
+        marcar(self.tarjeta_pieza.detalle, reliquia_de_ruta(getattr(pasos[0], "ruta", None)) if pasos else None)
         self.tarjeta_pieza.setToolTip(t("Abrir su ficha") if self._item_pieza else "")
         self.tarjeta_pieza.setCursor(Qt.PointingHandCursor if self._item_pieza else Qt.ArrowCursor)
 

@@ -90,6 +90,11 @@ POR_DEFECTO = {
     # Lectura pasiva de las pantallas del menu (captura + OCR solo con el juego delante).
     "perfil_pasivo": True,
     "inventario_pasivo": False,  # sin calibrar con capturas del usuario: apagado
+    # Tabla de la reliquia bajo el raton en el juego (captura/reliquia_hover.py): encendida,
+    # "auto" (sola en las pantallas de reliquias) o "tecla" (solo manteniendo esa tecla).
+    "hover_reliquia": True,
+    "hover_reliquia_modo": "auto",
+    "hover_reliquia_tecla": "alt",
     # Botin deducido de EE.log (recompensa de reliquia en misiones en solitario).
     "botin_eelog_auto": True,
     # Arranque con Windows (HKCU\...\Run), escondido en la bandeja. Apagado por defecto.

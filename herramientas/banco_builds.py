@@ -1,13 +1,15 @@
 """Banco de pruebas del lector de la pantalla de mejoras (pestana Build).
 
 Pinta pantallas sinteticas (tests/sintetico_builds.py) con mods reales del indice, en
-ingles y castellano y a 720p, 1080p y 1440p, las pasa por el lector y cuenta:
+ingles y castellano y a 720p, 1080p, 1440p y 4K, las pasa por el lector y cuenta:
 mods reconocidos, mods inventados (los peores: casan con otro mod), el equipo de la
 cabecera y el tiempo. Con `--capturas carpeta` lee tambien capturas reales con un
 `verdad.json` al lado: {"fichero.png": {"equipo": "Excalibur", "mods": ["Vitality", ...]}}
 (nombres en ingles del indice). Esas capturas no van en el repositorio.
 
-Uso: .venv/Scripts/python.exe herramientas/banco_builds.py [--n 6] [--capturas carpeta] [--guardar carpeta]
+Uso: .venv/Scripts/python.exe herramientas/banco_builds.py [--n 8] [--capturas carpeta] [--guardar carpeta]
+                                                            [--alto-deteccion N]
+`--alto-deteccion` cambia el alto al que busca texto el detector (0: a tamano real) para medir.
 Hace falta el indice real construido (la app lo crea la primera vez). No se toca: se
 copia a una carpeta temporal con FARMADEX_DATOS.
 """
@@ -56,17 +58,22 @@ import sintetico_builds as SINT  # noqa: E402
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--n", type=int, default=6)
+    parser.add_argument("--n", type=int, default=8)
     parser.add_argument("--semilla", type=int, default=7)
     parser.add_argument("--capturas")
     parser.add_argument("--guardar")
+    parser.add_argument("--alto-deteccion", type=int)
     args = parser.parse_args()
+    if args.alto_deteccion is not None:
+        B.ALTO_DETECCION = args.alto_deteccion or None
+    print(f"Alto de deteccion: {getattr(B, 'ALTO_DETECCION', None) or 'tamano real'}")
 
     con = indice.conectar()
     indice.crear_esquema(con)  # un indice viejo puede no tener las tablas de idiomas
     casador = B.crear_casador(con)
     categorias = dict(con.execute("SELECT id, categoria FROM items"))
     motor = MotorOCR()
+    motor.precalentar()  # como la app al arrancar: la primera pantalla no paga la carga del modelo
     guardar = Path(args.guardar) if args.guardar else None
     if guardar is not None:
         guardar.mkdir(parents=True, exist_ok=True)
@@ -97,7 +104,7 @@ def main() -> int:
         equipados = rng.sample(mods, 9)
         coleccion = rng.sample(mods, 16)
         traducir = (lambda n: nombre_es.get(n) or n) if idioma == "es" else (lambda n: n)
-        ancho, alto = [(1920, 1080), (2560, 1440), (1280, 720)][i % 3]
+        ancho, alto = [(1920, 1080), (2560, 1440), (1280, 720), (3840, 2160)][i % 4]
         imagen = SINT.pintar_arsenal(equipo, [traducir(n) for n in equipados], [traducir(n) for n in coleccion],
                                      ancho=ancho, alto=alto, idioma=idioma, semilla=i, desenfoque=0.6 if i % 5 == 4 else 0)
         if guardar is not None:

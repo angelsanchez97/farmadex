@@ -20,7 +20,7 @@ from . import pantalla
 from . import recompensas_rapidas as rapidas
 from .ocr import (
     Casador, ErrorMotorOCR, Leido, MotorOCR, Reconocido, _caja_union, agrupar_bloques, casar_lineas,
-    leer_lineas, reconocer,
+    leer_lineas, reconocer, resumen_tiempos,
 )
 
 log = obtener("reliquias")
@@ -169,8 +169,13 @@ class LectorBase(QObject):
             log.debug("Lector de pantalla sigue sin estar disponible: %s", motivo)
 
     def _leer_protegido(self, imagen, umbral: int) -> list[Reconocido] | None:
-        """`reconocer` sin que nada se propague: None si el motor no esta disponible."""
+        """`reconocer` sin que nada se propague: None si el motor no esta disponible.
+
+        Un lector puede fijar `self.lado_minimo` (ver `MotorOCR.leer`)."""
+        lado_minimo = getattr(self, "lado_minimo", None)
         try:
+            if lado_minimo:
+                return reconocer(imagen, self.motor, self.casador, umbral=umbral, lado_minimo=lado_minimo)
             return reconocer(imagen, self.motor, self.casador, umbral=umbral)
         except ErrorMotorOCR as e:
             self._avisar_motor(str(e))
@@ -454,11 +459,12 @@ class LectorRecompensas(LectorBase):
         log.info(
             "Reliquia (%s): captura %.0f ms, ocr %.0f ms, casado %.0f ms; %d lineas, %d recompensas "
             "(%d por EE.log de %d conocidas, %s esperadas); fila %s, franja %s, ventana %dx%d; "
-            "motor %s x%d hilos; %s",
+            "motor %s x%d hilos; %s; ultimo OCR: %s",
             via, tiempos.get("captura", 0) * 1000, tiempos.get("ocr", 0) * 1000, tiempos.get("casado", 0) * 1000,
             tiempos.get("lineas", 0), encontradas, tiempos.get("conocidas", 0), len(self.conocidas),
             self._esperadas() or "?", tiempos.get("fila", "-"), tiempos.get("franja", "-"),
             ventana.ancho, ventana.alto, self.motor.motor, self.motor.hilos, desde_aviso,
+            resumen_tiempos(getattr(self.motor, "tiempos", None)),
         )
 
 

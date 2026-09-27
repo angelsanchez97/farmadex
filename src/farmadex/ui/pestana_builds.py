@@ -13,6 +13,8 @@ El boton de leer la pantalla va a la derecha de las sub-pestanas (`controles_cab
 
 from __future__ import annotations
 
+import time
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
@@ -27,6 +29,7 @@ from PySide6.QtWidgets import (
 from ..captura.builds import Build
 from ..config import cargar
 from ..idiomas import t
+from ..registro_log import obtener
 from . import builds_overframe, colores_tipo, widgets
 from .estilo_c import (
     BotonC,
@@ -41,6 +44,8 @@ from .estilo_c import (
     px,
     transparente,
 )
+
+log = obtener("ui.builds")
 
 CATEGORIA_ES = {
     "Warframes": "Warframe",
@@ -243,6 +248,13 @@ class PestanaBuilds(QWidget):
             panel.hide()
 
     def mostrar_build(self, build: Build) -> None:
+        inicio = time.perf_counter()
+        try:
+            self._mostrar_build(build)
+        finally:
+            log.info("Build pintada en %.0f ms", (time.perf_counter() - inicio) * 1000)
+
+    def _mostrar_build(self, build: Build) -> None:
         self.build = build
         self._vaciar()
         hay_overframe = bool(self.url_overframe())

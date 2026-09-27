@@ -174,28 +174,181 @@ class Reconocido:
 
 
 def _crear_rapidocr(hilos: int):
-    """RapidOCR con el numero de hilos acotado y sin el clasificador de giro.
+    """RapidOCR con el numero de hilos acotado, sin el clasificador de giro y con la
+    memoria de ONNX Runtime gestionada para que ninguna lectura pague "primeras veces".
 
-    El paquete no deja pasar opciones de sesion, asi que se le cambia la fabrica
-    de `SessionOptions` solo mientras se construye. El texto del juego siempre
-    esta derecho: el clasificador de 0/180 grados solo anadia tiempo.
+    El paquete no deja pasar opciones de sesion, asi que se le cambian las fabricas
+    de `SessionOptions` e `InferenceSession` solo mientras se construye. El texto del
+    juego siempre esta derecho: el clasificador de 0/180 grados solo anadia tiempo.
+
+    Memoria (medido en un 9800X3D, `herramientas/perfil_ocr.py`): RapidOCR apaga el
+    "arena" de memoria y deja encendido el patron de memoria, que ONNX Runtime
+    planifica la primera vez que ve cada forma de entrada. Esa primera vez costaba
+    de 2 a 5 veces la inferencia, y casi todas las lecturas traen formas nuevas
+    (cada pantalla tiene nombres de anchos distintos): la pantalla de mejoras
+    reconocia en ~700 ms la primera vez y en ~150 ms la segunda. Con el arena
+    encendido y el patron apagado no hay primeras veces; y encogiendo el arena al
+    acabar cada inferencia (`_SesionQueSuelta`) la memoria vuelve al sistema en vez
+    de quedarse ocupada (sin encoger, el detector se quedaba con ~1 GB).
     """
     import rapidocr_onnxruntime.utils as utiles
     from rapidocr_onnxruntime import RapidOCR
 
-    original = utiles.SessionOptions
+    opciones_originales = utiles.SessionOptions
+    sesion_original = utiles.InferenceSession
 
     def con_hilos():
-        opciones = original()
+        opciones = opciones_originales()
         opciones.intra_op_num_threads = max(1, hilos)
         opciones.inter_op_num_threads = 1
+        # Sin "spinning": por defecto los hilos de ONNX Runtime se quedan dando vueltas
+        # esperando trabajo, y con el juego ocupando nucleos se pelean con el y entre
+        # ellos. Medido con la CPU peleada (herramientas/perfil_ocr.py y 4 procesos
+        # ocupando los mismos nucleos): detector a 1080p 789 -> 305 ms y un lote del
+        # reconocedor 154 -> 44 ms con 4 hilos; con la CPU libre da igual.
+        opciones.add_session_config_entry("session.intra_op.allow_spinning", "0")
         return opciones
 
+    def sesion(ruta, sess_options=None, providers=None, **kw):
+        if sess_options is not None:
+            sess_options.enable_cpu_mem_arena = True
+            sess_options.enable_mem_pattern = False
+        return sesion_original(ruta, sess_options=sess_options, providers=providers, **kw)
+
     utiles.SessionOptions = con_hilos
+    utiles.InferenceSession = sesion
     try:
-        return RapidOCR(use_angle_cls=False)
+        motor = RapidOCR(use_angle_cls=False)
     finally:
-        utiles.SessionOptions = original
+        utiles.SessionOptions = opciones_originales
+        utiles.InferenceSession = sesion_original
+    motor.text_detector.infer = _SesionQueSuelta(motor.text_detector.infer)
+    motor.text_recognizer.session = _SesionQueSuelta(motor.text_recognizer.session)
+    _normalizado_rapido(motor.text_detector)
+    motor.text_detector = _Cronometrado(motor.text_detector)
+    motor.text_recognizer = _Cronometrado(motor.text_recognizer)
+    return motor
+
+
+# `leer` deja que RapidOCR amplie la imagen antes de buscar texto hasta que su lado
+# corto mida 736 px: un recuadro de 620x170 bajo el cursor se buscaba a 2684x736.
+# `leer(imagen, lado_minimo=...)` cambia ese lado solo para esa lectura (lo usa el
+# lector bajo el cursor, ver cursor.LADO_MINIMO). Para el resto no se toca: medido,
+# bajarlo en general perdia una tarjeta de la franja de recompensas y una
+# estadistica de un agrietado sintetico.
+
+
+def _normalizado_rapido(detector) -> None:
+    """Cambia la normalizacion del detector de RapidOCR por una con tabla que da lo mismo.
+
+    La original pasa la imagen a float y hace resta y division por canal sobre la
+    imagen entera, y luego la traspone: ~40-75 ms a 1080p, casi la mitad de lo que
+    tarda la propia red en mirar la captura. Como los pixeles son de 8 bits, la
+    cuenta se hace una vez para los 256 valores posibles y se aplica con una tabla
+    ya en el orden canal-alto-ancho que quiere la red: ~12 ms y exactamente los
+    mismos numeros. Si el paquete cambia y no se reconocen las piezas, no se toca.
+    """
+    ops = getattr(detector, "preprocess_op", None)
+    if not isinstance(ops, list):
+        return
+    nombres = [type(op).__name__ for op in ops]
+    if "NormalizeImage" not in nombres or "ToCHWImage" not in nombres:
+        return
+    i_norm, i_chw = nombres.index("NormalizeImage"), nombres.index("ToCHWImage")
+    if i_chw != i_norm + 1:
+        return
+    ops[i_norm] = _NormalizarCHW(ops[i_norm])
+    ops[i_chw] = _SinTrasponer(ops[i_chw])
+
+
+class _NormalizarCHW:
+    """NormalizeImage + ToCHWImage de RapidOCR en una pasada con tabla (imagenes de 8 bits)."""
+
+    def __init__(self, original):
+        import numpy as np
+
+        self._original = original
+        valores = np.arange(256, dtype=np.float32).reshape(256, 1, 1)
+        tabla = (valores * original.scale - original.mean.reshape(1, 1, -1)) / original.std.reshape(1, 1, -1)
+        self._tablas = [np.ascontiguousarray(tabla[:, 0, c]) for c in range(tabla.shape[2])]
+
+    def __call__(self, data):
+        import cv2
+        import numpy as np
+
+        imagen = data["image"]
+        if not (isinstance(imagen, np.ndarray) and imagen.dtype == np.uint8 and imagen.ndim == 3
+                and imagen.shape[2] == len(self._tablas)):
+            data = self._original(data)
+            data["image"] = np.array(data["image"]).transpose((2, 0, 1))
+            data["_chw"] = True
+            return data
+        salida = np.empty((imagen.shape[2],) + imagen.shape[:2], dtype=np.float32)
+        for c, tabla in enumerate(self._tablas):
+            salida[c] = cv2.LUT(np.ascontiguousarray(imagen[:, :, c]), tabla)
+        data["image"] = salida
+        data["_chw"] = True
+        return data
+
+
+class _SinTrasponer:
+    """ToCHWImage que no hace nada si la imagen ya viene en canal-alto-ancho (_NormalizarCHW)."""
+
+    def __init__(self, original):
+        self._original = original
+
+    def __call__(self, data):
+        if data.pop("_chw", False):
+            return data
+        return self._original(data)
+
+
+class _Cronometrado:
+    """Envuelve el detector o el reconocedor de RapidOCR y suma lo que tarda (con su
+    preparacion y su postproceso), para el registro de tiempos por etapa."""
+
+    def __init__(self, original):
+        self._original = original
+        self.segundos = 0.0
+        self.llamadas = 0
+
+    def __getattr__(self, nombre):
+        return getattr(self._original, nombre)
+
+    def __call__(self, *args, **kwargs):
+        inicio = time.perf_counter()
+        try:
+            return self._original(*args, **kwargs)
+        finally:
+            self.segundos += time.perf_counter() - inicio
+            self.llamadas += 1
+
+
+class _SesionQueSuelta:
+    """Una sesion de RapidOCR (`OrtInferSession`) que al acabar cada inferencia
+    devuelve al sistema la memoria del arena."""
+
+    _opciones_run = None
+
+    def __init__(self, original):
+        self._original = original
+
+    def __getattr__(self, nombre):
+        return getattr(self._original, nombre)
+
+    @classmethod
+    def opciones_run(cls):
+        if cls._opciones_run is None:
+            import onnxruntime
+
+            opciones = onnxruntime.RunOptions()
+            opciones.add_run_config_entry("memory.enable_memory_arena_shrinkage", "cpu:0")
+            cls._opciones_run = opciones
+        return cls._opciones_run
+
+    def __call__(self, entrada):
+        sesion = self._original.session
+        return sesion.run(None, {sesion.get_inputs()[0].name: entrada}, self.opciones_run())
 
 
 class MotorOCR:
@@ -229,6 +382,7 @@ class MotorOCR:
         self.hilos = hilos
         self._forzada: str | None = None  # precalentado: que motor usar sin mirar la carga
         self.ultima_clave: str | None = None  # con que motor se hizo la ultima lectura
+        self.tiempos: dict = {}  # lo que costo cada etapa de la ultima lectura (resumen_tiempos)
 
     # -- que motor toca -----------------------------------------------------------
 
@@ -410,26 +564,63 @@ class MotorOCR:
 
     # -- lectura --------------------------------------------------------------------
 
-    def leer(self, imagen) -> list[Leido]:
+    def _medir(self, motor, inicio: float, preparado: float, imagen, deteccion=None) -> None:
+        """Deja en `self.tiempos` lo que costo cada etapa de la ultima lectura."""
+        fin = time.perf_counter()
+        tiempos = {"preparar": preparado - inicio, "total": fin - inicio,
+                   "entrada": f"{imagen.shape[1]}x{imagen.shape[0]}", "motor": self.ultima_clave or ""}
+        detector = getattr(motor, "text_detector", None)
+        reconocedor = getattr(motor, "text_recognizer", None)
+        if isinstance(detector, _Cronometrado) and isinstance(reconocedor, _Cronometrado):
+            tiempos["detector"] = detector.segundos
+            tiempos["reconocedor"] = reconocedor.segundos
+        if deteccion:
+            tiempos["deteccion"] = deteccion
+        self.tiempos = tiempos
+
+    @staticmethod
+    def _poner_a_cero(motor) -> None:
+        for parte in (getattr(motor, "text_detector", None), getattr(motor, "text_recognizer", None)):
+            if isinstance(parte, _Cronometrado):
+                parte.segundos, parte.llamadas = 0.0, 0
+
+    def leer(self, imagen, lado_minimo: int | None = None) -> list[Leido]:
         """Devuelve los trozos de texto encontrados, con su caja y su confianza.
 
         Lanza `ErrorMotorOCR` si el motor no se puede cargar; un fallo durante la
-        lectura se registra y devuelve lista vacia.
+        lectura se registra y devuelve lista vacia. Lo que tardo cada etapa queda
+        en `self.tiempos` (ver `resumen_tiempos`). `lado_minimo` cambia, solo para
+        esta lectura, hasta donde amplia RapidOCR la imagen antes de buscar texto.
         """
         if imagen is None:
             return []
+        inicio = time.perf_counter()
+        self.tiempos = {}
         imagen = preparar(imagen)
         if imagen is None:
             return []
+        preparado = time.perf_counter()
         motor = self._cargar()
         if motor == "winocr":
             return self._leer_windows(imagen, self.leer)
+        self._poner_a_cero(motor)
+        reescalados = []
+        if lado_minimo:
+            detector = getattr(motor, "text_detector", None)
+            reescalados = [op for op in getattr(detector, "preprocess_op", None) or []
+                           if type(op).__name__ == "DetResizeForTest" and getattr(op, "limit_type", "") == "min"]
+        previos = [op.limit_side_len for op in reescalados]
+        for op in reescalados:
+            op.limit_side_len = lado_minimo
         try:
             resultado, _ = motor(imagen)
         except Exception as e:  # noqa: BLE001 - onnxruntime lanza de todo
             log.warning("El OCR fallo sobre una captura de %sx%s: %s",
                         imagen.shape[1], imagen.shape[0], e)
             return []
+        finally:
+            for op, lado in zip(reescalados, previos):
+                op.limit_side_len = lado
         salida = []
         for caja, texto, confianza in resultado or []:
             xs = [int(p[0]) for p in caja]
@@ -447,9 +638,11 @@ class MotorOCR:
                     confianza=float(confianza),
                 )
             )
+        self._medir(motor, inicio, preparado, imagen)
+        self.tiempos["cajas"] = len(salida)
         return salida
 
-    def leer_tira(self, imagen) -> list[Leido]:
+    def leer_tira(self, imagen, alto_deteccion: int | None = None) -> list[Leido]:
         """Lee una tira estrecha de texto (la fila de nombres de las recompensas) tal cual.
 
         RapidOCR amplia cualquier imagen hasta 736 px de lado corto antes de
@@ -457,20 +650,38 @@ class MotorOCR:
         8 veces mas ancha que alta, ni detecta: la lee entera como una sola linea.
         Aqui se llaman el detector y el reconocedor directamente y sin reescalar:
         ~30 ms. Mismo contrato que `leer`.
+
+        Con `alto_deteccion`, una imagen mas alta se busca (detector) reducida a ese
+        alto, pero se lee (reconocedor) a tamano real: el coste del detector crece
+        con los pixeles, y para encontrar donde hay texto no hace falta tanto detalle
+        como para leerlo (ver `builds.ALTO_DETECCION`).
         """
         if imagen is None:
             return []
+        inicio = time.perf_counter()
+        self.tiempos = {}
         imagen = preparar(imagen)
         if imagen is None:
             return []
+        preparado = time.perf_counter()
         motor = self._cargar()
         if motor == "winocr":  # el OCR de Windows no reescala
             return self._leer_windows(imagen, self.leer_tira)
+        self._poner_a_cero(motor)
+        reducir = bool(alto_deteccion) and imagen.shape[0] > alto_deteccion * 1.05
         try:
-            return _leer_tira_rapidocr(motor, imagen)
+            if reducir:
+                salida = _leer_tira_rapidocr(motor, imagen, alto_deteccion)
+            else:
+                salida = _leer_tira_rapidocr(motor, imagen)
         except Exception as e:  # noqa: BLE001 - onnxruntime lanza de todo
             log.warning("El OCR fallo sobre una tira de %sx%s: %s", imagen.shape[1], imagen.shape[0], e)
             return []
+        escala = alto_deteccion / imagen.shape[0] if reducir else 1.0
+        self._medir(motor, inicio, preparado, imagen,
+                    f"{round(imagen.shape[1] * escala)}x{round(imagen.shape[0] * escala)}")
+        self.tiempos["cajas"] = len(salida)
+        return salida
 
     def _leer_windows(self, imagen, repetir) -> list[Leido]:
         """OCR de Windows; si falla (sin paquete de idioma...), se apunta y se repite en local."""
@@ -503,24 +714,39 @@ def _leer_winocr(imagen) -> list[Leido]:  # pragma: no cover - depende del paque
     ]
 
 
-def _leer_tira_rapidocr(motor, imagen) -> list[Leido]:
+def _leer_tira_rapidocr(motor, imagen, alto_deteccion: int | None = None) -> list[Leido]:
     """Detector y reconocedor de RapidOCR a pelo, con el reescalado del detector apagado.
 
     El limite se cambia solo mientras dura la deteccion: el motor es compartido y
-    el resto de lecturas siguen queriendo el reescalado de siempre.
+    el resto de lecturas siguen queriendo el reescalado de siempre. Con
+    `alto_deteccion` se detecta sobre una copia reducida a ese alto y las cajas se
+    llevan a la imagen original, de donde se recortan para el reconocedor.
     """
+    import numpy as np
+
+    busqueda, escala = imagen, 1.0
+    if alto_deteccion and imagen.shape[0] > alto_deteccion:
+        import cv2
+
+        escala = alto_deteccion / imagen.shape[0]
+        busqueda = cv2.resize(imagen, (max(1, round(imagen.shape[1] * escala)), alto_deteccion),
+                              interpolation=cv2.INTER_AREA)
     detector = motor.text_detector
     reescalados = [op for op in detector.preprocess_op if type(op).__name__ == "DetResizeForTest"]
     previos = [(op.limit_type, op.limit_side_len) for op in reescalados]
     for op in reescalados:
         op.limit_type, op.limit_side_len = "max", 8192
     try:
-        cajas, _ = detector(imagen)
+        cajas, _ = detector(busqueda)
     finally:
         for op, (tipo, lado) in zip(reescalados, previos):
             op.limit_type, op.limit_side_len = tipo, lado
     if cajas is None or len(cajas) == 0:
         return []
+    if escala != 1.0:
+        cajas = np.asarray(cajas, dtype=np.float32) / np.float32(escala)
+        cajas[:, :, 0] = np.clip(cajas[:, :, 0], 0, imagen.shape[1] - 1)
+        cajas[:, :, 1] = np.clip(cajas[:, :, 1], 0, imagen.shape[0] - 1)
     cajas = motor.sorted_boxes(cajas)
     textos, _ = motor.text_recognizer(motor.get_crop_img_list(imagen, cajas))
     salida = []
@@ -532,6 +758,20 @@ def _leer_tira_rapidocr(motor, imagen) -> list[Leido]:
         ys = [int(p[1]) for p in caja]
         salida.append(Leido(texto, min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys), float(confianza)))
     return salida
+
+
+def resumen_tiempos(tiempos: dict | None) -> str:
+    """Las etapas de una lectura en una linea para el registro: "preparar 3 ms, detector ..."."""
+    if not tiempos:
+        return "sin tiempos"
+    partes = [f"{etapa} {tiempos[etapa] * 1000:.0f} ms"
+              for etapa in ("preparar", "detector", "reconocedor") if etapa in tiempos]
+    detalle = f"{tiempos.get('cajas', 0)} cajas, imagen {tiempos.get('entrada', '?')}"
+    if tiempos.get("deteccion") and tiempos["deteccion"] != tiempos.get("entrada"):
+        detalle += f" (buscada a {tiempos['deteccion']})"
+    if tiempos.get("motor"):
+        detalle += f", motor {tiempos['motor']}"
+    return ", ".join(partes) + f" [{detalle}]"
 
 
 def _imagen_de_prueba(ancho: int = 1536, alto: int = 454):
@@ -573,21 +813,28 @@ def preparar(imagen):
         imagen = imagen[:, :, :3]
     if imagen.dtype != np.uint8:
         imagen = np.clip(imagen, 0, 255).astype(np.uint8)
+    try:
+        import cv2
+    except ImportError:  # pragma: no cover - cv2 viene con rapidocr
+        cv2 = None
     if imagen.ndim == 3:
-        try:
-            import cv2
-
+        if cv2 is not None:
             gris = cv2.cvtColor(np.ascontiguousarray(imagen), cv2.COLOR_BGR2GRAY)
-        except ImportError:  # pragma: no cover - cv2 viene con rapidocr
+        else:  # pragma: no cover
             gris = imagen.mean(axis=2).astype(np.uint8)
     else:
-        gris = imagen
+        gris = np.ascontiguousarray(imagen)
     # Percentiles sobre una muestra: en una franja de 1536x450 no se nota.
     bajo, alto = np.percentile(gris[::2, ::2], (2.0, 99.8))
     if alto - bajo >= 1:
-        gris = np.clip((gris.astype(np.float32) - bajo) * (255.0 / (alto - bajo)), 0, 255)
-        gris = gris.astype(np.uint8)
-    return np.ascontiguousarray(np.repeat(gris[:, :, None], 3, axis=2))
+        # La misma cuenta de siempre, pero sobre los 256 valores posibles y aplicada con
+        # una tabla: da exactamente los mismos pixeles y a 4K pasa de ~90 ms a ~3 ms.
+        tabla = np.clip((np.arange(256, dtype=np.float32) - bajo) * (255.0 / (alto - bajo)), 0, 255)
+        tabla = tabla.astype(np.uint8)
+        gris = cv2.LUT(gris, tabla) if cv2 is not None else tabla[gris]
+    if cv2 is not None:
+        return cv2.cvtColor(gris, cv2.COLOR_GRAY2BGR)
+    return np.ascontiguousarray(np.repeat(gris[:, :, None], 3, axis=2))  # pragma: no cover
 
 
 def unir_filas(leidos: list[Leido], holgura: float = 0.6) -> list[Leido]:
@@ -633,6 +880,31 @@ def agrupar_bloques(lineas: list[Leido], holgura: float = 0.9) -> list[list[Leid
         else:
             bloques.append([linea])
     return bloques
+
+
+# El rango de una tarjeta de mod tal y como sale del OCR: "14", "14Y", "8r", "16X"
+# (el icono de polaridad se lee como una letra).
+RE_RANGO_TARJETA = re.compile(r"^\d{1,2}\W?[A-Za-z]?\W?$")
+
+
+def _casar_trozo(bloque: list[Leido], casador: "Casador", umbral: int):
+    """El bloque sin los rangos de tarjeta de arriba y de abajo, si asi casa (y quedan
+    2 lineas o mas): ((desde, hasta), Reconocido), o None. Solo se quitan rangos: con
+    trozos cualquiera, la descripcion de un mod ("+5% de capacidad de / cargador")
+    acababa casando con otro mod."""
+    desde, hasta = 0, len(bloque)
+    while desde < hasta and RE_RANGO_TARJETA.match(bloque[desde].texto.strip()):
+        desde += 1
+    while hasta > desde and RE_RANGO_TARJETA.match(bloque[hasta - 1].texto.strip()):
+        hasta -= 1
+    if hasta - desde < 2 or (desde, hasta) == (0, len(bloque)):
+        return None
+    trozo = bloque[desde:hasta]
+    texto = " ".join(l.texto for l in trozo)
+    item_id, nombre, puntos = casador.casar(texto, umbral)
+    if not item_id:
+        return None
+    return (desde, hasta), Reconocido(texto, item_id, nombre, puntos, _caja_union(trozo))
 
 
 def _caja_union(lineas: list[Leido]) -> tuple[int, int, int, int]:
@@ -781,11 +1053,33 @@ class Casador:
         copia.alias_por_palabras = {k: v for k, v in self.alias_por_palabras.items() if v[0] in ids}
         return copia
 
+    # Resultados ya calculados por (texto, umbral). Las pantallas repiten muchisimo
+    # texto de una lectura a otra (rotulos, estadisticas, los mismos nombres) y cada
+    # texto que NO casa cuesta 1-3 ms de busqueda aproximada en ~30.000 nombres.
+    MEMO_MAXIMO = 4096
+
     def casar(self, texto: str, umbral: int = 82) -> tuple[int | None, str, float]:
         """Devuelve (item_id, etiqueta, puntuacion) del objeto que mejor encaja."""
+        memo = self.__dict__.get("_memo")
+        if memo is None:
+            memo = self._memo = {}
+        clave_memo = (texto, umbral)
+        hecho = memo.get(clave_memo)
+        if hecho is None:
+            hecho = self._casar(texto, umbral)
+            if len(memo) >= self.MEMO_MAXIMO:
+                memo.clear()
+            memo[clave_memo] = hecho
+        return hecho
+
+    def _casar(self, texto: str, umbral: int) -> tuple[int | None, str, float]:
         nada = (None, "", 0.0)
         clave = normalizar(RE_ETIQUETAS.sub(" ", texto or ""))
         if not clave or len(clave) < 3:
+            return nada
+        # Sin ninguna letra ("571", "3/37", "105%") no puede ser un nombre del catalogo:
+        # ninguno se escribe solo con cifras, y la busqueda aproximada costaba igual.
+        if not any(c.isalpha() for c in clave):
             return nada
         exacto = self.candidatos.get(clave)
         if exacto:
@@ -871,16 +1165,22 @@ class Casador:
         # Cuanto mas corto lo leido, menos erratas caben: "BLADE" no es "Blaze".
         umbral_efectivo = max(float(umbral), 96.0 - len(compacta))
 
+        # token_sort_ratio(a, b) es ratio() entre las dos con las palabras ordenadas; con
+        # los nombres ya ordenados de antemano (`_ordenadas_de`) sale lo mismo en ~6
+        # veces menos tiempo: era lo que mas costaba de cada texto que no casa.
+        ordenada = _orden_libre(consulta)
+        claves = self.claves
         posibles = {
-            m[0] for m in rf_process.extract(
-                consulta, self.claves, scorer=fuzz.token_sort_ratio, limit=8, score_cutoff=55
+            claves[m[2]] for m in rf_process.extract(
+                ordenada, self._ordenadas_de("claves"), scorer=fuzz.ratio, limit=8, score_cutoff=55
             )
         }
         if con_plano:
             # "Plano De Daiky Prime": la clave corta del plano es un alias.
+            claves_alias = self.claves_alias
             posibles |= {
-                m[0] for m in rf_process.extract(
-                    consulta, self.claves_alias, scorer=fuzz.token_sort_ratio, limit=8, score_cutoff=55
+                claves_alias[m[2]] for m in rf_process.extract(
+                    ordenada, self._ordenadas_de("claves_alias"), scorer=fuzz.ratio, limit=8, score_cutoff=55
                 )
             }
             # Por letras tambien: con la primera letra perdida ("rost prime") el orden
@@ -945,6 +1245,17 @@ class Casador:
             break
         iid, etiqueta = objeto(mejor_clave)
         return iid, etiqueta, float(mejor_puntos)
+
+    def _ordenadas_de(self, atributo: str) -> list[str]:
+        """La lista `atributo` (claves o claves_alias) con las palabras de cada nombre
+        ordenadas, calculada una vez por casador (tambien para los de `restringido`)."""
+        cache = self.__dict__.setdefault("_ordenadas", {})
+        lista = getattr(self, atributo)
+        hecho = cache.get(atributo)
+        if hecho is None or hecho[0] is not lista:
+            hecho = (lista, [_orden_libre(k) for k in lista])
+            cache[atributo] = hecho
+        return hecho[1]
 
     def _es_palabra_de_nombre(self, palabra: str) -> bool:
         """Si la palabra aparece tal cual en algun nombre del catalogo (no es una errata)."""
@@ -1054,23 +1365,32 @@ def _contenidas(compacta: str, palabras: list[str]) -> float:
     return 100.0 * suma / sum(len(p) for p in palabras)
 
 
-def leer_lineas(imagen, motor: MotorOCR, minimo_confianza: float = 0.4) -> list[Leido]:
+def leer_lineas(imagen, motor: MotorOCR, minimo_confianza: float = 0.4,
+                lado_minimo: int | None = None) -> list[Leido]:
     """OCR de la imagen con los trozos de cada linea ya unidos."""
-    return [l for l in unir_filas(motor.leer(imagen)) if l.confianza >= minimo_confianza]
+    leidos = motor.leer(imagen, lado_minimo=lado_minimo) if lado_minimo else motor.leer(imagen)
+    return [l for l in unir_filas(leidos) if l.confianza >= minimo_confianza]
 
 
 def reconocer(
-    imagen, motor: MotorOCR, casador: Casador, umbral: int = 82, minimo_confianza: float = 0.4
+    imagen, motor: MotorOCR, casador: Casador, umbral: int = 82, minimo_confianza: float = 0.4,
+    lado_minimo: int | None = None,
 ) -> list[Reconocido]:
     """Lee la imagen y devuelve solo los trozos que casan con algo del catalogo."""
-    return casar_lineas(leer_lineas(imagen, motor, minimo_confianza), casador, umbral)
+    return casar_lineas(leer_lineas(imagen, motor, minimo_confianza, lado_minimo), casador, umbral)
 
 
-def casar_lineas(lineas: list[Leido], casador: Casador, umbral: int = 82) -> list[Reconocido]:
+def casar_lineas(lineas: list[Leido], casador: Casador, umbral: int = 82,
+                 subbloques: bool = False) -> list[Reconocido]:
     """Los trozos ya leidos que casan con algo del catalogo.
 
     Primero se prueba cada bloque de lineas juntas (los nombres largos se partan
     en dos lineas bajo la tarjeta); si el bloque no casa, cada linea por su lado.
+
+    Con `subbloques`, antes de ir linea a linea se prueba el bloque sin los rangos
+    de tarjeta: en las tarjetas de mod el rango de arriba ("14Y") se pega al nombre
+    partido ("Primed Bane of" / "Grineer"); el bloque entero no casaba y por
+    separado ninguna linea dice que mod es.
     """
     salida = []
     for bloque in agrupar_bloques(lineas):
@@ -1080,6 +1400,11 @@ def casar_lineas(lineas: list[Leido], casador: Casador, umbral: int = 82) -> lis
             if item_id:
                 salida.append(Reconocido(texto, item_id, nombre, puntos, _caja_union(bloque)))
                 continue
+            trozo = _casar_trozo(bloque, casador, umbral) if subbloques else None
+            if trozo is not None:
+                (desde, hasta), reconocido = trozo
+                salida.append(reconocido)
+                bloque = bloque[:desde] + bloque[hasta:]
         for linea in bloque:
             item_id, nombre, puntos = casador.casar(linea.texto, umbral)
             if item_id:

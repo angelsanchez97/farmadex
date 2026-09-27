@@ -31,7 +31,7 @@ from ..registro_log import obtener
 from . import inventario as INV
 from . import pantalla
 from . import perfil_equipo as PE
-from .ocr import ErrorMotorOCR, MotorOCR, unir_filas
+from .ocr import ErrorMotorOCR, MotorOCR, resumen_tiempos, unir_filas
 
 log = obtener("lector_pasivo")
 
@@ -161,8 +161,9 @@ class LectorPasivo(QObject):
                 if pagina.categoria is not None or pagina.completado is not None:
                     perfil_leido = pagina
                     log.info(
-                        "Pagina de perfil leida sola: categoria=%s completado=%s tarjetas=%d (OCR %.0f ms)",
+                        "Pagina de perfil leida sola: categoria=%s completado=%s tarjetas=%d (OCR %.0f ms: %s)",
                         pagina.categoria, pagina.completado, len(pagina.tarjetas), (time.perf_counter() - t0) * 1000,
+                        resumen_tiempos(getattr(self.motor, "tiempos", None)),
                     )
                     self.pagina_perfil.emit(pagina)
             inventario_leido = None
@@ -171,9 +172,9 @@ class LectorPasivo(QObject):
                 if pagina.pantalla is not None:
                     inventario_leido = pagina
                     log.info(
-                        "Pantalla de %s leida sola: %d cantidades (%d fiables), %d sin casar (OCR %.0f ms)",
+                        "Pantalla de %s leida sola: %d cantidades (%d fiables), %d sin casar (OCR %.0f ms: %s)",
                         pagina.pantalla, len(pagina.cantidades), len(pagina.fiables), len(pagina.sin_casar),
-                        (time.perf_counter() - t0) * 1000,
+                        (time.perf_counter() - t0) * 1000, resumen_tiempos(getattr(self.motor, "tiempos", None)),
                     )
                     self.pagina_inventario.emit(pagina)
             if perfil_leido is None and inventario_leido is None:

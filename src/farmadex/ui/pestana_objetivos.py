@@ -62,6 +62,7 @@ from .estilo_c import (
     ruta_chaflan,
     transparente,
 )
+from .tooltip_reliquia import marcar, reliquia_de_ruta
 from .widgets import COLOR_BOVEDA, PALETA
 
 log = obtener("objetivos_ui")
@@ -476,9 +477,24 @@ class FilaObjetivo(QWidget):
 
         self.donde = EtiquetaC(self._texto_ruta(ruta), "pequeno", envolver=True)
         self.donde.setTextFormat(Qt.RichText)
+        marcar(self.donde, reliquia_de_ruta(ruta))  # su tabla al dejar el raton encima
         # El tipo de mision y la rotacion explican el modo al pasar el raton.
         glosario.conectar_etiqueta(self.donde)
         textos = columna(fila(*cabeza, espacio=px(8, False)), self.donde, espacio=px(1, False))
+        # "Recursos de fabricacion (1 de 4 listos)" a la vista, como en 0.5: se pulsa para abrirlos.
+        self.enlace_recursos = None
+        if con_recursos:
+            texto_recursos = t("Recursos de fabricación ({listos} de {total} listos)",
+                               listos=listos, total=len(recursos))
+            self.enlace_recursos = EtiquetaC(
+                f"<a href='recursos:' style='color:{PALETA['acento']};text-decoration:none'>"
+                f"{'▾' if abierto else '▸'} {html.escape(texto_recursos)}</a>", "pequeno")
+            self.enlace_recursos.setTextFormat(Qt.RichText)
+            self.enlace_recursos.setTextInteractionFlags(Qt.LinksAccessibleByMouse)
+            self.enlace_recursos.setOpenExternalLinks(False)
+            self.enlace_recursos.setToolTip(t("Abrir para marcar cada recurso por separado"))
+            self.enlace_recursos.linkActivated.connect(lambda _url: self._alternar_recursos())
+            textos.addWidget(self.enlace_recursos)
         hoy = self.contexto.hoy.get(objetivo.unique_name)
         self.hoy = None
         if hoy and not objetivo.completado:

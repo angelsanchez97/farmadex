@@ -1,5 +1,30 @@
 # Cambios
 
+## 0.6.1
+
+**Arreglos importantes**
+- Leer una build (Ctrl+Alt+B) cerraba Farmadex. Arreglado.
+- Si algo falla, el aviso ya no se queda escondido detrás del juego bloqueando el programa.
+- Actualizar ya no deja el PC congelado un rato: el instalador no fuerza el refresco de iconos
+  de Windows y, al abrir la versión nueva, los datos se preparan sin quitarle fuerza al juego.
+- Las fichas vuelven a enseñar la lista entera de misiones y sitios donde sale cada cosa, con
+  sus barras, y no solo el mejor. En tu tamaño de ventana salen arriba, sin bajar.
+- En Objetivos vuelve a verse "Recursos de fabricación (x de y listos)" en cada fila.
+- El botón "Reiniciar y actualizar" avisa si la actualización aún se está descargando.
+- El icono del Escritorio y del menú Inicio sale ya con el libro nuevo.
+
+**Más rápido**
+- Leer la pantalla es mucho más rápido en todo: builds, recompensas de reliquias, rivens, lo que
+  hay bajo el cursor y tu perfil. Una build se lee en menos de un segundo y reconoce mejor el
+  warframe o el arma.
+
+**Nuevo: tabla de la reliquia al pasar el ratón**
+- En el juego, deja el ratón quieto sobre una reliquia y Farmadex te enseña al lado lo que da:
+  cada recompensa por rareza, sus probabilidades según el refinamiento, platino, ducados, lo que
+  te falta y dónde conseguir la reliquia.
+- Dentro de Farmadex sale lo mismo al pasar el ratón por cualquier reliquia.
+- Se puede apagar o hacer que salga solo manteniendo Alt, en Ajustes > Reliquias.
+
 ## 0.6.0
 
 Rediseño completo de la ventana, con el estilo de un menú del juego.

@@ -18,9 +18,16 @@ from PySide6.QtCore import QTimer, Signal, Slot
 from ..idiomas import t
 from ..registro_log import obtener
 from . import pantalla
+from .ocr import resumen_tiempos
 from .reliquias import LectorBase
 
 log = obtener("cursor")
+
+# Hasta donde amplia RapidOCR el recuadro (620x170) antes de buscar texto. Con los
+# 736 de siempre se buscaba a 2684x736; con 608 cuesta ~30 % menos y, medido sobre
+# 72 capturas reales (12 recuadros cada una), encuentra 12 nombres mas de los que
+# pierde (1) sin colar mas falsos. Con 544 o menos ya perdia nombres.
+LADO_MINIMO = 608
 
 
 class LectorCursor(LectorBase):
@@ -36,6 +43,7 @@ class LectorCursor(LectorBase):
         # interfaz (un entero: asignacion atomica) y la lee este hilo antes de ensenar
         # un resultado, para no abrir la ficha de algo que ya no se esta mirando.
         self.ultima_pedida = 0
+        self.lado_minimo = LADO_MINIMO  # lo usa LectorBase._leer_protegido
 
     @Slot()
     def leer_ahora(self) -> None:
@@ -65,6 +73,7 @@ class LectorCursor(LectorBase):
             self.candidatos.emit([])
             return
         self.estado.emit(t("Leyendo lo que hay bajo el cursor..."))
+        inicio = time.perf_counter()
         # Con el juego en ventana, el recuadro no se sale de ella.
         region = pantalla.region_alrededor_del_cursor(limite=pantalla.region_juego())
         imagen = pantalla.capturar(region)
@@ -72,7 +81,14 @@ class LectorCursor(LectorBase):
             self.estado.emit(t("No se pudo capturar la pantalla"))
             self.candidatos.emit([])
             return
+        capturado = time.perf_counter()
         encontrados = self._leer_protegido(imagen, umbral=85)
+        fin = time.perf_counter()
+        tiempos = getattr(self.motor, "tiempos", None) or {}
+        ocr = tiempos.get("total", 0.0)
+        log.info("Lectura bajo el cursor en %.0f ms (captura %.0f ms, %s, casado %.0f ms): %d encontrados",
+                 (fin - inicio) * 1000, (capturado - inicio) * 1000, resumen_tiempos(tiempos),
+                 max(0.0, fin - capturado - ocr) * 1000, len(encontrados or []))
         if encontrados is None:
             self.candidatos.emit([])
             return

@@ -19,7 +19,7 @@ from ..agrietados.lector import ArmaConocida, LectorTarjeta, TarjetaLeida
 from ..idiomas import t
 from ..registro_log import obtener
 from . import pantalla
-from .ocr import ErrorMotorOCR, unir_filas
+from .ocr import ErrorMotorOCR, resumen_tiempos, unir_filas
 from .reliquias import LectorBase
 
 log = obtener("captura.agrietados")
@@ -97,6 +97,7 @@ class LectorAgrietado(LectorBase):
             self.leida.emit(TarjetaLeida(avisos=[t("El lector de pantalla no está disponible")]))
             return
         self.estado.emit(t("Leyendo la tarjeta bajo el cursor..."))
+        inicio = time.perf_counter()
         juego = pantalla.region_juego()
         escala = (juego.alto / 1080.0) if juego else 1.0
         region = pantalla.region_alrededor_del_cursor(
@@ -107,15 +108,20 @@ class LectorAgrietado(LectorBase):
             self.estado.emit(t("No se pudo capturar la pantalla"))
             self.leida.emit(TarjetaLeida(avisos=[t("No se pudo capturar la pantalla")]))
             return
-        inicio = time.monotonic()
+        capturado = time.perf_counter()
         try:
             tarjeta = leer_tarjeta(imagen, self.motor, self.lector)
         except ErrorMotorOCR as e:
             self._avisar_motor(str(e))
             self.leida.emit(TarjetaLeida(avisos=[t("El lector de pantalla no está disponible")]))
             return
-        log.info("Agrietado leido en %.0f ms: arma=%s nombre=%s stats=%d fiable=%s avisos=%s",
-                 (time.monotonic() - inicio) * 1000, tarjeta.arma_slug, tarjeta.nombre,
+        fin = time.perf_counter()
+        tiempos = getattr(self.motor, "tiempos", None) or {}
+        ocr = tiempos.get("total", 0.0)
+        log.info("Agrietado leido en %.0f ms (captura %.0f ms, %s, interpretar %.0f ms): arma=%s nombre=%s "
+                 "stats=%d fiable=%s avisos=%s",
+                 (fin - inicio) * 1000, (capturado - inicio) * 1000, resumen_tiempos(tiempos),
+                 max(0.0, fin - capturado - ocr) * 1000, tarjeta.arma_slug, tarjeta.nombre,
                  len(tarjeta.estadisticas), tarjeta.fiable, tarjeta.avisos)
         if tarjeta.velado:
             self.estado.emit(t("La tarjeta está velada: no hay nada que evaluar"))

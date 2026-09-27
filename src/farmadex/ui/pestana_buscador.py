@@ -1608,95 +1608,135 @@ class PestanaBuscador(QWidget):
         self._imagenes_ficha.clear()
         item, padre = datos["item"], datos["padre"]
         pasos = self._pasos_ruta(item["id"])
-        # Un set ya dice pieza a pieza donde sale ("Donde se consigue"): sin repetirlo arriba.
+        # Un set sin fuentes propias ya dice pieza a pieza donde sale ("Donde se consigue"):
+        # sin repetirlo arriba. Si ademas cae el solo (un recurso con plano), va su ruta.
         # La columna derecha mide lo que sobra de la ficha tras la izquierda (330).
         ancho_der = f.viewport().width() - (0 if f.estrecha() else px(348, False))
-        partes = self._partes_item(datos, con_como=not pasos and not datos["componentes"],
+        partes = self._partes_item(datos, con_como=not pasos and (not datos["componentes"] or bool(datos["fuentes"])),
                                    columnas_reliquias=2 if ancho_der >= px(600, False) else 1)
         extra = partes["detalles"]
         arma = (extra.get("_datos") or {}).get("arma")
 
-        # -- columna izquierda: pedestal, nombre, insignias y datos propios ------------
-        izq = QVBoxLayout()
-        izq.setSpacing(px(10, False))
-        # En una sola columna la imagen no puede comerse la ficha: pedestal mas pequeno.
-        self.pedestal = Pedestal(150 if f.estrecha() else 220)
-        self.pedestal.poner_imagen(self._pedir_imagen(item.get("imagen"), px(240, False)))
-        izq.addWidget(self.pedestal, 0, Qt.AlignHCenter)
+        estrecha = f.estrecha()
+
+        # -- cabecera: pedestal, nombre, insignias ----------------------------------------
+        # En una sola columna (la ventana de 1100x700) la imagen va pequena y al lado del
+        # nombre: lo que se busca (como y donde conseguirlo) tiene que verse sin bajar.
+        self.pedestal = Pedestal(96 if estrecha else 220)
+        self.pedestal.poner_imagen(self._pedir_imagen(item.get("imagen"), px(120 if estrecha else 240, False)))
+        alinear = Qt.AlignLeft if estrecha else Qt.AlignHCenter
+        nombre = QVBoxLayout()
+        nombre.setSpacing(px(4 if estrecha else 10, False))
         rotulo, titulo = self._rotulo_y_titulo(item, padre)
         for pieza in (etiqueta(rotulo, "rotulo", tinta="suave", mayus=True),
                       etiqueta(titulo, "titulo", mayus=True, envolver=True)):
-            pieza.setAlignment(Qt.AlignHCenter)
-            izq.addWidget(pieza)
+            pieza.setAlignment(alinear)
+            nombre.addWidget(pieza)
         otro = item["nombre_en"] if es_castellano() else (item["nombre_es"] or "")
         sub = " · ".join(x for x in (otro if otro and otro != nombre_idioma(item) else "",
                                      t("pieza ×{n}", n=item["item_count"]) if item["item_count"] else "") if x)
         if sub:
             e = etiqueta(sub, "pequeno", envolver=True)
-            e.setAlignment(Qt.AlignHCenter)
-            izq.addWidget(e)
+            e.setAlignment(alinear)
+            nombre.addWidget(e)
         for html_extra in (partes["pieza_de"], partes["nota"]):
             if html_extra:
                 e = etiqueta(html_extra, "pequeno", envolver=True, enlaces=self._enlace)
-                e.setAlignment(Qt.AlignHCenter)
-                izq.addWidget(e)
+                e.setAlignment(alinear)
+                nombre.addWidget(e)
         insignias = self._insignias_item(item, arma)
-        for i in range(0, len(insignias), 3):
+        por_linea = 4 if estrecha else 3
+        for i in range(0, len(insignias), por_linea):
             linea = QHBoxLayout()
             linea.setSpacing(px(8, False))
-            linea.addStretch(1)
-            for texto, tinta, clave in insignias[i:i + 3]:
+            if not estrecha:
+                linea.addStretch(1)
+            for texto, tinta, clave in insignias[i:i + por_linea]:
                 linea.addWidget(InsigniaGlosa(texto, tinta=tinta, clave=clave))
             linea.addStretch(1)
-            izq.addLayout(linea)
-        if item["descripcion_es"]:
-            e = etiqueta(item["descripcion_es"], "pequeno", envolver=True)
-            izq.addWidget(e)
-        if arma:
-            panel = self._panel_disposicion(arma)
-            if panel is not None:
-                izq.addWidget(panel)
-        panel_datos = self._panel_datos(datos)
-        if panel_datos is not None:
-            izq.addWidget(panel_datos)
+            nombre.addLayout(linea)
 
-        # -- columna derecha: como conseguirlo, estadisticas, donde, reliquias... -----
-        der = QVBoxLayout()
-        der.setSpacing(px(12, False))
-        # Orden: lo que se busca primero arriba (el codigo de un glifo es la ficha entera),
-        # luego como y donde conseguirlo, y lo largo (habilidades, efecto rango a rango) al final.
+        # -- datos propios: descripcion, disposicion, maestria/tienes/mercado ------------
+        propios: list = []
+        if item["descripcion_es"]:
+            propios.append(etiqueta(item["descripcion_es"], "pequeno", envolver=True))
+        if arma:
+            propios.append(self._panel_disposicion(arma))
+        propios.append(self._panel_datos(datos))
+        propios = [x for x in propios if x is not None]
+
+        # -- como y donde conseguirlo: lo primero que se busca ------------------------------
+        conseguir: list = []
+        # El codigo de un glifo es la ficha entera: arriba del todo.
         if extra.get("glifo"):
-            der.addWidget(self._panel_html(t("Código de canje"), extra["glifo"]))
+            conseguir.append(self._panel_html(t("Código de canje"), extra["glifo"]))
         if pasos:
             panel = self._panel(t("Cómo conseguirlo"))
             panel.capa.addWidget(hitos(pasos, self._enlace))
-            der.addWidget(panel)
+            conseguir.append(panel)
         elif partes["como"]:
-            der.addWidget(self._panel_html(t("Cómo conseguirlo"), partes["como"]))
-        if arma:
-            der.addWidget(self._panel_estadisticas_arma(arma))
-        if extra.get("warframe"):
-            der.addWidget(self._panel_html(t("Estadísticas"), extra["warframe"]))
-        donde = partes["componentes"] or (partes["planeta"] + partes["fuentes"] + partes["sin_fuentes"])
+            conseguir.append(self._panel_html(t("Cómo conseguirlo"), partes["como"]))
+        # Todas las fuentes propias, con su relleno por rapidez, aunque el objeto tambien se
+        # fabrique (Celula orokin, Sensores neuronales: plano + misiones). Solo un set sin
+        # fuentes propias dice "donde se consigue" pieza a pieza.
+        # La tabla de sitios va justo debajo de "Como conseguirlo"; el plano, despues.
+        donde_panel: list = []
+        # Las misiones primero (lo que se ve sin bajar); la tarjeta de recurso de planeta,
+        # que no tiene porcentaje, detras.
+        propias = partes["fuentes"] + partes["planeta"]
+        donde = propias + partes["sin_fuentes"] if propias or not partes["componentes"] else partes["componentes"]
         if donde:
-            der.addWidget(self._panel_html(t("Dónde se consigue"), donde))
+            donde_panel.append(self._panel_html(t("Dónde se consigue"), donde))
         if partes["reliquias"]:
-            der.addWidget(self._panel_html(t("Reliquias"), partes["reliquias"], "reliquia"))
+            donde_panel.append(self._panel_html(t("Reliquias"), partes["reliquias"], "reliquia"))
         if partes["contenido"]:
-            der.addWidget(self._panel_html(t("Contenido en Radiante"), partes["contenido"], "refinamiento"))
+            donde_panel.append(self._panel_html(t("Contenido en Radiante"), partes["contenido"], "refinamiento"))
+        if partes["componentes"] and propias:
+            donde_panel.append(self._panel_html(t("Se construye con"), partes["componentes"]))
+
+        # -- estadisticas y lo largo (habilidades, efecto rango a rango), el set y enlaces --
+        estadisticas_p: list = []
+        if arma:
+            estadisticas_p.append(self._panel_estadisticas_arma(arma))
+        if extra.get("warframe"):
+            estadisticas_p.append(self._panel_html(t("Estadísticas"), extra["warframe"]))
+        largo: list = []
         for clave_d, titulo_d in (("habilidades", _g_hab()), ("mod", _g_efecto()), ("arcano", _g_efecto())):
             if extra.get(clave_d):
-                der.addWidget(self._panel_html(titulo_d, extra[clave_d]))
-        panel_set = self._panel_set(datos)
-        if panel_set is not None:
-            der.addWidget(panel_set)
+                largo.append(self._panel_html(titulo_d, extra[clave_d]))
+        largo.append(self._panel_set(datos))
         if partes["enlaces"]:
-            der.addWidget(f.bloque(partes["enlaces"]))
+            largo.append(f.bloque(partes["enlaces"]))
 
-        if f.estrecha():
-            f.anadir(izq)
-            f.anadir(der)
+        if estrecha:
+            cabecera = QHBoxLayout()
+            cabecera.setSpacing(px(14, False))
+            cabecera.addWidget(self.pedestal, 0, Qt.AlignTop)
+            cabecera.addLayout(nombre, 1)
+            f.anadir(cabecera)
+            # Como y donde, justo debajo del nombre; lo propio y lo largo despues. Si no se
+            # sabe de donde sale (la Hek: "Plano · Sin fuentes registradas"), ese panel no
+            # dice nada util y van antes los datos propios (disposicion, estadisticas...).
+            if self._tiene_fuentes(datos, partes):
+                orden = conseguir + donde_panel + propios + estadisticas_p + largo
+            else:
+                orden = conseguir + propios + estadisticas_p + donde_panel + largo
+            for pieza in orden:
+                f.anadir(pieza)
         else:
+            izq = QVBoxLayout()
+            izq.setSpacing(px(10, False))
+            izq.addWidget(self.pedestal, 0, Qt.AlignHCenter)
+            izq.addLayout(nombre)
+            for pieza in propios:
+                izq.addWidget(pieza)
+            # Orden: lo que se busca primero arriba, luego como y donde conseguirlo, y lo
+            # largo (habilidades, efecto rango a rango) al final.
+            der = QVBoxLayout()
+            der.setSpacing(px(12, False))
+            for pieza in conseguir + estadisticas_p + donde_panel + largo:
+                if pieza is not None:
+                    der.addWidget(pieza)
             columnas = QHBoxLayout()
             columnas.setSpacing(px(18, False))
             envoltura = transparente(QWidget())
@@ -1709,6 +1749,16 @@ class PestanaBuscador(QWidget):
             columnas.addLayout(der, 1)
             f.anadir(columnas)
         f.terminar()
+
+    def _tiene_fuentes(self, datos: dict, partes: dict) -> bool:
+        """Si se sabe de donde sale el objeto o alguna de sus piezas (misiones, reliquias...)."""
+        if partes["fuentes"] or partes["planeta"] or partes["reliquias"] or partes["contenido"] or partes["como"]:
+            return True
+        ids = [c["id"] for c in datos["componentes"]]
+        if not ids or self.con is None:
+            return False
+        marcas = ",".join("?" * len(ids))
+        return self.con.execute(f"SELECT 1 FROM fuentes WHERE item_id IN ({marcas}) LIMIT 1", ids).fetchone() is not None
 
     def _panel_disposicion(self, arma: dict) -> PanelC | None:
         try:
@@ -2214,7 +2264,8 @@ class PestanaBuscador(QWidget):
             era = era_de(r.get("nombre_en"))
             nombre = html.escape(nombre_idioma(r))
             color = COLOR_BOVEDA if r["vaulted"] else COLOR_DISPONIBLE
-            estado = t("en bóveda") if r["vaulted"] else t("disponible")
+            # Espacio duro: en la columna estrecha "en" y "bóveda" se partian en dos lineas.
+            estado = (t("en bóveda") if r["vaulted"] else t("disponible")).replace(" ", " ")
             probs = " &nbsp; ".join(
                 glosario.enlace("refinamiento", _glosa(self.con, "refinamiento", ref)[:3], p["suave"])
                 # &nbsp;: la abreviatura y su cifra no se separan al partir la linea.
@@ -2364,23 +2415,25 @@ class PestanaBuscador(QWidget):
             nombre = f"<b>{donde}</b>"
             if ancla:
                 nombre = f"<a name='{ancla}'>{nombre}</a>"
+            # Dos lineas por sitio (el sitio y, debajo, rotacion y rareza; a la derecha el % y
+            # el tiempo): cabe en la columna estrecha de la ficha C sin partir las palabras.
+            rareza = glosario.enlace("rareza", _glosa(self.con, "rareza", f["rareza"]), color)
+            detalle = " &middot; ".join(x for x in (", ".join(extra), rareza) if x)
             filas.append(
-                f"<tr><td width='6' style='background:{color}'></td>"
-                f"<td>{nombre}</td>"
-                f"<td style='color:{p['suave']}'>{', '.join(extra)}</td>"
-                f"<td>{glosario.enlace('rareza', _glosa(self.con, 'rareza', f['rareza']), color)}</td>"
-                f"<td align='right'><b>{prob}</b></td>"
-                f"<td align='right'>{tiempo}</td></tr>"
+                f"<tr><td width='4' style='background:{color}'></td>"
+                f"<td>{nombre}<br><span style='color:{p['suave']};font-size:12px'>{detalle}</span></td>"
+                f"<td align='right'><span style='white-space:nowrap'><b>{prob}</b></span><br>"
+                f"<span style='white-space:nowrap'>{tiempo}</span></td></tr>"
             )
         if sobran:
             filas.append(
-                f"<tr><td colspan='6' style='color:{p['suave']}'>"
+                f"<tr><td colspan='3' style='color:{p['suave']}'>"
                 f"{html.escape(t('y {n} sitios más, con más tiempo o menos probabilidad', n=sobran))}</td></tr>"
             )
         if pvp:
             maxima = max((f["probabilidad"] or 0) for f in pvp)
             filas.append(
-                f"<tr><td colspan='6' style='color:{p['suave']}'>"
+                f"<tr><td colspan='3' style='color:{p['suave']}'>"
                 + html.escape(t("Conclave (PvP): {n} modos, hasta un {prob}% por partida",
                                 n=len(pvp), prob=f"{maxima:.1f}"))
                 + "</td></tr>"

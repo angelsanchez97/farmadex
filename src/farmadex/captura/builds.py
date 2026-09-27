@@ -14,9 +14,11 @@ from __future__ import annotations
 
 import re
 import time
+import unicodedata
 from dataclasses import dataclass, field
 
 from PySide6.QtCore import Signal, Slot
+from rapidfuzz import fuzz
 
 from ..idiomas import t
 from ..registro_log import obtener
@@ -42,12 +44,38 @@ CATEGORIAS_BUILD = (
 )
 
 # La cabecera de la pantalla: "UPGRADES / EXCALIBUR [30]", "MEJORAS / EXCALIBUR [30]",
-# "AMÉLIORATIONS / ...". El OCR suele pegarlo todo: "UPGRADES/EXCALIBUR[30]".
-RE_CABECERA = re.compile(r"(?i)^(?:UPGRADES?|MEJORAS?|AM[EÉ]LIORATIONS?|VERBESSERUNGEN|MELHORIAS)\s*/\s*(.+?)\s*(?:\[\s*\d+\s*\])?\s*$")
+# "AMÉLIORATIONS / ...". El OCR suele pegarlo todo: "UPGRADES/EXCALIBUR[30]", a veces
+# con el boton "+" de al lado delante, el rango con una O por cero y el laurel de la
+# maestria leido como garabatos detras: "+UPGRADES/EXCALIBUR [3O] 美美". La interfaz
+# anterior a 2025 ponia dos puntos: "UPGRADES: UNRANKED HYDROID".
+RE_CABECERA = re.compile(
+    r"(?i)^\W*(?:UPGRADES?|MEJORAS?|AM[EÉ]LIORATIONS?|VERBESSERUNGEN|MELHORIAS)\s*[/:]\s*(.+?)"
+    r"\s*(?:\[\s*[\dOIL|]+\s*\]?)?(?:\s*[^\x00-\u024F]+)*\s*$"
+)
 # La caja de busqueda separa lo equipado (arriba) de la coleccion (abajo).
 RE_BUSCAR = re.compile(r"(?i)^(?:SEARCH|BUSCAR|RECHERCHER|SUCHEN|PESQUISAR)\b")
 UMBRAL_MODS = 85
 MINIMO_CONFIANZA = 0.5
+# El detector (donde hay texto) mira la captura reducida a este alto; el
+# reconocedor (que pone) sigue leyendo cada recorte a tamano real. El detector
+# cuesta segun los pixeles: a 1440p eran ~320 ms y a 4K ~800 ms solo en buscar.
+# No se baja de 1080: medido con capturas reales de la wiki (interfaces viejas con
+# letra pequena, la pantalla de artefactos de tektolito), buscar a 810 o 900 perdia
+# mods que a 1080 se leen. Una captura de 1440p se busca a 1080, igual que una de
+# 1080p (la resolucion con la que esta medido todo lo demas); una de 4K, a 1620.
+ALTO_DETECCION = 1080
+
+
+def alto_de_deteccion(alto: int) -> int | None:
+    """A que alto se busca el texto: 1080, sin reducir nunca a menos de tres cuartos.
+
+    1440p se busca a 1080 (0,75). A 4K, reducir a la mitad o a dos tercios perdia
+    algun nombre en capturas reales ("Primed Shred", "Primary Acuity"); a 1620
+    (tres cuartos, lo mismo que 1440p a 1080) ya no.
+    """
+    if not ALTO_DETECCION:
+        return None
+    return max(ALTO_DETECCION, alto * 3 // 4)
 
 
 @dataclass
@@ -61,6 +89,9 @@ class Build:
     arcanos: list[Reconocido] = field(default_factory=list)
     sin_identificar: list[str] = field(default_factory=list)
     milisegundos: int = 0
+    # Segundos por etapa de la ultima lectura (captura, preparar, detector,
+    # reconocedor, casado, reparto) y datos de la imagen, para el registro.
+    tiempos: dict = field(default_factory=dict)
 
     @property
     def vacia(self) -> bool:
@@ -84,13 +115,88 @@ def crear_casador(con) -> Casador:
     return Casador(con, CATEGORIAS_BUILD, filtro=_filtro_build)
 
 
+# La palabra de la cabecera en cada idioma, para reconocerla aunque el OCR la lea con
+# erratas: la letra del juego es muy espaciada y sale "ME JORAS", "MEJ0RAS", "UPGRAOES".
+PALABRAS_CABECERA = ("UPGRADES", "MEJORAS", "AMELIORATIONS", "VERBESSERUNGEN", "MELHORIAS")
+_CIFRAS_POR_LETRAS = str.maketrans({"0": "O", "1": "I", "5": "S", "8": "B", "|": "I"})
+
+
+def _arreglar_cabecera(texto: str) -> str:
+    """"ME JORAS / HAALVU [22]" -> "MEJORAS/ HAALVU [22]": arregla la palabra de delante de la
+    barra si se parece mucho a la de la cabecera en algun idioma; si no, lo deja tal cual."""
+    separador = re.search(r"[/:]", texto)
+    if separador is None:
+        return texto
+    delante, detras = texto[:separador.start()], texto[separador.end():]
+    compacta = re.sub(r"[^A-Z0-9|]", "", unicodedata.normalize("NFKD", delante).upper().translate(_CIFRAS_POR_LETRAS))
+    compacta = compacta.translate(_CIFRAS_POR_LETRAS)
+    if not compacta:
+        return texto
+    for palabra in PALABRAS_CABECERA:
+        # Las 3 primeras letras tienen que estar: "MEJORAS" no puede salir de "RAS".
+        if compacta[:3] == palabra[:3] and fuzz.ratio(compacta, palabra) >= 80:
+            return f"{palabra}/{detras}"
+    return texto
+
+
+def es_cabecera(texto: str):
+    """El `re.Match` de la cabecera ("UPGRADES / EXCALIBUR [30]") o None."""
+    texto = texto.strip()
+    return RE_CABECERA.match(texto) or RE_CABECERA.match(_arreglar_cabecera(texto))
+
+
 def cabecera(lineas: list[Leido]) -> tuple[str, Leido | None]:
     """El nombre del equipo segun la cabecera ("UPGRADES / EXCALIBUR [30]") y su linea."""
     for linea in lineas:
-        m = RE_CABECERA.match(linea.texto.strip())
+        m = es_cabecera(linea.texto)
         if m:
             return m.group(1).strip(), linea
     return "", None
+
+
+# Restos del rango y de las formas pegados detras del nombre: "HAALVU3O", "HAALVU303OI",
+# "HAALVU3O 3OI", "HAALVU3013=". Empiezan por una cifra (o un borde de corchete).
+RE_RANGO_PEGADO = re.compile(r"(?<=[A-Za-z])(?:\s|[\[\(=|])*\d[\s\dOIl|=\-\]\[)(]*$")
+# "UNRANKED HYDROID" (sin rango) delante, "NIDUS RANK 29" detras (interfaz vieja).
+RE_SIN_RANGO = re.compile(r"(?i)^(?:UNRANKED|SIN\s*RANGO)\s*|\s*(?:RANK|RANGO)\s*\d+\s*$")
+
+
+def _nombres_de_equipo(nombre: str) -> list[str]:
+    """Lo leido en la cabecera y, detras, lo mismo sin los restos del rango que el OCR
+    pega al nombre: "HAALVU I[22]" (una letra suelta), "HAALVU[3O]3" o "HAALV U [2 2 ]"
+    (el corchete), "HAALVU3O" (sin corchete). Se prueban en orden."""
+    intentos = [nombre]
+    limpio = RE_SIN_RANGO.sub("", nombre).strip()
+    if limpio and limpio != nombre:
+        intentos.append(limpio)
+        nombre = limpio
+    corte = re.split(r"[\[\(【（]", nombre, maxsplit=1)[0].strip()
+    if corte and corte != nombre:
+        intentos.append(corte)
+    for base in [i for i in intentos if not re.search(r"[\[\(【（]", i)]:
+        sin_rango = RE_RANGO_PEGADO.sub("", base).strip()
+        if sin_rango and sin_rango not in intentos:
+            intentos.append(sin_rango)
+    for base in list(intentos):
+        palabras = base.split()
+        # Solo si la letra suelta puede ser el borde del corchete: "HAALVU I[22]".
+        if len(palabras) > 1 and palabras[-1] in ("I", "l", "|", "1"):
+            intentos.append(" ".join(palabras[:-1]))
+    return intentos
+
+
+def linea_buscar(lineas: list[Leido], ancho: int) -> Leido | None:
+    """La caja de busqueda, que separa lo equipado (arriba) de la coleccion (abajo).
+
+    Va a la izquierda de la pantalla; puede haber otro "BUSCAR" (la ayuda del mando, abajo
+    en el centro), y si se tomaba ese toda la coleccion contaba como equipada. Si no hay
+    ninguno a la izquierda se usa el ultimo, como antes.
+    """
+    candidatas = [l for l in lineas if RE_BUSCAR.match(l.texto.strip())]
+    izquierda = [l for l in candidatas if l.x < ancho * 0.35]
+    if izquierda:
+        return min(izquierda, key=lambda l: l.y)
+    return candidatas[-1] if candidatas else None
 
 
 def separar_build(
@@ -108,17 +214,15 @@ def separar_build(
     """
     build = Build(equipo=equipo)
     build.equipo_texto, linea_cabecera = cabecera(lineas)
-    y_buscar = None
-    for linea in lineas:
-        if RE_BUSCAR.match(linea.texto.strip()):
-            y_buscar = linea.y
     if ancho is None:
         ancho = max((l.x + l.ancho for l in lineas), default=1920)
+    buscar = linea_buscar(lineas, ancho)
+    y_buscar = buscar.y if buscar is not None else None
     reconocidas_cajas = {r.caja for r in reconocidos}
     for r in sorted(reconocidos, key=lambda r: (r.caja[1], r.caja[0])):
         categoria = categorias.get(r.item_id, "")
         texto = r.texto_ocr.strip()
-        if RE_BUSCAR.match(texto) or RE_CABECERA.match(texto):
+        if RE_BUSCAR.match(texto) or es_cabecera(texto):
             continue
         # El panel de estadisticas de la izquierda ("Alcance", "Salud"...) no lleva
         # tarjetas: lo que case ahi es una palabra de la interfaz, no un mod.
@@ -142,7 +246,7 @@ def separar_build(
         if _es_interfaz(texto):
             continue
         # Solo nombres: dos letras seguidas como minimo y no un numero.
-        if len(re.sub(r"[^A-Za-zÁÉÍÓÚÑáéíóúñ]", "", texto)) >= 4 and not RE_CABECERA.match(texto):
+        if len(re.sub(r"[^A-Za-zÁÉÍÓÚÑáéíóúñ]", "", texto)) >= 4 and not es_cabecera(texto):
             build.sin_identificar.append(texto)
     # Las cajas de los bloques (nombres a dos lineas) no coinciden con las de las lineas:
     # se quitan de "sin identificar" los textos que ya forman parte de algo reconocido.
@@ -222,22 +326,25 @@ class LectorBuild(LectorBase):
             self.leida.emit(Build())
             return
         self.estado.emit(t("Leyendo la pantalla de mejoras..."))
+        inicio = time.perf_counter()
         region = pantalla.region_objetivo()
         imagen = pantalla.capturar(region)
         if imagen is None:
             self.estado.emit(t("No se pudo capturar la pantalla"))
             self.leida.emit(Build())
             return
-        inicio = time.monotonic()
+        capturado = time.perf_counter()
         try:
             build = leer_build(imagen, self.motor, self.casador, self._categorias)
         except ErrorMotorOCR as e:
             self._avisar_motor(str(e))
             self.leida.emit(Build())
             return
-        build.milisegundos = int((time.monotonic() - inicio) * 1000)
-        log.info("Build leida en %d ms: equipo=%s, %d equipados, %d en coleccion, %d arcanos, %d sin identificar",
-                 build.milisegundos, build.equipo.nombre if build.equipo else build.equipo_texto or "?",
+        build.tiempos["captura"] = capturado - inicio
+        build.milisegundos = int((time.perf_counter() - inicio) * 1000)
+        log.info("Build leida en %d ms (%s): equipo=%s, %d equipados, %d en coleccion, %d arcanos, %d sin identificar",
+                 build.milisegundos, resumen_etapas(build.tiempos),
+                 build.equipo.nombre if build.equipo else build.equipo_texto or "?",
                  len(build.equipados), len(build.coleccion), len(build.arcanos), len(build.sin_identificar))
         if build.vacia:
             self.estado.emit(t("No se reconoció nada: abre la pantalla de mejoras del arsenal y vuelve a probar"))
@@ -246,16 +353,46 @@ class LectorBuild(LectorBase):
         self.leida.emit(build)
 
 
+def resumen_etapas(tiempos: dict) -> str:
+    """"captura 20, preparar 3, detector 60, ... ms; imagen 2560x1440 buscada a 1440x810, 80 cajas"."""
+    etapas = [f"{etapa} {tiempos[etapa] * 1000:.0f}" for etapa in
+              ("captura", "preparar", "detector", "reconocedor", "casado", "reparto") if etapa in tiempos]
+    texto = ", ".join(etapas) + " ms" if etapas else "sin tiempos"
+    if tiempos.get("entrada"):
+        texto += f"; imagen {tiempos['entrada']}"
+        if tiempos.get("deteccion") and tiempos["deteccion"] != tiempos["entrada"]:
+            texto += f" buscada a {tiempos['deteccion']}"
+    if "cajas" in tiempos:
+        texto += f", {tiempos['cajas']} cajas"
+    if tiempos.get("motor"):
+        texto += f", motor {tiempos['motor']}"
+    return texto
+
+
 def leer_build(imagen, motor, casador: Casador, categorias: dict[int, str]) -> Build:
-    """OCR de la captura entera (sin reescalar) y reparto en equipo, mods y arcanos."""
+    """OCR de la captura entera y reparto en equipo, mods y arcanos.
+
+    El texto se busca en la captura reducida (`alto_de_deteccion`) y se lee a tamano
+    real (los nombres de las tarjetas miden ~20 px a 1080p). Deja en `build.tiempos`
+    lo que costo cada etapa.
+    """
     # La confianza se filtra ANTES de unir filas: un garabato de baja confianza pegado a
     # la cabecera ("UPGRADES/EXCALIBUR[30] 美") se la llevaba por delante al unirse.
-    lineas = unir_filas([l for l in motor.leer_tira(imagen) if l.confianza >= MINIMO_CONFIANZA])
-    reconocidos = casar_lineas(lineas, casador, UMBRAL_MODS)
+    lineas = unir_filas([l for l in motor.leer_tira(imagen, alto_deteccion=alto_de_deteccion(imagen.shape[0]))
+                         if l.confianza >= MINIMO_CONFIANZA])
+    tiempos = dict(getattr(motor, "tiempos", None) or {})
+    inicio = time.perf_counter()
+    reconocidos = casar_lineas(lineas, casador, UMBRAL_MODS, subbloques=True)
     equipo = None
     nombre_equipo, linea = cabecera(lineas)
-    if nombre_equipo:
-        item_id, etiqueta, puntos = casador.casar(nombre_equipo, UMBRAL_MODS)
+    for nombre in _nombres_de_equipo(nombre_equipo) if nombre_equipo else []:
+        item_id, etiqueta, puntos = casador.casar(nombre, UMBRAL_MODS)
         if item_id and categorias.get(item_id) not in ("Mods", "Arcanes"):
-            equipo = Reconocido(nombre_equipo, item_id, etiqueta, puntos, (linea.x, linea.y, linea.ancho, linea.alto))
-    return separar_build(lineas, reconocidos, categorias, equipo, ancho=imagen.shape[1])
+            equipo = Reconocido(nombre, item_id, etiqueta, puntos, (linea.x, linea.y, linea.ancho, linea.alto))
+            break
+    casado = time.perf_counter()
+    build = separar_build(lineas, reconocidos, categorias, equipo, ancho=imagen.shape[1])
+    tiempos["casado"] = casado - inicio
+    tiempos["reparto"] = time.perf_counter() - casado
+    build.tiempos = tiempos
+    return build

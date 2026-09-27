@@ -1031,6 +1031,31 @@ class PestanaAjustes(QWidget):
         self._fijo(self.botin_eelog.setText, "Sumar a los objetivos la recompensa de reliquia de las misiones en solitario (EE.log)")
         self.botin_eelog.setChecked(bool(self.config.get("botin_eelog_auto", True)))
         self.botin_eelog.toggled.connect(lambda v: self._guardar("botin_eelog_auto", v))
+        # Tabla de la reliquia al dejar el raton encima en el juego (captura/reliquia_hover.py).
+        self.hover_reliquia = QCheckBox()
+        self._fijo(self.hover_reliquia.setText, "Enseñar lo que da una reliquia al dejar el ratón encima")
+        self.hover_reliquia.setChecked(bool(self.config.get("hover_reliquia", True)))
+        self.hover_reliquia.toggled.connect(lambda v: self._guardar("hover_reliquia", v))
+        self.hover_reliquia_modo = QComboBox()
+        for clave, texto in (("auto", "Solo, en las pantallas de reliquias"), ("tecla", "Solo mientras mantengo una tecla")):
+            self.hover_reliquia_modo.addItem("", clave)
+            self._fijo(lambda x, i=self.hover_reliquia_modo.count() - 1: self.hover_reliquia_modo.setItemText(i, x), texto)
+        self.hover_reliquia_modo.setCurrentIndex(max(0, self.hover_reliquia_modo.findData(
+            self.config.get("hover_reliquia_modo") or "auto")))
+        self.hover_reliquia_modo.currentIndexChanged.connect(
+            lambda _i: self._guardar("hover_reliquia_modo", self.hover_reliquia_modo.currentData()))
+        self.hover_reliquia_tecla = QComboBox()
+        for clave, texto in (("alt", "Alt"), ("ctrl", "Ctrl"), ("shift", "Mayús"),
+                             ("raton4", "Botón lateral del ratón (atrás)"), ("raton5", "Botón lateral del ratón (adelante)")):
+            self.hover_reliquia_tecla.addItem("", clave)
+            self._fijo(lambda x, i=self.hover_reliquia_tecla.count() - 1: self.hover_reliquia_tecla.setItemText(i, x), texto)
+        self.hover_reliquia_tecla.setCurrentIndex(max(0, self.hover_reliquia_tecla.findData(
+            self.config.get("hover_reliquia_tecla") or "alt")))
+        self.hover_reliquia_tecla.currentIndexChanged.connect(
+            lambda _i: self._guardar("hover_reliquia_tecla", self.hover_reliquia_tecla.currentData()))
+        self.hover_reliquia_modo.currentIndexChanged.connect(
+            lambda _i: self.hover_reliquia_tecla.setEnabled(self.hover_reliquia_modo.currentData() == "tecla"))
+        self.hover_reliquia_tecla.setEnabled(self.hover_reliquia_modo.currentData() == "tecla")
 
         lectura = self._formulario()
         self._fila(lectura, "Recompensas de reliquia", self.estilo_recompensas)
@@ -1053,6 +1078,14 @@ class PestanaAjustes(QWidget):
         lectura.addRow(self._nota(
             "En misiones en solitario, suma a tus objetivos la pieza que te toca, leyendo el "
             "registro del propio juego."
+        ))
+        lectura.addRow(self.hover_reliquia)
+        self._fila(lectura, "Cuándo sale", self.hover_reliquia_modo)
+        self._fila(lectura, "Tecla", self.hover_reliquia_tecla)
+        lectura.addRow(self._nota(
+            "Deja el ratón quieto encima de una reliquia (en tus reliquias, al elegirla para una "
+            "fisura o en una tienda) y sale una tabla con lo que puede dar. Dentro de Farmadex sale "
+            "igual al pasar por encima del nombre de una reliquia."
         ))
         lectura.addRow(self._nota(
             "Las lecturas solas solo miran la pantalla cuando Warframe está delante y se ha "

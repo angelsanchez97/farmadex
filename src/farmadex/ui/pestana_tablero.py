@@ -28,6 +28,7 @@ from ..estado import objetivos as estado_objetivos
 from ..idiomas import nombre as nombre_idioma, t
 from ..registro_log import obtener
 from . import widgets
+from .tooltip_reliquia import marcar, reliquia_de_ruta
 from .estilo_c import (
     BotonC,
     CasillaC,
@@ -501,9 +502,11 @@ class PestanaTablero(QWidget):
         textos.addWidget(titulo)
         mision = paso.mision
         if paso.es_reliquia:
-            textos.addWidget(EtiquetaC(
+            etiqueta_reliquia = EtiquetaC(
                 t("Reliquia {reliquia}", reliquia=f"<b style='color:{widgets.PALETA['secundario']}'>"
-                  f"{html.escape(paso.reliquia)}</b>"), "destacado", tinta="suave"))
+                  f"{html.escape(paso.reliquia)}</b>"), "destacado", tinta="suave")
+            marcar(etiqueta_reliquia, reliquia_de_ruta(paso.ruta))  # su tabla al dejar el raton encima
+            textos.addWidget(etiqueta_reliquia)
         if mision.get("donde"):
             lugar = f"<b style='color:{widgets.PALETA['texto']}'>{html.escape(mision['donde'])}</b>"
             texto = (t("{mision} en {lugar}", mision=html.escape(mision["mision"]), lugar=lugar)
@@ -567,6 +570,7 @@ class PestanaTablero(QWidget):
                         clicable=bool(siguiente.item))
             if siguiente.item:
                 hito.pulsado.connect(lambda i=siguiente.item["id"]: self.abrir_item.emit(i))
+            marcar(hito, reliquia_de_ruta(siguiente.ruta) if siguiente.es_reliquia else None)
             hitos.append(hito)
         return hitos
 
