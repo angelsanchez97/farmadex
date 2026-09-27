@@ -28,8 +28,23 @@ from .registro_log import obtener
 
 log = obtener("instancia")
 
-MUTEX_INSTANCIA = f"{NOMBRE_APP}InstanciaUnica"
-PREFIJO_TUBERIA = f"{NOMBRE_APP}-instancia-"
+def _sufijo_datos() -> str:
+    """Con FARMADEX_DATOS (pruebas, carpetas de datos aparte) el candado es otro.
+
+    Asi una copia de prueba nunca habla con el Farmadex del usuario: antes, lanzar el
+    .exe compilado para probarlo le pedia al Farmadex abierto que se pusiera delante,
+    encima del juego.
+    """
+    datos = os.environ.get("FARMADEX_DATOS", "").strip()
+    if not datos:
+        return ""
+    import hashlib
+
+    return "-" + hashlib.sha1(os.path.normcase(os.path.abspath(datos)).encode("utf-8")).hexdigest()[:8]
+
+
+MUTEX_INSTANCIA = f"{NOMBRE_APP}InstanciaUnica{_sufijo_datos()}"
+PREFIJO_TUBERIA = f"{NOMBRE_APP}-instancia{_sufijo_datos()}-"
 ORDEN_MOSTRAR = "mostrar"
 ORDEN_SALIR = "salir"
 ORDENES = (ORDEN_MOSTRAR, ORDEN_SALIR)

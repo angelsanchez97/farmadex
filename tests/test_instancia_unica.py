@@ -168,7 +168,9 @@ def test_el_instalador_puede_pedir_el_cierre_escribiendo_en_la_tuberia_a_pelo(qa
 def test_el_instalador_usa_el_mismo_nombre_de_tuberia_y_mutex():
     iss = (RAIZ / "empaquetado" / "instalador.iss").read_text(encoding="utf-8")
     prefijo = re.search(r"PrefijoTuberia = '([^']+)'", iss).group(1)
-    assert prefijo == "\\\\.\\pipe\\" + instancia_unica.PREFIJO_TUBERIA
+    # El instalador habla con el Farmadex real, sin el sufijo que FARMADEX_DATOS pone en pruebas.
+    sufijo = instancia_unica._sufijo_datos()
+    assert prefijo == "\\\\.\\pipe\\" + instancia_unica.PREFIJO_TUBERIA.replace(sufijo, "")
     assert "GetUserNameString" in iss and "'salir' + #10" in iss
     assert instancia_unica.nombre_tuberia("ana") == instancia_unica.PREFIJO_TUBERIA + "ana"
     # Y el instalador limpia las librerias viejas antes de copiar las nuevas.
@@ -291,3 +293,24 @@ def test_salir_sale_aunque_falle_el_cierre_de_la_ventana():
     app.qt.quit = lambda: hechos.append("quit")
     app.salir()
     assert hechos == ["bandeja", "quit"]
+
+
+def test_con_otra_carpeta_de_datos_el_candado_es_otro(monkeypatch, tmp_path):
+    """Una copia de prueba (FARMADEX_DATOS) no debe hablar con el Farmadex del usuario."""
+    import importlib
+
+    from farmadex import instancia_unica
+
+    monkeypatch.setenv("FARMADEX_DATOS", str(tmp_path))
+    con = importlib.reload(instancia_unica)
+    nombre_prueba, mutex_prueba = con.nombre_tuberia("angel"), con.MUTEX_INSTANCIA
+    original = os.environ.get("FARMADEX_DATOS")
+    monkeypatch.delenv("FARMADEX_DATOS")
+    try:
+        sin = importlib.reload(instancia_unica)
+        assert sin.nombre_tuberia("angel") == "Farmadex-instancia-angel"
+        assert nombre_prueba != "Farmadex-instancia-angel" and mutex_prueba != sin.MUTEX_INSTANCIA
+    finally:
+        # Nunca dejar el modulo con los nombres del Farmadex real: otras pruebas crean instancias.
+        monkeypatch.setenv("FARMADEX_DATOS", original or str(tmp_path))
+        importlib.reload(instancia_unica)
