@@ -47,8 +47,10 @@ Source: "{#Raiz}\empaquetado\vc_redist.x64.exe"; DestDir: "{tmp}"; \
 Type: filesandordirs; Name: "{app}\_internal"
 
 [Icons]
-Name: "{group}\{#NombreApp}"; Filename: "{app}\{#NombreApp}.exe"
-Name: "{autodesktop}\{#NombreApp}"; Filename: "{app}\{#NombreApp}.exe"; Tasks: escritorio
+; IconFilename explicito: Windows cachea el icono por ruta+indice del .exe y, tras cambiar el
+; icono del programa, el acceso directo seguia saliendo con el viejo. Apuntar al .ico lo refresca.
+Name: "{group}\{#NombreApp}"; Filename: "{app}\{#NombreApp}.exe"; IconFilename: "{app}\_internal\recursos\iconos\farmadex.ico"
+Name: "{autodesktop}\{#NombreApp}"; Filename: "{app}\{#NombreApp}.exe"; IconFilename: "{app}\_internal\recursos\iconos\farmadex.ico"; Tasks: escritorio
 
 [Registry]
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; \
