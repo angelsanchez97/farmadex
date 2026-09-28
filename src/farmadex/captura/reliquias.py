@@ -104,6 +104,17 @@ class LectorBase(QObject):
         self._avisado_motor = False
 
     @Slot()
+    def arrancar(self) -> None:
+        """Lo que se conecta a `QThread.started`: llama a `iniciar` en el hilo del lector.
+
+        No se conecta `iniciar` directamente porque las subclases lo redefinen, y con un
+        slot redefinido PySide6 (6.11) no lo ejecuta en el hilo del objeto sino en el de
+        la ventana: la carga del OCR y de los casadores (1-3 s) congelaba la ventana al
+        arrancar. Este metodo no se redefine en ninguna subclase.
+        """
+        self.iniciar()
+
+    @Slot()
     def iniciar(self) -> None:
         """Prepara el casador con el indice y precalienta el motor OCR.
 
@@ -202,6 +213,7 @@ class LectorRecompensas(LectorBase):
     # lector sin pasar por __init__.
     tarjetas = 0
     _miradas = 0
+    _t_previas: float | None = None
     _casador_reliquias: Casador | None = None
     _casador_piezas: Casador | None = None
 
@@ -369,8 +381,9 @@ class LectorRecompensas(LectorBase):
             )
             for r in fila
         ]
-        recompensas = conservar_mejores(self._previas, recompensas)
+        recompensas = conservar_mejores(self._previas_de_esta_pantalla(recompensas), recompensas)
         self._previas = recompensas
+        self._t_previas = time.monotonic()
         log.info(
             "Recompensas leidas: %s",
             ", ".join(f"{r.texto_ocr} -> {r.nombre}" for r in recompensas) or "ninguna",
@@ -391,6 +404,23 @@ class LectorRecompensas(LectorBase):
             self._confirmaciones += 1
             QTimer.singleShot(self.CONFIRMACION_MS, self._confirmar)
 
+
+    # Lo leido antes solo completa una lectura de la MISMA pantalla. Por atajo, sin EE.log
+    # (o con su "cerrada" llegando tarde), las tarjetas de la reliquia anterior se
+    # colaban en la siguiente: la autoprueba pinto 7 recompensas en una pantalla de 4.
+    VIDA_PREVIAS_S = 8.0
+
+    def _previas_de_esta_pantalla(self, nuevas: list) -> list:
+        if not self._previas or self._t_previas is None:
+            return []
+        if time.monotonic() - self._t_previas > self.VIDA_PREVIAS_S:
+            return []
+        ids_nuevas = {r.item_id for r in nuevas if r.item_id and r.item_id != SIN_IDENTIFICAR}
+        ids_viejas = {r.item_id for r in self._previas if r.item_id and r.item_id != SIN_IDENTIFICAR}
+        if ids_nuevas and not ids_nuevas & ids_viejas:
+            log.info("Recompensas de otra pantalla: no se mezclan con las anteriores")
+            return []
+        return self._previas
 
     def _ids_conocidas(self) -> set[int]:
         casador = self._conocidas()

@@ -237,6 +237,13 @@ class VentanaOverlay(QWidget):
     cerrar_programa = Signal()
     # Lectura bajo el cursor pedida al hilo de captura (numero de solicitud).
     _pedir_lectura_cursor = Signal(int)
+    # Recompensas, build y agrietado, tambien al hilo de captura. Con
+    # `QTimer.singleShot(0, lector.leer_ahora)` PySide6 ejecuta el metodo en el hilo
+    # que llama (el de la ventana), no en el del lector: el OCR congelaba la ventana
+    # mientras leia y se cruzaba con los avisos de EE.log que el lector atiende en su hilo.
+    _pedir_recompensas = Signal()
+    _pedir_build = Signal()
+    _pedir_agrietado = Signal()
     # Cadencia del mundo (True=visible, False=oculto), en cola hasta el hilo de
     # ServicioMundo: llamar a `cadencia()` a pelo desde este hilo tocaria su
     # QTimer desde fuera de su hilo (ver ServicioMundo.cadencia).
@@ -705,10 +712,9 @@ class VentanaOverlay(QWidget):
         for lector in (self.lector_recompensas, self.lector_cursor, self.lector_build, self.lector_agrietado):
             lector.moveToThread(self.hilo_captura)
             lector.estado.connect(self.estado.setText)
-        self.hilo_captura.started.connect(self.lector_recompensas.iniciar)
-        self.hilo_captura.started.connect(self.lector_cursor.iniciar)
-        self.hilo_captura.started.connect(self.lector_build.iniciar)
-        self.hilo_captura.started.connect(self.lector_agrietado.iniciar)
+        # `arrancar`, no `iniciar`: ver LectorBase.arrancar (si no, se preparan en este hilo).
+        for lector in (self.lector_recompensas, self.lector_cursor, self.lector_build, self.lector_agrietado):
+            self.hilo_captura.started.connect(lector.arrancar)
         self.lector_build.leida.connect(self._build_leida)
         self.lector_agrietado.leida.connect(self._agrietado_leido)
         self.lector_recompensas.leidas.connect(self._pintar_recompensas)
@@ -717,6 +723,9 @@ class VentanaOverlay(QWidget):
         # encolaba una lectura entera por pulsacion y acababa tumbando el programa.
         self.turno_cursor = TurnoLecturas(self._pedir_lectura_cursor.emit)
         self._pedir_lectura_cursor.connect(self.lector_cursor.leer_solicitud)
+        self._pedir_recompensas.connect(self.lector_recompensas.leer_ahora)
+        self._pedir_build.connect(self.lector_build.leer_ahora)
+        self._pedir_agrietado.connect(self.lector_agrietado.leer_ahora)
         self.lector_cursor.terminado.connect(self._lectura_cursor_terminada)
         # Lectura pasiva del perfil, el inventario y la fundicion: mismo hilo, mismo motor.
         self.lector_pasivo = LectorPasivo(
@@ -724,8 +733,12 @@ class VentanaOverlay(QWidget):
             perfil=bool(self.config.get("perfil_pasivo", True)),
             inventario=bool(self.config.get("inventario_pasivo", False)),
         )
-        self.lector_pasivo.moveToThread(self.hilo_captura)
-        self.hilo_captura.started.connect(self.lector_pasivo.iniciar)
+        # En su propio hilo y con prioridad baja: su OCR de pantalla entera (hasta ~1 s) no
+        # puede dejar esperando a una lectura pedida por el usuario (atajo o EE.log), que
+        # ahora corre de verdad en el hilo de captura.
+        self.hilo_pasivo = QThread(self)
+        self.lector_pasivo.moveToThread(self.hilo_pasivo)
+        self.hilo_pasivo.started.connect(self.lector_pasivo.iniciar)
         self.lector_pasivo.pagina_perfil.connect(self._pagina_perfil_leida)
         self.lector_pasivo.pagina_inventario.connect(self._pagina_inventario_leida)
         self.ajustes.perfil_pasivo.toggled.connect(self.lector_pasivo.activar_perfil)
@@ -751,6 +764,7 @@ class VentanaOverlay(QWidget):
         self.ocultador = OcultadorVentanas(self)
         pantalla.registrar_ocultador(self.ocultador)
         self.hilo_captura.start()
+        self.hilo_pasivo.start(QThread.LowPriority)
         self.hover_reliquias.iniciar()
 
         self.disparador = DisparadorAutomatico(bool(self.config.get("ocr_reliquias_auto", True)))
@@ -791,6 +805,7 @@ class VentanaOverlay(QWidget):
         self._temporizador_conocidas.setInterval(150)  # las lineas "gets reward" salen juntas
         self._temporizador_conocidas.timeout.connect(self._recompensas_conocidas)
         self.vigilante.pantalla.connect(self.lector_pasivo.pantalla_juego)
+        self.vigilante.evento.connect(self.lector_pasivo.evento)
         self.vigilante.pantalla.connect(self.hover_reliquias.pantalla_juego)
         self.vigilante.arranque.connect(self._arranque_juego)
         self.vigilante.start()
@@ -1416,14 +1431,14 @@ class VentanaOverlay(QWidget):
             # (lectura por "Relic rewards initialized" y "Got rewards" que llega tarde),
             # esconderlos hasta la relectura solo haria parpadear el panel.
             self.etiquetas.hide()
-        QTimer.singleShot(0, self.lector_recompensas.leer_ahora)
+        self._pedir_recompensas.emit()
 
     def leer_build(self) -> None:
         """Atajo o boton de la pestana Build: lee la pantalla de mejoras del arsenal."""
         if self.hilo_captura is None:
             self.estado.setText(t("Los datos todavía se están preparando"))
             return
-        QTimer.singleShot(0, self.lector_build.leer_ahora)
+        self._pedir_build.emit()
 
     def _build_leida(self, build) -> None:
         self.builds.mostrar_build(build)
@@ -1439,7 +1454,7 @@ class VentanaOverlay(QWidget):
         if self.hilo_captura is None:
             self.estado.setText(t("Los datos todavía se están preparando"))
             return
-        QTimer.singleShot(0, self.lector_agrietado.leer_ahora)
+        self._pedir_agrietado.emit()
 
     def _agrietado_leido(self, tarjeta) -> None:
         self.agrietados.mostrar_tarjeta(tarjeta)
@@ -2012,22 +2027,42 @@ class VentanaOverlay(QWidget):
         guardar(self.config)
 
     def aplicar_opacidad(self, opacidad: float) -> None:
+        """Fondo de la ventana y de la cabecera para los dos modos, en una sola hoja.
+
+        Las dos variantes van juntas y el modo se elige con la propiedad "modo" del marco:
+        cambiar la hoja de estilo del marco obliga a Qt a repasar TODOS los widgets de
+        dentro (~250 ms medidos al entrar y salir del modo juego); cambiar la propiedad
+        solo repasa el marco y la cabecera. La hoja solo se rehace si cambia la opacidad
+        o el tema.
+        """
         self._opacidad = opacidad
-        if getattr(self, "modo", "completo") == "compacto":
+        rgb, borde = PALETA["fondo_rgb"], PALETA["borde"]
+        hoja = (
             # Modo juego: las tarjetas flotan sobre la partida. Un fondo casi invisible, no
             # del todo: con transparencia total Windows deja pasar los clics al juego y ya
             # no se podria arrastrar la ventana desde los huecos.
-            self.marco.setStyleSheet(f"#marco {{ background: rgba({PALETA['fondo_rgb']}, 0.01); border: none; }}")
-            cabecera = (f"#barraCabecera {{ background: rgba({PALETA['fondo_rgb']}, {opacidad});"
-                        f" border: 1px solid {PALETA['borde']}; border-radius: 4px; }}")
-        else:
-            self.marco.setStyleSheet(
-                f"#marco {{ background: rgba({PALETA['fondo_rgb']}, {opacidad});"
-                f" border: 1px solid {PALETA['borde']}; border-radius: 6px; }}"
-            )
-            cabecera = "#barraCabecera { background: transparent; border: none; }"
-        if hasattr(self, "barra_cabecera"):
-            self.barra_cabecera.setStyleSheet(cabecera)
+            f'#marco[modo="compacto"] {{ background: rgba({rgb}, 0.01); border: none; }}\n'
+            f'#marco[modo="compacto"] #barraCabecera {{ background: rgba({rgb}, {opacidad});'
+            f" border: 1px solid {borde}; border-radius: 4px; }}\n"
+            f'#marco[modo="completo"] {{ background: rgba({rgb}, {opacidad});'
+            f" border: 1px solid {borde}; border-radius: 6px; }}\n"
+            f'#marco[modo="completo"] #barraCabecera {{ background: transparent; border: none; }}\n'
+        )
+        if hoja != getattr(self, "_hoja_marco", None):
+            self._hoja_marco = hoja
+            self.marco.setStyleSheet(hoja)
+        self._marcar_modo_marco()
+
+    def _marcar_modo_marco(self) -> None:
+        modo = "compacto" if getattr(self, "modo", "completo") == "compacto" else "completo"
+        if self.marco.property("modo") == modo:
+            return
+        self.marco.setProperty("modo", modo)
+        for widget in (self.marco, getattr(self, "barra_cabecera", None)):
+            if widget is not None:
+                widget.style().unpolish(widget)
+                widget.style().polish(widget)
+                widget.update()
 
     # -- navegacion ------------------------------------------------------------
 
@@ -2378,6 +2413,10 @@ class VentanaOverlay(QWidget):
         self.ayuda_reliquias.quitar()
         self.tarjeta_reliquia.ocultar()
         self.tarjeta_reliquia.cerrar()
+        hilo_pasivo = getattr(self, "hilo_pasivo", None)
+        if hilo_pasivo is not None:
+            hilo_pasivo.quit()
+            hilo_pasivo.wait(3000)
         if self.hilo_captura:
             self.hilo_captura.quit()
             self.hilo_captura.wait(3000)

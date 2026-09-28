@@ -1019,8 +1019,21 @@ class PestanaMundo(QWidget):
             self._eras_necesarias = self._calcular_eras()
         self._marcar_baro()
         self._pintar_aviso()
-        self.pintar()
+        if self.window() is not self and not self.isVisible():
+            # Dentro de la ventana y sin verse (otra seccion delante, o Farmadex escondido):
+            # pintarla cuesta ~40 ms y llega cada poco; se pinta al volver a ensenarse.
+            self._pintar_pendiente = True
+        else:
+            self.pintar()
         self._avisar()
+
+    _pintar_pendiente = False
+
+    def showEvent(self, evento):  # noqa: N802 - firma de Qt
+        super().showEvent(evento)
+        if self._pintar_pendiente:
+            self._pintar_pendiente = False
+            self.pintar()
 
     def _marcar_baro(self) -> None:
         """Marca lo que Baro trae y esta en tus objetivos (arriba y en dorado, y para los avisos)."""

@@ -27,6 +27,9 @@ from ..ficheros import reemplazar, temporal_de
 
 log = obtener("descargas")
 
+# Lo maximo que se espera a CONECTAR con un servidor (leer la respuesta puede tardar mas).
+SEGUNDOS_CONECTAR = 8.0
+
 ITEMS_BASE = "https://raw.githubusercontent.com/WFCD/warframe-items/master/data/json/"
 # Desde el 2026-09-24 (PR #992 de WFCD) las traducciones vienen una por idioma en esta
 # carpeta, de 4 a 7 MB cada una, y el i18n.json con todas juntas (~50 MB) ya no existe.
@@ -227,14 +230,33 @@ class Descargador:
 
     def __init__(self, progreso: Progreso | None = None, cliente: httpx.Client | None = None):
         self.progreso = progreso or _nada
+        # Conectar es rapido o no es: sin red, esperar 60 s por conexion retrasaba minutos
+        # todo lo que va detras (la lectura de pantalla no arranca hasta tener los datos).
         self.cliente = cliente or httpx.Client(
-            timeout=60.0, headers={"User-Agent": USER_AGENT}, follow_redirects=True
+            timeout=httpx.Timeout(60.0, connect=SEGUNDOS_CONECTAR),
+            headers={"User-Agent": USER_AGENT}, follow_redirects=True,
         )
         self.estado = EstadoDatos.cargar()
+        # Servidores con los que no se pudo ni conectar en esta pasada. Con dos ya se da por
+        # hecho que no hay red y no se prueba nada mas: sin conexion, los reintentos con
+        # espera (1+2+4 s por peticion) tenian la ventana ~22 s sin leer la pantalla.
+        self._sin_conexion: set[str] = set()
 
     # -- utilidades -----------------------------------------------------
 
+    def sin_red(self) -> bool:
+        return len(self._sin_conexion) >= 2
+
+    def _no_conecta(self, url: str, error: Exception) -> bool:
+        """Apunta el servidor si el fallo es de conexion (no de respuesta); True si lo es."""
+        if isinstance(error, (httpx.ConnectError, httpx.ConnectTimeout)):
+            self._sin_conexion.add(httpx.URL(url).host)
+            return True
+        return False
+
     def _pedir_json(self, url: str, cabeceras: dict | None = None):
+        if self.sin_red():
+            raise RuntimeError(f"No se pudo obtener {url}: sin conexion")
         ultimo = None
         for intento in range(3):
             try:
@@ -243,6 +265,12 @@ class Descargador:
                 return r.json()
             except (httpx.HTTPError, json.JSONDecodeError) as e:
                 ultimo = e
+                if self._no_conecta(url, e):
+                    # Sin conexion con ese servidor no se arregla esperando unos segundos.
+                    log.warning("Sin conexion con %s (%s)", url, e)
+                    break
+                if intento == 2:
+                    break
                 espera = 2**intento
                 log.warning("Fallo pidiendo %s (%s). Reintento en %ss", url, e, espera)
                 time.sleep(espera)
@@ -261,6 +289,8 @@ class Descargador:
             self._descargar_una_vez(alternativa, destino, etiqueta)
 
     def _descargar_una_vez(self, url: str, destino: Path, etiqueta: str) -> None:
+        if self.sin_red():
+            raise ErrorDescarga(url, RuntimeError("sin conexion"), None)
         destino.parent.mkdir(parents=True, exist_ok=True)
         tmp = temporal_de(destino)
         ultimo_error = None
@@ -290,6 +320,8 @@ class Descargador:
                 estado = e.response.status_code if isinstance(e, httpx.HTTPStatusError) else None
                 if estado is not None and 400 <= estado < 500 and estado not in (408, 429):
                     # Un 404 no se arregla esperando: reintentar solo retrasaba 7 s el aviso.
+                    break
+                if self._no_conecta(url, e):
                     break
                 espera = 2**intento
                 log.warning("Fallo descargando %s (%s). Reintento en %ss", url, e, espera)
@@ -463,11 +495,15 @@ class Descargador:
         descarga es atomica (fichero .tmp), asi que no puede quedar una pagina a medias.
         """
         ruta = self.ruta_tabla_oficial()
+        if self.sin_red():
+            log.info("Sin conexion: no se consulta la tabla oficial de DE")
+            return False
         try:
-            r = self.cliente.head(URL_TABLA_OFICIAL, timeout=20.0)
+            r = self.cliente.head(URL_TABLA_OFICIAL, timeout=httpx.Timeout(20.0, connect=SEGUNDOS_CONECTAR))
             r.raise_for_status()
             version = r.headers.get("etag") or r.headers.get("last-modified") or ""
         except httpx.HTTPError as e:
+            self._no_conecta(URL_TABLA_OFICIAL, e)
             log.warning("No se pudo consultar la tabla oficial de DE (%s); se sigue con WFCD", e)
             return False
         hay = ruta.exists() and ruta.stat().st_size > 0

@@ -2,13 +2,36 @@
 
 ## 0.6.2
 
-- Farmadex ya no se lee a sí mismo: si su ventana está encima del juego, se aparta un instante
-  al leer la pantalla (builds, rivens, recompensas, lo que hay bajo el cursor) y vuelve a salir.
-  En los directos se sigue viendo con normalidad.
-- Leer una build es mucho más rápido: buscar lo leído entre todos los objetos del juego ya no
-  tarda segundos.
-- La build vuelve a enseñar el warframe o el arma, y la lista de "sin identificar" ya no se llena
-  de rótulos y estadísticas.
+**Más rápido y sin atascos**
+- Buscar ya no se congela al escribir: los resultados salen al momento y las fichas grandes se
+  abren mucho más rápido.
+- Leer una build tarda menos de un segundo también en un PC normal. El programa instalado usaba
+  sin querer una versión lenta de una de sus piezas; arreglado.
+- Ninguna lectura de pantalla deja la ventana parada, tampoco al arrancar.
+- Sin internet, Farmadex está listo en un momento en vez de tardar en poder leer la pantalla.
+
+**Lee mejor**
+- Farmadex ya no se lee a sí mismo: si su ventana está encima del juego, se aparta un instante al
+  leer la pantalla y vuelve a salir. En los directos se sigue viendo con normalidad.
+- Builds: reconoce casi todos los mods, sin inventarse ninguno, y el warframe o el arma, en muchas
+  resoluciones (de 720p a 4K, panorámicas incluidas) y con el juego en inglés, español, francés,
+  alemán, italiano, portugués o polaco.
+- Al abrir varias reliquias seguidas con el atajo ya no se cuelan piezas de la anterior.
+- Recompensas de reliquias y rivens también en francés y alemán.
+- "Leer bajo el cursor" ya no abre la ficha de la carta de al lado.
+
+**Nuevo**
+- Pestaña Build: "¿Está bien mi build?" te dice qué está bien y qué falta o sobra, y "Build básica
+  para…" te propone una build inicial con mods fáciles de conseguir. Es una guía orientativa.
+- Builds en Overframe siempre a mano, aunque no se haya reconocido el equipo.
+- Botón de minimizar y Farmadex en la barra de tareas (se puede quitar en Ajustes).
+- Actualizar al abrir: si hay versión nueva, se instala al abrir Farmadex, con opción de abrir
+  sin actualizar. Se puede apagar en Ajustes.
+
+**Arreglos**
+- Los asesinatos de jefes (Vay Hek, Alad V…) salen en la lista de misiones en su sitio.
+- Tildes en "Poco común", "Común" y "Rotación".
+- Limpieza de avisos internos que salían en el registro al cerrarse el juego.
 
 ## 0.6.1
 

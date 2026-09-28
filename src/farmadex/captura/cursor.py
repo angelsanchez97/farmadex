@@ -97,15 +97,26 @@ class LectorCursor(LectorBase):
             self.candidatos.emit([])
             return
 
-        # El que este mas cerca del centro del recuadro es el que senala el raton.
-        centro = region.ancho / 2, region.alto / 2
+        # El que este mas cerca del raton es el que senala. El raton no siempre esta en el
+        # centro del recuadro: junto al borde del juego el recuadro se desplaza hacia dentro.
+        punto = punto_del_raton(region)
 
         def distancia(r):
             x = r.caja[0] + r.caja[2] / 2
             y = r.caja[1] + r.caja[3] / 2
-            return (x - centro[0]) ** 2 + (y - centro[1]) ** 2
+            return (x - punto[0]) ** 2 + (y - punto[1]) ** 2
 
-        ordenados = sorted(encontrados, key=lambda r: (distancia(r), -r.puntuacion))
+        # Solo cuenta lo que esta encima o debajo del raton: si el nombre que senala no se
+        # ha podido leer, el vecino de al lado no es la respuesta (abria la ficha de otra
+        # pieza de la pantalla de recompensas).
+        cercanos = [r for r in encontrados if alineado_con_raton(r.caja, punto, region.ancho)]
+        if not cercanos:
+            log.info("Bajo el cursor: nada alineado con el raton (%s)",
+                     ", ".join(repr(r.nombre) for r in encontrados))
+            self.estado.emit(t("No se reconoció nada bajo el cursor"))
+            self.candidatos.emit([])
+            return
+        ordenados = sorted(cercanos, key=lambda r: (distancia(r), -r.puntuacion))
         mejor = ordenados[0]
         if self._vieja(numero):
             # Mientras se leia se volvio a pulsar el atajo: manda la lectura nueva.
@@ -117,6 +128,29 @@ class LectorCursor(LectorBase):
         self.candidatos.emit(
             [(r.item_id, r.nombre, r.puntuacion) for r in ordenados[:3]]
         )
+
+
+def punto_del_raton(region) -> tuple[float, float]:
+    """Donde esta el raton dentro del recuadro capturado; el centro si no se sabe."""
+    centro = region.ancho / 2, region.alto / 2
+    try:
+        cx, cy = pantalla._posicion_cursor()
+        x, y = cx - region.x, cy - region.y
+    except Exception:  # noqa: BLE001 - sin posicion (o recuadro de prueba): el centro
+        return centro
+    if 0 <= x < region.ancho and 0 <= y < region.alto:
+        return float(x), float(y)
+    return centro
+
+
+def alineado_con_raton(caja, punto: tuple[float, float], ancho_region: int) -> bool:
+    """Si el texto leido esta encima o debajo del raton (en horizontal, con holgura).
+
+    En vertical no se limita: el raton suele estar sobre el icono y el nombre va debajo.
+    """
+    x0, ancho = caja[0], caja[2]
+    hueco = max(0.0, x0 - punto[0], punto[0] - (x0 + ancho))
+    return hueco <= max(0.5 * ancho, 0.04 * ancho_region)
 
 
 class TurnoLecturas:

@@ -286,12 +286,57 @@ def test_ajustes_elige_el_modo_de_ocr_y_avisa(monkeypatch, tmp_path):
 
 
 def test_lector_pasivo_cambia_de_motor():
+    """La lectura pasiva lee con su propio motor (sesion aparte y pocos hilos) salvo con el
+    OCR de Windows: su OCR de pantalla entera hacia esperar a las lecturas pedidas."""
     from farmadex.captura.lector_pasivo import LectorPasivo
 
     lector = LectorPasivo("auto")
-    assert lector.motor.motor == "auto"
+    assert lector.motor.motor == "fondo"
     lector.cambiar_motor("ligero")
-    assert lector.motor.motor == "ligero"
+    assert lector.motor.motor == "fondo"
+    lector.cambiar_motor("winocr")
+    assert lector.motor.motor == "winocr"
+
+
+def test_el_motor_de_fondo_es_una_sesion_aparte_con_pocos_hilos(monkeypatch):
+    creados = []
+    monkeypatch.setattr(ocr, "_crear_rapidocr", lambda hilos: creados.append(hilos) or object())
+    ocr.MotorOCR.descargar()
+    try:
+        fondo = ocr.MotorOCR("fondo")
+        assert fondo._clave_fija() == ocr.CLAVE_FONDO
+        assert fondo._cargar() is not ocr.MotorOCR("rapidocr")._cargar()
+        assert creados == [ocr.HILOS_LIGERO, ocr.HILOS_OCR]
+    finally:
+        ocr.MotorOCR.descargar()
+
+
+def test_si_el_motor_de_fondo_no_carga_se_usa_el_normal(monkeypatch):
+    def crear(hilos):
+        if hilos == ocr.HILOS_LIGERO and ocr.HILOS_LIGERO != ocr.HILOS_OCR:
+            raise RuntimeError("sin memoria")
+        return "normal"
+
+    monkeypatch.setattr(ocr, "_crear_rapidocr", crear)
+    monkeypatch.setattr(ocr, "HILOS_LIGERO", 1)
+    ocr.MotorOCR.descargar()
+    try:
+        fondo = ocr.MotorOCR("fondo", hilos=4)
+        assert fondo._cargar() == "normal"
+        assert fondo.fallo is None
+    finally:
+        ocr.MotorOCR.descargar()
+
+
+def test_la_lectura_pasiva_no_mira_durante_la_pantalla_de_reliquia():
+    from farmadex.captura.lector_pasivo import LectorPasivo
+
+    lector = LectorPasivo("auto")
+    assert lector.merece_mirar()
+    lector.evento("reliquia_abierta")
+    assert not lector.merece_mirar()
+    lector.evento("reliquia_cerrada")
+    assert lector.merece_mirar()
 
 
 def test_sin_winocr_la_opcion_windows_no_sale_y_cuenta_como_auto(monkeypatch):

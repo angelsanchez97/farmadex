@@ -92,6 +92,11 @@ MODOS_OCR = ("auto", "rapido", "ligero", "windows")
 _ALIAS_MOTOR = {"rapido": "rapidocr", "windows": "winocr"}
 CLAVE_NORMAL = "rapidocr"
 CLAVE_LIGERO = "rapidocr_ligero"
+# Motor aparte para la lectura pasiva (perfil, inventario): su OCR de pantalla entera
+# (~0,5-1 s) en la misma sesion que las lecturas pedidas las hacia esperar (medido con la
+# autoprueba: recompensas de 150 ms a 300-700 ms). Con su propia sesion y pocos hilos,
+# como mucho se reparten la CPU.
+CLAVE_FONDO = "rapidocr_fondo"
 
 # Modo automatico: fraccion de CPU (0-1) ocupada por OTROS programas a partir de la
 # cual se pasa al motor ligero, y por debajo de la cual se vuelve al normal. Medido
@@ -375,7 +380,7 @@ class MotorOCR:
 
     def __init__(self, motor: str = "rapidocr", hilos: int = HILOS_OCR):
         motor = _ALIAS_MOTOR.get(motor, motor)
-        if motor not in (CLAVE_NORMAL, "ligero", "auto", "winocr"):
+        if motor not in (CLAVE_NORMAL, "ligero", "auto", "winocr", "fondo"):
             log.warning("Modo de OCR desconocido %r; se usa el normal", motor)
             motor = CLAVE_NORMAL
         self.motor = motor
@@ -391,6 +396,8 @@ class MotorOCR:
         return self.motor == "auto" and HILOS_LIGERO < self.hilos
 
     def _clave_fija(self) -> str:
+        if self.motor == "fondo":
+            return CLAVE_FONDO
         return CLAVE_LIGERO if self.motor == "ligero" else CLAVE_NORMAL
 
     def _decidir_auto(self) -> str:
@@ -427,6 +434,8 @@ class MotorOCR:
         """
         if self.motor == "winocr":
             return None
+        if self.motor == "fondo" and CLAVE_FONDO in MotorOCR._fallidos:
+            return MotorOCR._fallidos.get(CLAVE_NORMAL)  # sin el de fondo se usa el normal
         return MotorOCR._fallidos.get(self._clave_fija())
 
     @property
@@ -451,7 +460,7 @@ class MotorOCR:
                 if clave == "winocr":
                     nuevo = "winocr"
                 else:
-                    nuevo = _crear_rapidocr(HILOS_LIGERO if clave == CLAVE_LIGERO else self.hilos)
+                    nuevo = _crear_rapidocr(HILOS_LIGERO if clave in (CLAVE_LIGERO, CLAVE_FONDO) else self.hilos)
             except Exception as e:  # noqa: BLE001 - lo que sea, no puede tumbar la app
                 motivo = f"{type(e).__name__}: {e}"
                 MotorOCR._fallidos[clave] = motivo
@@ -487,6 +496,11 @@ class MotorOCR:
         try:
             motor = self._motor_de(clave)
         except ErrorMotorOCR:
+            if clave == CLAVE_FONDO:
+                # El de fondo no carga: la lectura pasiva comparte el normal, como antes.
+                motor = self._motor_de(CLAVE_NORMAL)
+                self.ultima_clave = CLAVE_NORMAL
+                return motor
             if clave != CLAVE_LIGERO or self.motor != "auto" or self._forzada:
                 raise
             clave = CLAVE_NORMAL  # el ligero no carga: mejor el normal que nada
@@ -557,7 +571,7 @@ class MotorOCR:
     def olvidar_fallo(cls, motor: str) -> None:
         """Permite volver a intentar cargar `motor` (el usuario lo cambio en Ajustes)."""
         motor = _ALIAS_MOTOR.get(motor, motor)
-        claves = ("winocr",) if motor == "winocr" else (CLAVE_NORMAL, CLAVE_LIGERO)
+        claves = ("winocr",) if motor == "winocr" else (CLAVE_NORMAL, CLAVE_LIGERO, CLAVE_FONDO)
         with cls._cerrojo:
             for clave in claves:
                 cls._fallidos.pop(clave, None)

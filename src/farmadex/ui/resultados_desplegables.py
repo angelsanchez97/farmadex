@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import html
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QFrame, QLabel, QScrollArea, QVBoxLayout, QWidget
 
@@ -61,6 +61,7 @@ class _Fila(QFrame):
         caja.setSpacing(2)
         caja.addWidget(self.cabecera)
         caja.addWidget(self.detalle)
+        self.estilo: str | None = None  # la hoja de estilo que se le puso la ultima vez
 
 
 class ResultadosDesplegables(QScrollArea):
@@ -84,25 +85,44 @@ class ResultadosDesplegables(QScrollArea):
         self.setWidget(self._contenido)
         self._resultados: list[dict] = []
         self._filas: list[_Fila] = []
+        # Las filas se reutilizan de una busqueda a otra: crearlas (y darles estilo) era
+        # lo que dejaba la caja sin atender las teclas en el modo juego mientras se escribia.
+        self._reserva: list[_Fila] = []
         self.abierta = -1
         # Fila que el usuario cerro a mano: no se vuelve a abrir sola al repintar.
         self._cerrada_a_mano = -1
 
     # -- datos -------------------------------------------------------------------
 
+    def _nueva_fila(self) -> _Fila:
+        posicion = len(self._reserva)
+        fila = _Fila(self._contenido)
+        fila.hide()
+        fila.cabecera.pulsada.connect(lambda p=posicion: self._pulsada(p))
+        fila.detalle.linkActivated.connect(lambda url, f=fila: self._enlace(url, f.detalle))
+        self._caja.insertWidget(self._caja.count() - 1, fila)
+        self._reserva.append(fila)
+        return fila
+
+    def reservar(self, cuantas: int, de_golpe: int = 8) -> None:
+        """Prepara filas escondidas a trozos de `de_golpe`, sin congelar la ventana."""
+        for _ in range(de_golpe):
+            if len(self._reserva) >= cuantas:
+                return
+            self._nueva_fila()
+        QTimer.singleShot(0, self, lambda: self.reservar(cuantas, de_golpe))
+
     def poner(self, resultados: list[dict]) -> None:
-        for fila in self._filas:
-            fila.setParent(None)
-            fila.deleteLater()
-        self._filas = []
         self._resultados = list(resultados)
         self.abierta = self._cerrada_a_mano = -1
-        for posicion, r in enumerate(self._resultados):
-            fila = _Fila(self._contenido)
-            fila.cabecera.pulsada.connect(lambda p=posicion: self._pulsada(p))
-            fila.detalle.linkActivated.connect(lambda url, f=fila: self._enlace(url, f.detalle))
-            self._caja.insertWidget(self._caja.count() - 1, fila)
-            self._filas.append(fila)
+        while len(self._reserva) < len(self._resultados):
+            self._nueva_fila()
+        self._filas = self._reserva[:len(self._resultados)]
+        for fila in self._filas:
+            fila.detalle.hide()
+            fila.show()
+        for fila in self._reserva[len(self._resultados):]:
+            fila.hide()
         self.repintar()
         self.verticalScrollBar().setValue(0)
 
@@ -149,9 +169,10 @@ class ResultadosDesplegables(QScrollArea):
         for i, fila in enumerate(self._filas):
             fondo = p["panel2"] if i == self.abierta else "transparent"
             borde = p["acento"] if i == self.abierta else "transparent"
-            fila.setStyleSheet(
-                f"_Fila {{ background: {fondo}; border-left: 3px solid {borde}; border-radius: 4px; }}"
-            )
+            estilo = f"_Fila {{ background: {fondo}; border-left: 3px solid {borde}; border-radius: 4px; }}"
+            if fila.estilo != estilo:  # cambiar la hoja de estilo de un widget cuesta: solo si cambia
+                fila.estilo = estilo
+                fila.setStyleSheet(estilo)
 
     # -- eventos -------------------------------------------------------------------
 

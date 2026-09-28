@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import html
 import sqlite3
+import time
 from urllib.parse import quote
 
 from PySide6.QtCore import QEvent, QObject, QPointF, QRect, QRectF, QSize, Qt, QTimer, QUrl, Signal
@@ -98,8 +99,13 @@ ERAS = ("Lith", "Meso", "Neo", "Axi", "Requiem", "Omnia")
 
 
 # Espera tras la ultima tecla antes de buscar: corta para que los resultados lleguen
-# enseguida, suficiente para no buscar (ni pedir precio al mercado) a cada letra.
-RETARDO_TECLAS_MS = 100
+# enseguida, suficiente para no buscar (ni pedir precio al mercado) a cada letra. La
+# busqueda va en otro hilo y pintar la lista cuesta unos pocos ms: 70 ms bastan.
+RETARDO_TECLAS_MS = 70
+# Mientras se teclea, la lista sale en cuanto llega y la ficha del primer resultado
+# espera a una pausa: montarla cuesta de 10 a 70 ms (mas en un PC normal) y, hecha a
+# cada letra, era lo que dejaba la caja sin atender las teclas.
+PAUSA_FICHA_MS = 180
 
 
 def calcular_busqueda(con: sqlite3.Connection, texto: str) -> dict:
@@ -469,7 +475,12 @@ class PestanaBuscador(QWidget):
         self._temporizador.setInterval(RETARDO_TECLAS_MS)
         self._temporizador.timeout.connect(self._buscar_en_fondo)
 
-        self.caja.textChanged.connect(lambda _: self._temporizador.start())
+        self._ficha_pendiente = QTimer(self)
+        self._ficha_pendiente.setSingleShot(True)
+        self._ficha_pendiente.timeout.connect(self._abrir_primer_resultado)
+        self._t_tecla = 0.0
+
+        self.caja.textChanged.connect(self._tecleado)
         self.caja.textChanged.connect(lambda _: self._actualizar_boton_wiki())
         self.lista.currentRowChanged.connect(self._elegir_resultado)
         imagenes().lista.connect(self._imagen_lista)
@@ -664,13 +675,25 @@ class PestanaBuscador(QWidget):
             self.barra_teclas.setVisible(self.width() >= px(900, False))
 
     def _poner_barra_teclas(self) -> None:
-        """La barra del pie con las teclas que sirven en la ficha abierta."""
+        """La barra del pie con las teclas que sirven en la ficha abierta.
+
+        Solo se rehace si cambian las teclas: se llama en cada ficha que se abre y rehacerla
+        siempre era trabajo tirado en el hilo de la ventana."""
+        pares = self._pares_teclas() if self.hay_ficha() else None
+        if self.barra_teclas is not None and pares == getattr(self, "_pares_barra", None):
+            return
+        self._pares_barra = pares
         if self.barra_teclas is not None:
             self.barra_teclas.setParent(None)
             self.barra_teclas.deleteLater()
             self.barra_teclas = None
-        if not self.hay_ficha():
+        if pares is None:
             return
+        self.barra_teclas = BarraTeclas(pares)
+        self._capa_pie.addWidget(self.barra_teclas)
+        self._ajustar_pie()
+
+    def _pares_teclas(self) -> list[tuple[str, str]]:
         pares = []
         if self.boton_objetivo.isEnabled():
             pares.append(("+", t("Añadir a mis metas")))
@@ -683,9 +706,7 @@ class PestanaBuscador(QWidget):
         pares.append(("C", t("Copiar nombre")))
         if self.puede_volver():
             pares.append(("Esc", t("Volver")))
-        self.barra_teclas = BarraTeclas(pares)
-        self._capa_pie.addWidget(self.barra_teclas)
-        self._ajustar_pie()
+        return pares
 
     # -- navegacion --------------------------------------------------------
 
@@ -901,6 +922,16 @@ class PestanaBuscador(QWidget):
         texto = self.caja.text().strip()
         self._aplicar_busqueda(texto, calcular_busqueda(self.con, texto) if len(texto) >= 2 else None)
 
+    def _tecleado(self, _texto: str = "") -> None:
+        self._t_tecla = time.monotonic()
+        self._ficha_pendiente.stop()  # se sigue escribiendo: la ficha espera a la pausa
+        self._temporizador.start()
+
+    def _abrir_primer_resultado(self) -> None:
+        """La ficha del primer resultado, cuando se ha dejado de teclear."""
+        if self._resultados and self.lista.currentRow() == 0:
+            self._elegir_resultado(0)
+
     def _buscar_en_fondo(self) -> None:
         """Lo que salta al dejar de teclear: lo pesado en otro hilo, la ventana libre."""
         if not self.con:
@@ -912,12 +943,18 @@ class PestanaBuscador(QWidget):
 
         def al_terminar(calculado: dict) -> None:
             if self.caja.text().strip() == texto:
-                self._aplicar_busqueda(texto, calculado)
+                self._aplicar_busqueda(texto, calculado, diferir_ficha=True)
 
         self._busqueda.pedir(self.con, lambda con: calcular_busqueda(con, texto), al_terminar)
 
-    def _aplicar_busqueda(self, texto: str, calculado: dict | None) -> None:
+    def _aplicar_busqueda(self, texto: str, calculado: dict | None, diferir_ficha: bool = False) -> None:
+        self._ficha_pendiente.stop()
+        # Sin senales: al vaciarla, la lista iba "seleccionando" los resultados viejos uno
+        # a uno y se montaba entera la ficha del primero de la busqueda anterior (hasta
+        # 120 ms tirados en cada busqueda).
+        self.lista.blockSignals(True)
         self.lista.clear()
+        self.lista.blockSignals(False)
         if calculado and "sugerencias" in calculado:
             if len(self._sugerencias_hechas) > 20:
                 self._sugerencias_hechas.clear()
@@ -946,7 +983,14 @@ class PestanaBuscador(QWidget):
         )
         self._pintar_resultados()
         self.estado.emit(t("{n} resultados", n=len(self._resultados)))
-        if self._resultados:
+        if self._resultados and diferir_ficha:
+            # La lista ya se ve; la ficha del primero, cuando se deje de teclear.
+            self.lista.blockSignals(True)
+            self.lista.setCurrentRow(0)
+            self.lista.blockSignals(False)
+            desde_tecla = (time.monotonic() - self._t_tecla) * 1000
+            self._ficha_pendiente.start(max(0, int(PAUSA_FICHA_MS - desde_tecla)))
+        elif self._resultados:
             self.lista.setCurrentRow(0)
         else:
             # Sin resultados la ficha anterior no puede quedarse: se leeria como la

@@ -247,6 +247,9 @@ class VistaCompacta(QWidget):
         super().showEvent(evento)
         self._reloj_hud.start()
         self.refrescar_hud()
+        # Las filas de la lista se preparan ya, a trozos y sin prisa: si no, la primera
+        # busqueda del modo juego las creaba todas de golpe mientras se tecleaba.
+        self.lista.reservar(40)
 
     def hideEvent(self, evento):  # noqa: N802
         super().hideEvent(evento)

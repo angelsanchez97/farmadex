@@ -141,7 +141,52 @@ def test_teclear_en_buscar_no_busca_en_el_hilo_de_la_ventana(buscador, aplicacio
     _esperar(aplicacion, buscador._busqueda, lambda: bool(buscador._resultados))
     assert hilos and all(h != principal for h in hilos)
     assert buscador._resultados[0]["nombre_en"] == "Ash Prime"
-    assert buscador.hay_ficha()
+    # La ficha del primero llega en cuanto se deja de teclear (PAUSA_FICHA_MS).
+    _esperar(aplicacion, buscador._busqueda, buscador.hay_ficha, segundos=2.0)
+
+
+def test_mientras_se_teclea_sale_la_lista_y_la_ficha_espera_a_la_pausa(buscador, aplicacion, monkeypatch):
+    """Montar la ficha a cada letra dejaba la caja sin atender las teclas: primero la
+    lista, y la ficha del primer resultado cuando se deja de escribir."""
+    from farmadex.ui import pestana_buscador as modulo
+
+    abiertas = []
+    original = modulo.PestanaBuscador.abrir
+    monkeypatch.setattr(modulo.PestanaBuscador, "abrir",
+                        lambda self, item_id, recordar=True: abiertas.append(item_id) or original(self, item_id, recordar))
+    buscador.caja.setText("ash prime")
+    buscador._temporizador.stop()
+    buscador._temporizador.timeout.emit()
+    _esperar(aplicacion, buscador._busqueda, lambda: bool(buscador._resultados))
+    assert buscador.lista.currentRow() == 0
+    assert abiertas == []  # aun no: se acaba de teclear
+    buscador.caja.setText("ash prime c")  # otra tecla antes de la pausa: la ficha sigue esperando
+    assert not buscador._ficha_pendiente.isActive()
+    buscador._temporizador.stop()
+    buscador.caja.blockSignals(True)
+    buscador.caja.setText("ash prime")
+    buscador.caja.blockSignals(False)
+    buscador._temporizador.timeout.emit()
+    _esperar(aplicacion, buscador._busqueda, lambda: bool(abiertas), segundos=2.0)
+    assert abiertas == [buscador._resultados[0]["item_id"]]  # una sola ficha, la del primero
+
+
+def test_una_busqueda_nueva_no_monta_la_ficha_de_la_anterior(buscador, aplicacion, monkeypatch):
+    """Al vaciar la lista se "seleccionaban" los resultados viejos y se montaba la ficha del
+    primero de la busqueda anterior: hasta 120 ms tirados en cada busqueda."""
+    from farmadex.ui import pestana_buscador as modulo
+
+    buscador.caja.setText("ash prime")
+    buscador._buscar()
+    abiertas = []
+    original = modulo.PestanaBuscador.abrir
+    monkeypatch.setattr(modulo.PestanaBuscador, "abrir",
+                        lambda self, item_id, recordar=True: abiertas.append(item_id) or original(self, item_id, recordar))
+    buscador.caja.blockSignals(True)
+    buscador.caja.setText("axi a7")
+    buscador.caja.blockSignals(False)
+    buscador._buscar()
+    assert abiertas == [buscador._resultados[0]["item_id"]]
 
 
 def test_si_se_sigue_escribiendo_la_busqueda_vieja_no_se_ensena(buscador, aplicacion):

@@ -190,3 +190,43 @@ def test_un_fallo_en_la_lectura_tambien_avisa_de_que_termino(monkeypatch):
     lector.terminado.connect(terminados.append)
     lector.leer_solicitud(4)
     assert terminados == [4] and not lector._ocupado
+
+
+def _leer_con(monkeypatch, hallados, cursor_xy, region):
+    lector = LectorCursor("rapidocr")
+    monkeypatch.setattr(lector, "_preparado", lambda: True)
+    monkeypatch.setattr(cursor.pantalla, "region_juego", lambda: None)
+    monkeypatch.setattr(cursor.pantalla, "region_alrededor_del_cursor", lambda limite=None: region)
+    monkeypatch.setattr(cursor.pantalla, "capturar", lambda r: object())
+    monkeypatch.setattr(cursor.pantalla, "_posicion_cursor", lambda: cursor_xy)
+    monkeypatch.setattr(lector, "_leer_protegido", lambda imagen, umbral: hallados)
+    abiertos = []
+    lector.encontrado.connect(lambda i, n: abiertos.append(i))
+    lector.leer_solicitud(0)
+    return abiertos
+
+
+def test_si_lo_que_senala_el_raton_no_se_lee_no_se_abre_el_vecino(monkeypatch):
+    """En la pantalla de recompensas a 1079x607 el nombre de la tercera carta no se leia y
+    se abria la ficha de la segunda (Masseter en vez de Larkspur): mejor nada que otra."""
+    region = cursor.pantalla.Region(310, 165, 620, 170)
+    vecino = SimpleNamespace(caja=(104, 80, 116, 11), puntuacion=100, item_id=7, nombre="Masseter Prime Empunadura",
+                             texto_ocr="MasseterPrimeHandle")
+    assert _leer_con(monkeypatch, [vecino], (620, 250), region) == []
+
+
+def test_lo_que_esta_bajo_el_raton_se_abre_aunque_el_recuadro_se_haya_desplazado(monkeypatch):
+    """Junto al borde del juego el recuadro no esta centrado en el raton: manda el raton."""
+    region = cursor.pantalla.Region(459, 165, 620, 170)  # pegado al borde derecho
+    izquierda = SimpleNamespace(caja=(85, 80, 127, 12), puntuacion=100, item_id=1, nombre="Larkspur", texto_ocr="L")
+    derecha = SimpleNamespace(caja=(221, 80, 128, 12), puntuacion=100, item_id=2, nombre="Revenant", texto_ocr="R")
+    # El raton esta sobre Revenant (x=744); el centro del recuadro caeria entre las dos.
+    assert _leer_con(monkeypatch, [izquierda, derecha], (744, 250), region) == [2]
+
+
+def test_alineado_con_raton():
+    from farmadex.captura.cursor import alineado_con_raton
+
+    assert alineado_con_raton((100, 10, 80, 12), (140, 60), 620)  # encima del texto
+    assert alineado_con_raton((100, 10, 80, 12), (205, 60), 620)  # un poco a la derecha
+    assert not alineado_con_raton((100, 10, 80, 12), (300, 60), 620)  # la carta de al lado

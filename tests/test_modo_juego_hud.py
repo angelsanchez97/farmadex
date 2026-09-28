@@ -149,17 +149,42 @@ def ventana(app, tmp_path, monkeypatch):
     v.hide()
 
 
+def _reglas_activas(ventana) -> tuple[str, str]:
+    """(regla del marco, regla de la cabecera) que aplican en el modo actual de la ventana."""
+    modo = ventana.marco.property("modo")
+    reglas = [linea for linea in ventana.marco.styleSheet().splitlines() if f'[modo="{modo}"]' in linea]
+    marco = next(r for r in reglas if "#barraCabecera" not in r)
+    cabecera = next(r for r in reglas if "#barraCabecera" in r)
+    return marco, cabecera
+
+
 def test_en_modo_juego_el_fondo_es_transparente_y_la_cabecera_lleva_el_suyo(ventana):
-    assert "transparent" in ventana.barra_cabecera.styleSheet()
+    assert "transparent" in _reglas_activas(ventana)[1]
     ventana.aplicar_modo("compacto")
+    marco, cabecera = _reglas_activas(ventana)
     # Casi invisible, pero no del todo: con alfa 0 los clics atravesarian hasta el juego.
-    assert "0.01" in ventana.marco.styleSheet()
-    assert "rgba" in ventana.barra_cabecera.styleSheet()
+    assert "0.01" in marco
+    assert "rgba" in cabecera
     assert ventana.compacta.tablero is ventana.tablero
     assert ventana.compacta.config is ventana.config
     ventana.aplicar_modo("completo")
-    assert "0.01" not in ventana.marco.styleSheet()
-    assert "transparent" in ventana.barra_cabecera.styleSheet()
+    marco, cabecera = _reglas_activas(ventana)
+    assert "0.01" not in marco
+    assert "transparent" in cabecera
+
+
+def test_cambiar_de_modo_no_rehace_la_hoja_de_estilo_de_toda_la_ventana(ventana, monkeypatch):
+    """Rehacer la hoja del marco repasaba todos los widgets de la ventana: ~250 ms parada
+    al entrar y salir del modo juego (medido con la autoprueba)."""
+    cambios = []
+    original = type(ventana.marco).setStyleSheet
+    monkeypatch.setattr(type(ventana.marco), "setStyleSheet",
+                        lambda self, hoja: cambios.append(self) or original(self, hoja))
+    ventana.aplicar_modo("compacto")
+    ventana.aplicar_modo("completo")
+    assert ventana.marco not in cambios
+    ventana.aplicar_opacidad(0.5)  # otra opacidad si la rehace
+    assert ventana.marco in cambios
 
 
 def test_la_tecla_del_buscador_sigue_al_atajo_de_ajustes(ventana):

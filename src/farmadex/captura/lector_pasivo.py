@@ -42,16 +42,29 @@ ALTO_PARA_REESCALAR = 1200
 PANTALLAS_SIN_INTERES = ("arsenal", "pausa", "menu", "carga", "codex")
 
 
+def motor_de_fondo(motor_ocr: str) -> str:
+    """El motor de la lectura pasiva: una sesion propia, salvo con el OCR de Windows."""
+    return motor_ocr if motor_ocr in ("winocr", "windows") else "fondo"
+
+
+# Tras el aviso de EE.log de una pantalla de reliquia, cuanto se deja de mirar como mucho
+# (si el aviso de que se cerro no llega). En esa pantalla no hay perfil ni inventario que
+# leer y su OCR entero competiria con la lectura de las recompensas.
+PAUSA_RELIQUIA_S = 20.0
+
+
 class LectorPasivo(QObject):
     """Vive en el hilo de captura. `iniciar()` arranca el temporizador."""
 
+    _reliquia_hasta = 0.0  # tambien a nivel de clase: hay pruebas que no pasan por __init__
     pagina_perfil = Signal(object)  # perfil_equipo.PaginaLeida
     pagina_inventario = Signal(object)  # inventario.PaginaInventario
     estado = Signal(str)
 
     def __init__(self, motor_ocr: str = "rapidocr", perfil: bool = True, inventario: bool = False, parent=None):
         super().__init__(parent)
-        self.motor = MotorOCR(motor_ocr)
+        self.motor = MotorOCR(motor_de_fondo(motor_ocr))
+        self._reliquia_hasta = 0.0  # monotonic hasta el que hay una pantalla de reliquia
         self.activo_perfil = perfil
         self.activo_inventario = inventario
         self.pantalla_log: str | None = None  # lo ultimo que EE.log dijo que esta abierto
@@ -90,7 +103,15 @@ class LectorPasivo(QObject):
     def cambiar_motor(self, motor_ocr: str) -> None:
         """El usuario cambio la lectura de pantalla en Ajustes (modo de OCR)."""
         MotorOCR.olvidar_fallo(motor_ocr)
-        self.motor = MotorOCR(motor_ocr)
+        self.motor = MotorOCR(motor_de_fondo(motor_ocr))
+
+    @Slot(str)
+    def evento(self, nombre: str) -> None:
+        """Los avisos de EE.log de la pantalla de reliquia: mientras este abierta, no se mira."""
+        if nombre in ("reliquia_abierta", "reliquia_recompensas"):
+            self._reliquia_hasta = time.monotonic() + PAUSA_RELIQUIA_S
+        elif nombre in ("reliquia_cerrada", "reliquia_elegida"):
+            self._reliquia_hasta = 0.0
 
     @Slot(str, str)
     def pantalla_juego(self, accion: str, nombre: str) -> None:
@@ -110,6 +131,8 @@ class LectorPasivo(QObject):
 
     def merece_mirar(self) -> bool:
         """Con EE.log delante: False si lo abierto es una pantalla sin nada que leer."""
+        if time.monotonic() < self._reliquia_hasta:
+            return False
         if self.pantalla_log is None or self.pantalla_log.startswith("?"):
             return True  # sin dato, o pantalla nueva sin clasificar: decide el OCR
         if self.pantalla_log in PANTALLAS_SIN_INTERES:

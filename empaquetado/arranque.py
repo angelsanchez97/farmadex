@@ -22,6 +22,15 @@ if "--comprobar-rapidfuzz" in sys.argv[1:]:
     lento = fuzz.ratio.__module__.endswith("_py") or process.cdist.__module__.endswith("_py")
     raise SystemExit(3 if lento else 0)
 
+# "Farmadex.exe --autoprueba <carpeta>": la pasada de pruebas como un jugador antes de publicar
+# (farmadex/autoprueba.py). Sin ventanas visibles, con sus propios datos y su propio candado de
+# instancia dentro de <carpeta>: no toca el Farmadex abierto ni los datos del usuario. Va antes de
+# importar la app porque tiene que fijar FARMADEX_DATOS antes de que se lean las rutas.
+if "--autoprueba" in sys.argv[1:] or "--autoprueba-carga" in sys.argv[1:]:
+    from farmadex.autoprueba import main as autoprueba
+
+    raise SystemExit(autoprueba(sys.argv[1:]))
+
 from farmadex.app import main  # noqa: E402
 
 raise SystemExit(main())

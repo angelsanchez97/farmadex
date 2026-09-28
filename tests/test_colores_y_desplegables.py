@@ -206,3 +206,40 @@ def test_copiar_desde_la_compacta(compacta):
     assert "WARWITHIN" in fila.detalle.text()
     compacta.lista._enlace("copiar:WARWITHIN", fila.detalle)
     assert copiados == ["WARWITHIN"] and QGuiApplication.clipboard().text() == "WARWITHIN"
+
+
+def test_la_lista_compacta_reutiliza_sus_filas_al_teclear(compacta, monkeypatch):
+    """Rehacer las filas (y su hoja de estilo) en cada busqueda dejaba la caja del modo
+    juego sin atender las teclas unos 60 ms (medido con la autoprueba)."""
+    from farmadex.ui import resultados_desplegables as modulo
+
+    compacta.caja.setText("ash prime")
+    compacta._buscar("ash prime")
+    lista = compacta.lista
+    creadas = []
+    original = modulo._Fila.__init__
+    monkeypatch.setattr(modulo._Fila, "__init__", lambda self, *a, **k: creadas.append(1) or original(self, *a, **k))
+    estilos = []
+    for fila in lista._reserva:
+        monkeypatch.setattr(fila, "setStyleSheet", lambda e, f=fila: estilos.append(f))
+    compacta.caja.setText("ash")
+    compacta._buscar("ash")
+    assert creadas == [] or len(lista._resultados) > len(lista._reserva) - len(creadas)
+    # Solo cambian de estilo las filas que cambian de estado (la abierta y la que lo era).
+    assert len(estilos) <= 2
+    # Las que sobran no se ven y no cuentan como resultados.
+    assert all(not f.isVisibleTo(compacta) for f in lista._reserva[len(lista._resultados):])
+    assert len(lista._filas) == len(lista._resultados)
+
+
+def test_la_lista_compacta_con_menos_resultados_esconde_las_filas_de_mas(compacta):
+    compacta.caja.setText("ash prime")
+    compacta._buscar("ash prime")
+    muchas = len(compacta.lista._filas)
+    compacta.caja.setText("sierra")
+    compacta._buscar("sierra")
+    lista = compacta.lista
+    assert len(lista._filas) == len(compacta._resultados) <= muchas
+    visibles = [f for f in lista._reserva if f.isVisibleTo(compacta)]
+    assert len(visibles) == len(compacta._resultados)
+    assert lista.abierta == 0 and lista._filas[0].detalle.isVisibleTo(compacta)

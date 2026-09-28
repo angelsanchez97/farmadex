@@ -276,3 +276,44 @@ def test_el_disparador_lee_con_el_primer_marcador_de_la_pantalla():
     time.sleep(0.05)
     _app().processEvents()
     assert len(disparos) == 2
+
+
+# -- lo leido de una reliquia no se cuela en la siguiente ------------------------------------
+
+
+def _rec(item_id, x, texto="texto"):
+    from farmadex.captura.reliquias import Recompensa
+
+    return Recompensa(item_id=item_id, nombre=str(item_id), texto_ocr=texto, caja=(x, 0, 100, 20))
+
+
+def test_por_atajo_la_reliquia_anterior_no_se_mezcla_con_la_nueva():
+    """Autoprueba: tras la pantalla de Zhuge/Tekko/Inaros/Octavia, el atajo sobre la de
+    Hildryn/Masseter/Larkspur/Revenant pinto 7 recompensas (las 3 viejas de mas)."""
+    from farmadex.captura.reliquias import LectorRecompensas, conservar_mejores
+
+    lector = LectorRecompensas.__new__(LectorRecompensas)
+    lector._previas = [_rec(1, 0), _rec(2, 200), _rec(3, 400), _rec(4, 600)]
+    lector._t_previas = time.monotonic()
+    nuevas = [_rec(11, 0), _rec(12, 150), _rec(13, 300), _rec(14, 450)]
+    assert lector._previas_de_esta_pantalla(nuevas) == []
+    assert [r.item_id for r in conservar_mejores(lector._previas_de_esta_pantalla(nuevas), nuevas)] == [11, 12, 13, 14]
+
+
+def test_en_la_misma_pantalla_se_sigue_completando_con_lo_anterior():
+    from farmadex.captura.reliquias import LectorRecompensas
+
+    lector = LectorRecompensas.__new__(LectorRecompensas)
+    lector._previas = [_rec(1, 0), _rec(2, 200)]
+    lector._t_previas = time.monotonic()
+    assert lector._previas_de_esta_pantalla([_rec(1, 0), _rec(0, 200)]) == lector._previas
+    assert lector._previas_de_esta_pantalla([]) == lector._previas  # un destello sin nada
+
+
+def test_lo_leido_hace_rato_no_cuenta():
+    from farmadex.captura.reliquias import LectorRecompensas
+
+    lector = LectorRecompensas.__new__(LectorRecompensas)
+    lector._previas = [_rec(1, 0)]
+    lector._t_previas = time.monotonic() - LectorRecompensas.VIDA_PREVIAS_S - 1
+    assert lector._previas_de_esta_pantalla([_rec(1, 0)]) == []

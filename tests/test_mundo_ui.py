@@ -422,3 +422,31 @@ def test_con_el_respaldo_de_de_se_avisa_en_suave(app):
     datos.fuente = "de"
     pestana.actualizar(datos)
     assert "worldState oficial de DE" in pestana.aviso.text()
+
+
+def test_el_mundo_escondido_se_pinta_al_ensenarse():
+    """El estado del mundo llega cada poco y pintarlo cuesta ~40 ms en el hilo de la
+    ventana: con la seccion Mundo sin verse se deja para cuando se ensene."""
+    from PySide6.QtWidgets import QApplication, QStackedWidget, QWidget
+
+    from farmadex.ui.pestana_mundo import PestanaMundo
+
+    QApplication.instance() or QApplication([])
+    pila = QStackedWidget()
+    otra = QWidget()
+    pestana = PestanaMundo()
+    pila.addWidget(otra)
+    pila.addWidget(pestana)
+    pila.setCurrentWidget(otra)
+    pila.show()
+    pintadas = []
+    original = pestana.pintar
+    pestana.pintar = lambda: pintadas.append(1) or original()
+    pestana.actualizar(_mundo())
+    assert pintadas == [] and pestana.mundo is not None
+    pila.setCurrentWidget(pestana)
+    assert pintadas == [1]
+    pila.setCurrentWidget(otra)
+    pila.setCurrentWidget(pestana)
+    assert pintadas == [1]  # sin datos nuevos no se repinta
+    pila.hide()
