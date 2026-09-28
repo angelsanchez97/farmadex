@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 import sqlite3
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, is_dataclass, replace
 
 from PySide6.QtCore import QObject, QTimer, Signal, Slot
 
@@ -82,6 +82,20 @@ class Recompensa:
     valor: float | None = None  # platino equivalente; None = no se pudo valorar
     mejor: bool = False  # la que conviene elegir
     nota: str = ""  # por que falta algo ("Sin precio: ...")
+
+
+def copiar(recompensas: list) -> list:
+    """Copias de las recompensas, para que quien las pinte pueda cambiar sus cajas.
+
+    La misma lista va al lector (que la guarda para completar la siguiente mirada),
+    a la ventana y al comparador. La ventana pasa las cajas a pixeles logicos y a
+    coordenadas del monitor del juego: si lo hacia sobre los mismos objetos, con
+    Windows al 125 % o el juego en el segundo monitor la siguiente mirada ya no
+    reconocia sus tarjetas y salian siete en vez de cuatro.
+    """
+    import copy
+
+    return [replace(r) if is_dataclass(r) else copy.copy(r) for r in recompensas]
 
 
 class LectorBase(QObject):
@@ -207,6 +221,9 @@ class LectorRecompensas(LectorBase):
     """
 
     leidas = Signal(list)  # list[Recompensa]
+    # Las tarjetas ya no estan en pantalla (la vigilancia no ve sus nombres): hay que
+    # esconder el panel aunque EE.log aun no haya dicho que la pantalla se cerro.
+    tarjetas_fuera = Signal()
 
     UMBRAL_CONOCIDAS = 70
     # Valores de partida tambien a nivel de clase: hay pruebas que construyen el
@@ -216,6 +233,10 @@ class LectorRecompensas(LectorBase):
     _t_previas: float | None = None
     _casador_reliquias: Casador | None = None
     _casador_piezas: Casador | None = None
+    _repetidas = 0
+    _ultima_firma: tuple | None = None
+    _t_vigilancia: float | None = None
+    _fallos_vigilancia = 0
 
     def __init__(self, motor_ocr: str = "rapidocr", parent=None):
         super().__init__(motor_ocr, CATEGORIAS_RECOMPENSA, parent)
@@ -261,9 +282,13 @@ class LectorRecompensas(LectorBase):
 
     @Slot(str)
     def evento(self, nombre: str) -> None:
+        if nombre in ("reliquia_abierta", "reliquia_cerrada", "reliquia_recompensas"):
+            self._repetidas = 0
+            self._ultima_firma = None
         if nombre in ("reliquia_abierta", "reliquia_cerrada"):
             self._previas = []
             self._confirmaciones = 0
+            self._t_vigilancia = None
         if nombre == "reliquia_abierta":
             self.conocidas = []
             self._casador_conocidas = None
@@ -336,15 +361,91 @@ class LectorRecompensas(LectorBase):
         if self._t_aviso is not None:  # si la pantalla ya se cerro, no hay nada que mirar
             self.leer_ahora()
 
+    # Con mas tarjetas esperadas que leidas (EE.log cuenta de mas, o una tarjeta que el
+    # OCR no saca), repetir la misma lectura no arregla nada: se para a la tercera igual.
+    REPETICIONES_MAX = 3
+
     def _toca_reintentar(self, halladas: int) -> bool:
         if self._t_aviso is None:
             return False
         if time.monotonic() - self._t_aviso > self.PLAZO_REINTENTO_S:
             return False
+        if self._repetidas >= self.REPETICIONES_MAX:
+            return False
         return halladas < (self._esperadas() or 1)
 
     def _reintentar(self) -> None:
-        QTimer.singleShot(self.REINTENTO_MS, self.leer_ahora)
+        QTimer.singleShot(self.REINTENTO_MS, self._reintento)
+
+    def _reintento(self) -> None:
+        # Si EE.log ya cerro la pantalla mientras esperaba, no se lee: seria leer otra
+        # cosa (una lectura por atajo no pasa por aqui, no programa reintentos).
+        if self._t_aviso is not None:
+            self.leer_ahora()
+
+    def _anotar_firma(self, recompensas: list) -> None:
+        firma = tuple(r.item_id for r in recompensas)
+        self._repetidas = self._repetidas + 1 if firma == self._ultima_firma else 1
+        self._ultima_firma = firma
+
+    # -- vigilancia: esconder el panel si la pantalla se va sin que EE.log lo diga --
+
+    VIGILANCIA_MS = 500
+    VIGILANCIA_S = 12.0  # lo que dura el panel en pantalla (etiquetas.SEGUNDOS_VISIBLE)
+    FALLOS_PARA_ESCONDER = 2  # dos miradas seguidas sin nombres: un destello no esconde nada
+
+    def _empezar_vigilancia(self) -> None:
+        arrancada = self._t_vigilancia is not None
+        self._t_vigilancia = time.monotonic()
+        self._fallos_vigilancia = 0
+        if not arrancada:
+            QTimer.singleShot(self.VIGILANCIA_MS, self._vigilar)
+
+    def _vigilar(self) -> None:
+        """Mirada barata a la fila de nombres (~30 ms) mientras el panel esta visible."""
+        if self._t_vigilancia is None or not self._previas:
+            self._t_vigilancia = None
+            return
+        if time.monotonic() - self._t_vigilancia > self.VIGILANCIA_S:
+            self._t_vigilancia = None
+            return
+        if not self._ocupado:
+            siguen = self._siguen_en_pantalla()
+            if siguen is False:
+                self._fallos_vigilancia += 1
+                if self._fallos_vigilancia >= self.FALLOS_PARA_ESCONDER:
+                    log.info("Los nombres de las tarjetas ya no estan en pantalla: se esconde el panel")
+                    self._t_vigilancia = None
+                    self._previas = []
+                    self.tarjetas_fuera.emit()
+                    return
+            elif siguen:
+                self._fallos_vigilancia = 0
+        QTimer.singleShot(self.VIGILANCIA_MS, self._vigilar)
+
+    def _siguen_en_pantalla(self) -> bool | None:
+        """True si la fila aun trae alguna de las recompensas pintadas; None si no se pudo mirar."""
+        if self.motor is None or getattr(self.motor, "fallo", None) or self.casador is None:
+            return None
+        self._ocupado = True
+        try:
+            ventana = pantalla.region_objetivo()
+            imagen = pantalla.capturar(rapidas.region_fila(ventana))
+            if imagen is None:
+                return None
+            lineas = rapidas.leer_fila(imagen, self.motor)
+            if not lineas:
+                return False
+            ids = {r.item_id for r in self._previas if r.item_id != SIN_IDENTIFICAR}
+            if not ids:
+                return True  # nada que comparar: con texto en la fila se da por visto
+            vistas = rapidas.casar_fila(rapidas.unir_filas(lineas), self._escalonado(), 4)
+            return any(r.item_id in ids for r in vistas)
+        except Exception:  # noqa: BLE001 - la vigilancia nunca tumba nada
+            log.debug("Fallo en la vigilancia de la fila de nombres", exc_info=True)
+            return None
+        finally:
+            self._ocupado = False
 
     def _leer(self) -> None:
         if not self._preparado():
@@ -381,7 +482,7 @@ class LectorRecompensas(LectorBase):
             )
             for r in fila
         ]
-        recompensas = conservar_mejores(self._previas_de_esta_pantalla(recompensas), recompensas)
+        recompensas = conservar_mejores(self._previas_de_esta_pantalla(recompensas), recompensas, ventana)
         self._previas = recompensas
         self._t_previas = time.monotonic()
         log.info(
@@ -392,7 +493,10 @@ class LectorRecompensas(LectorBase):
             t("{n} recompensas reconocidas", n=len(recompensas)) if recompensas else
             t("No se reconoció ninguna recompensa")
         )
-        self.leidas.emit(recompensas)
+        self.leidas.emit(copiar(recompensas))  # _previas no se comparte con nadie
+        self._anotar_firma(recompensas)
+        if recompensas:
+            self._empezar_vigilancia()
         if self._toca_reintentar(len(recompensas)):
             # Se pinta ya lo que hay y se completa con la siguiente mirada.
             self._reintentar()
@@ -530,7 +634,7 @@ def leer_franja(imagen, motor: MotorOCR, casador: Casador, conocidas: Casador | 
     t0 = time.perf_counter()
     seguros = casar_lineas(lineas, conocidas, umbral_conocidas) if conocidas else []
     resto = casar_lineas(lineas, casador, 80)
-    encontrados = seguros + _sin_solapar(resto, seguros)
+    encontrados = _combinar(seguros, resto)
     tiempos["casado"] = tiempos.get("casado", 0.0) + time.perf_counter() - t0
     tiempos["lineas"] = len(lineas)
     tiempos["conocidas"] = len(seguros)
@@ -559,7 +663,22 @@ def _letras(texto: str) -> int:
     return sum(c.isalnum() for c in texto or "")
 
 
-def conservar_mejores(previas: list, nuevas: list) -> list:
+def _ranura(caja, ventana) -> int | None:
+    """Posicion de la tarjeta en medios anchos de tarjeta desde el centro de la ventana.
+
+    No depende de cuantas tarjetas haya (con 3 caen en impares, con 4 en pares), y
+    dos miradas de la misma pantalla dan la misma aunque las cajas varien unos pixeles.
+    """
+    if ventana is None or not caja:
+        return None
+    ancho = rapidas.ANCHO_TARJETA * rapidas.alto_interfaz(ventana)
+    if ancho <= 0:
+        return None
+    centro = caja[0] + caja[2] / 2
+    return round(2 * (centro - (ventana.x + ventana.ancho / 2)) / ancho)
+
+
+def conservar_mejores(previas: list, nuevas: list, ventana=None) -> list:
     """Cada tarjeta se queda con su mejor lectura de esta pantalla.
 
     Se lee varias veces mientras la pantalla se pinta, para completar las tarjetas
@@ -568,17 +687,36 @@ def conservar_mejores(previas: list, nuevas: list) -> list:
     Prime", y esa lectura peor sustituyo a la buena. Ahora, para la misma tarjeta
     (misma posicion), una lectura nueva solo gana si identifica algo que la vieja
     no, o si lee al menos tanto texto como ella.
+
+    La misma tarjeta se reconoce por su posicion, por su ranura en la ventana
+    (`ventana`, si se da) o, si no, por ser el mismo objeto: nunca salen mas de
+    cuatro tarjetas.
     """
     if not previas:
         return nuevas
     salida = []
     usadas = set()
+
+    def libre(v):
+        return id(v) not in usadas
+
     for nueva in nuevas:
         centro = nueva.caja[0] + nueva.caja[2] / 2
-        vieja = next(
-            (v for v in previas if abs(v.caja[0] + v.caja[2] / 2 - centro) < max(v.caja[2], nueva.caja[2]) / 2),
-            None,
-        )
+        ranura = _ranura(nueva.caja, ventana)
+        # Primero el mismo objeto (el mas cercano, por si hay dos iguales); si no, la
+        # misma posicion; si no, la misma ranura.
+        vieja = None
+        if nueva.item_id != SIN_IDENTIFICAR:
+            iguales = [v for v in previas if libre(v) and v.item_id == nueva.item_id]
+            vieja = min(iguales, key=lambda v: abs(v.caja[0] + v.caja[2] / 2 - centro), default=None)
+        if vieja is None:
+            vieja = next(
+                (v for v in previas if libre(v)
+                 and abs(v.caja[0] + v.caja[2] / 2 - centro) < max(v.caja[2], nueva.caja[2]) / 2),
+                None,
+            )
+        if vieja is None and ranura is not None:
+            vieja = next((v for v in previas if libre(v) and _ranura(v.caja, ventana) == ranura), None)
         if vieja is not None:
             usadas.add(id(vieja))
         if vieja is None or vieja.item_id == SIN_IDENTIFICAR or vieja.item_id == nueva.item_id:
@@ -589,8 +727,14 @@ def conservar_mejores(previas: list, nuevas: list) -> list:
         else:
             salida.append(nueva)
     # Una tarjeta que ya se habia leido y esta mirada no ve (un destello, el cursor
-    # encima) no desaparece.
-    salida += [v for v in previas if id(v) not in usadas and v.item_id != SIN_IDENTIFICAR]
+    # encima) no desaparece, salvo que su hueco ya este ocupado.
+    for v in previas:
+        if not libre(v) or v.item_id == SIN_IDENTIFICAR or len(salida) >= 4:
+            continue
+        ranura = _ranura(v.caja, ventana)
+        if ranura is not None and any(_ranura(s.caja, ventana) == ranura for s in salida):
+            continue
+        salida.append(v)
     return sorted(salida, key=lambda r: r.caja[0])
 
 
@@ -663,18 +807,36 @@ def elegir_fila(
     return salida
 
 
+def _pisa(a, b) -> bool:
+    x, y, w, h = a
+    sx, sy, sw, sh = b
+    return min(x + w, sx + sw) > max(x, sx) and min(y + h, sy + sh) > max(y, sy)
+
+
+def _combinar(seguros: list[Reconocido], resto: list[Reconocido]) -> list[Reconocido]:
+    """Junta lo casado contra EE.log (`seguros`) y contra el catalogo (`resto`).
+
+    Donde los dos casan la misma linea gana el de mas puntuacion. Una conocida
+    solo gana a un casado de catalogo mejor si es casi exacta: EE.log trae lo de
+    toda la escuadra y la tarjeta propia puede ser otra pieza del mismo objeto
+    ("Receptor De Akbolto Prime" casaba con 79 el cañon de otro jugador y tapaba
+    el receptor, que el catalogo daba con 100).
+    """
+    from .recompensas_rapidas import SEGURA_CONOCIDA
+
+    vencidos = set()
+    for i, s in enumerate(seguros):
+        rivales = [r for r in resto if _pisa(r.caja, s.caja)]
+        if rivales and s.puntuacion < SEGURA_CONOCIDA and max(r.puntuacion for r in rivales) > s.puntuacion:
+            vencidos.add(i)
+    buenos = [s for i, s in enumerate(seguros) if i not in vencidos]
+    return buenos + _sin_solapar(resto, buenos)
+
+
 def _sin_solapar(nuevos: list[Reconocido], seguros: list[Reconocido]) -> list[Reconocido]:
-    """Descarta lo casado contra el catalogo entero que pisa una linea ya casada por EE.log."""
-    salida = []
-    for r in nuevos:
-        x, y, w, h = r.caja
-        pisa = any(
-            min(x + w, sx + sw) > max(x, sx) and min(y + h, sy + sh) > max(y, sy)
-            for sx, sy, sw, sh in (s.caja for s in seguros)
-        )
-        if not pisa:
-            salida.append(r)
-    return salida
+    """Descarta lo casado contra el catalogo entero que pisa una linea ya casada por EE.log
+    (las que `_combinar` ha dado por buenas: ya ganaron a lo que pisan)."""
+    return [r for r in nuevos if not any(_pisa(r.caja, s.caja) for s in seguros)]
 
 
 def texto_platino(r: Recompensa) -> str:

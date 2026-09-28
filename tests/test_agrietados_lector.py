@@ -99,6 +99,16 @@ def test_el_nombre_decide_que_hay_negativo(lector):
     # "Hexamag" son dos positivas (estado y retroceso): la tercera sin signo es la negativa.
     t = parsear_texto(["Boar Hexamag", "125.6%WeaponRecoil", "+129.4%StatusChance", "48.1%Multishot", "MR12"], lector)
     assert [n for _, _, n in _stats(t)] == [False, False, True]
+    # Pero el nombre tambien lo leyo el OCR: con tres estadisticas el signo queda en duda.
+    assert t.estadisticas[-1].signo_dudoso
+    assert not t.fiable
+    assert any("signo" in a for a in t.avisos)
+
+
+def test_con_cuatro_estadisticas_el_negativo_deducido_es_seguro(lector):
+    t = parsear_texto(["18", "Aklex Lexi-insiata", "+116%Puncture", "+190%Damage", "+2.7PunchThrough",
+                       "32.5%Damageto", "Infested", "MR8"], lector)
+    assert t.estadisticas[-1].negativo and not t.estadisticas[-1].signo_dudoso
     assert t.fiable, t.avisos
 
 

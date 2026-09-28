@@ -94,8 +94,10 @@ MERCADO_FINO = 5
 
 RAREZAS = {"Common": "comun", "Uncommon": "poco comun", "Rare": "rara"}
 ORDEN_RAREZA = {"comun": 0, "poco comun": 1, "rara": 2}
-# Los ducados delatan la rareza: 15/25 comun, 45/65 poco comun, 100 rara.
-RAREZA_POR_DUCADOS = {15: "comun", 25: "comun", 45: "poco comun", 65: "poco comun", 100: "rara"}
+# Solo de respaldo, para piezas sin tabla de reliquias: los ducados no fijan la rareza
+# (en el indice real las de 65 son casi todas raras, y hay piezas de 15 y 25 que son
+# poco comunes o raras en alguna reliquia). La rareza buena sale de la probabilidad.
+RAREZA_POR_DUCADOS = {15: "comun", 25: "comun", 45: "poco comun", 65: "rara", 100: "rara"}
 
 CONFIANZA_COMPLETA = "completa"  # precio o ducados conocidos
 CONFIANZA_PARCIAL = "parcial"  # solo rareza
@@ -170,16 +172,27 @@ class Veredicto:
         return f"{cabeza}: {self.motivo}"
 
 
-def rareza_de(indice_con: sqlite3.Connection, item_id: int, ducados: int | None) -> str | None:
-    """La rareza de la pieza: por sus ducados si los tiene, si no por las reliquias que la sueltan."""
-    if ducados in RAREZA_POR_DUCADOS:
-        return RAREZA_POR_DUCADOS[ducados]
-    fila = indice_con.execute(
-        "SELECT rareza, COUNT(*) AS n FROM reliquia_recompensas WHERE item_id = ? "
-        "AND rareza IS NOT NULL GROUP BY rareza ORDER BY n DESC LIMIT 1",
-        (item_id,),
-    ).fetchone()
-    return RAREZAS.get(fila[0], fila[0].lower()) if fila else None
+def rareza_de(indice_con: sqlite3.Connection | None, item_id: int, ducados: int | None) -> str | None:
+    """La rareza de la pieza: la mas rara con la que sale en alguna reliquia.
+
+    Se deduce de la probabilidad de cada refinamiento (`relaciones.rareza_reliquia`):
+    la columna `rareza` de las tablas de WFCD marca casi todo como "Uncommon". Sin
+    tabla de reliquias, por los ducados.
+    """
+    if indice_con is not None:
+        from ..datos.relaciones import rareza_reliquia
+
+        mejor = None
+        for refinamiento, probabilidad, rareza_tabla in indice_con.execute(
+            "SELECT refinamiento, probabilidad, rareza FROM reliquia_recompensas WHERE item_id = ?", (item_id,),
+        ):
+            rareza = rareza_reliquia(refinamiento, probabilidad, rareza_tabla)
+            rareza = RAREZAS.get(rareza, rareza.lower()) if rareza else None
+            if rareza in ORDEN_RAREZA and (mejor is None or ORDEN_RAREZA[rareza] > ORDEN_RAREZA[mejor]):
+                mejor = rareza
+        if mejor is not None:
+            return mejor
+    return RAREZA_POR_DUCADOS.get(ducados)
 
 
 def _valorar(p: Puntuacion) -> None:
@@ -547,8 +560,8 @@ class ServicioComparador(QObject):
                     "SELECT i.market_slug FROM reliquia_recompensas rr "
                     "JOIN items i ON i.id = rr.item_id JOIN items r ON r.id = rr.reliquia_id "
                     "WHERE r.unique_name = ? AND i.market_slug IS NOT NULL AND i.market_slug != '' "
-                    "GROUP BY i.market_slug ORDER BY MIN(CASE rr.rareza "
-                    "WHEN 'Rare' THEN 0 WHEN 'Uncommon' THEN 1 ELSE 2 END)",
+                    "GROUP BY i.market_slug ORDER BY MIN(rr.probabilidad), MIN(CASE rr.rareza "
+                    "WHEN 'Rare' THEN 0 WHEN 'Uncommon' THEN 1 ELSE 2 END)",  # las raras primero
                     (f"RELIQUIA/{valor}",),
                 ).fetchall()
             elif tipo == "recompensa":

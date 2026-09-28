@@ -67,12 +67,40 @@ def test_inventario_sintetico_como_lo_leyo_el_ocr(catalogo_inventario):
     assert pagina.pantalla == "inventario"
     por_nombre = {c.unique_name: c for c in pagina.cantidades}
     assert por_nombre["/w/NovaPrime/Neu"].cantidad == 12
-    assert por_nombre["/w/NovaPrime/Neu"].fiable
+    # "120WNED": la O se leyo como cero; puede ser 12 o el icono delante de "0 OWNED"...
+    # La cifra sale, pero no es fiable hasta que otra lectura la confirme.
+    assert not por_nombre["/w/NovaPrime/Neu"].fiable and por_nombre["/w/NovaPrime/Neu"].dudosa
     assert por_nombre["/w/AshPrime/Neu"].cantidad == 7
     # El icono se leyo como "Q": la cifra vale pero la lectura no es fiable.
     assert por_nombre["/p/VastoPrime/Rec"].cantidad == 9
     assert not por_nombre["/p/VastoPrime/Rec"].fiable
-    assert {c.unique_name for c in pagina.fiables} == {"/w/NovaPrime/Neu", "/w/AshPrime/Neu"}
+    assert {c.unique_name for c in pagina.fiables} == {"/w/AshPrime/Neu"}
+    # Una segunda lectura quieta con la misma cifra la confirma.
+    confirmador = INV.ConfirmadorCantidades()
+    confirmador.confirmar(pagina)
+    otra = INV.interpretar_lineas(lineas, INV.casador_inventario(con), con)
+    confirmador.confirmar(otra)
+    assert {c.unique_name for c in otra.fiables} == {"/w/NovaPrime/Neu", "/w/AshPrime/Neu", "/p/VastoPrime/Rec"}
+
+
+def test_780wned_no_es_fiable_y_una_cifra_distinta_no_confirma(catalogo_inventario):
+    # "780WNED" puede ser 78, o el icono ("7") pegado a "8 OWNED": no se guarda a la primera.
+    con, _ = catalogo_inventario
+    casador = INV.casador_inventario(con)
+
+    def pagina(texto):
+        return INV.interpretar_lineas([
+            _l("INVENTORY", 566, 36, 148, 24, 0.89), _l(texto, 287, 165, 82, 21, 0.78),
+            _l("NOVAPRIME", 261, 219, 99), _l("NEUROPTICS", 262, 235, 99), _l("BLUEPRINT", 261, 249, 87),
+        ], casador, con)
+
+    confirmador = INV.ConfirmadorCantidades()
+    primera = confirmador.confirmar(pagina("780WNED"))
+    assert primera.cantidades[0].cantidad == 78 and not primera.fiables
+    segunda = confirmador.confirmar(pagina("80WNED"))  # otra lectura dice 8: sigue en duda
+    assert not segunda.fiables
+    tercera = confirmador.confirmar(pagina("8 OWNED"))  # la palabra entera: fiable
+    assert [c.cantidad for c in tercera.fiables] == [8]
 
 
 def test_sin_titulo_no_se_lee_nada(catalogo_inventario):
@@ -137,10 +165,13 @@ def test_inventario_real_de_internet_720p_en_ingles(catalogo_inventario):
     # A 720p el reescalado 1,5x pierde una linea de cantidad; tal cual se leen las cuatro.
     pagina = INV.leer_pagina(imagen, motor, INV.casador_inventario(con), con, escala=1.0)
     assert pagina.pantalla == "inventario"
+    # Todas las cifras salen bien, pero la O de "OWNED" se lee como cero ("120WNED"), y
+    # asi no se distingue del icono leido como cifra: se confirman con otra lectura.
+    todas = {c.unique_name: c.cantidad for c in pagina.cantidades}
+    assert todas == {"/w/NovaPrime/Neu": 12, "/w/AshPrime/Neu": 7, "/w/NovaPrime/Sys": 5,
+                     "/p/VastoPrime/Rec": 9}
     fiables = {c.unique_name: c.cantidad for c in pagina.fiables}
-    assert fiables == {"/w/NovaPrime/Neu": 12, "/w/AshPrime/Neu": 7, "/w/NovaPrime/Sys": 5}
-    dudosas = {c.unique_name: c.cantidad for c in pagina.cantidades if not c.fiable}
-    assert dudosas == {"/p/VastoPrime/Rec": 9}  # "Q9OWNED": el icono se leyo como letra
+    assert set(fiables) <= set(todas) and all(todas[k] == v for k, v in fiables.items())
 
 
 # --- lector pasivo -------------------------------------------------------------------
@@ -183,8 +214,12 @@ def test_lector_pasivo_usa_un_solo_ocr_para_las_dos_lecturas(catalogo_inventario
     assert llamadas == [1]  # un OCR para las dos interpretaciones
     assert perfil is None and inventario is not None
     assert inventarios and inventarios[0].pantalla == "inventario"
-    assert [c.cantidad for c in inventarios[0].fiables] == [12]
+    # "120WNED" es dudosa: la primera lectura no la da por buena; la segunda, igual, si.
+    assert [c.cantidad for c in inventarios[0].cantidades] == [12] and not inventarios[0].fiables
     assert lector.lecturas == 1
+    _, otra = lector.leer_imagen(imagen)
+    assert [c.cantidad for c in otra.fiables] == [12]
+    llamadas.clear()
 
     # Con el inventario apagado la misma pantalla no produce nada.
     lector.activar_inventario(False)

@@ -137,7 +137,9 @@ def test_sin_precio_se_dice_y_el_veredicto_no_es_seguro(indice):
     assert v.resumen().startswith("Probablemente")
     p = v.puntuaciones[1]
     assert p.valor is None and p.confianza == comparador.CONFIANZA_PARCIAL
-    assert p.rareza == "poco comun"  # la rareza mas repetida entre sus reliquias
+    # La mas rara entre sus reliquias, por la probabilidad: en Radiante el 10 % es la
+    # rara aunque la tabla de WFCD diga "Uncommon".
+    assert p.rareza == "rara"
     assert "Sin precio" in recompensas[1].nota
 
 

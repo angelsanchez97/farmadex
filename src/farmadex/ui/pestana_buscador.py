@@ -188,9 +188,32 @@ def categoria_es(categoria: str, tipo: str | None = None) -> str:
     return t("{base} · pieza", base=base) if tipo == "Componente" else base
 
 
+# El glosario del indice entero (unas 170 filas) en memoria, de la ultima conexion: la
+# ficha de un objeto pide un termino por fila y cada consulta suelta, con el PC ocupado,
+# alargaba la congelacion de la ventana al abrirla.
+_glosario_memoria: tuple = (None, {})
+
+
+def _traducir(con, dominio: str, en: str | None) -> str:
+    """Lo mismo que `indice.traducir`, pero leyendo el glosario una sola vez por indice."""
+    global _glosario_memoria
+    if not en:
+        return ""
+    if con is None:
+        return en
+    con_guardada, tabla = _glosario_memoria
+    if con_guardada is not con:
+        try:
+            tabla = {(d, e): es for d, e, es in con.execute("SELECT dominio, en, es FROM glosario")}
+        except sqlite3.Error:
+            return indice.traducir(con, dominio, en)
+        _glosario_memoria = (con, tabla)
+    return tabla.get((dominio, en)) or en
+
+
 def _glosa(con, dominio: str, en: str | None) -> str:
     """Termino del glosario del indice en el idioma de la interfaz."""
-    return glosa(indice.traducir(con, dominio, en), en)
+    return glosa(_traducir(con, dominio, en), en)
 
 
 class DelegadoResultado(QStyledItemDelegate):
@@ -341,6 +364,12 @@ class PestanaBuscador(QWidget):
         self._sugerencias_hechas: dict[str, list[dict]] = {}
         # Imagenes que la ficha abierta esta esperando (al llegar, se repinta).
         self._imagenes_ficha: set[str] = set()
+        # Imagenes que al llegar solo cambian el pixmap de una pieza (casillas, pedestal):
+        # nombre -> [(poner_imagen, lado)]. No hace falta rehacer la ficha entera por ellas.
+        self._destinos_imagen: dict[str, list] = {}
+        # Donde cae cada reliquia (ruta_prime.misiones_para): una ficha de set o de reliquia
+        # la pide varias veces por reliquia; se guarda mientras no cambie el indice.
+        self._cache_misiones: dict = {}
         self.pedestal: Pedestal | None = None
         self._teclas = _FiltroTeclas(self)
 
@@ -500,6 +529,7 @@ class PestanaBuscador(QWidget):
         self._sugerencias_hechas.clear()
         if listo:
             self.con = indice.conectar()
+            self._cache_misiones.clear()
             self.caja.setFocus()
             if not self.caja.text().strip():
                 self._poner_portada()
@@ -592,6 +622,12 @@ class PestanaBuscador(QWidget):
 
     def _imagen_lista(self, nombre: str) -> None:
         self.lista.viewport().update()
+        for poner, lado in self._destinos_imagen.pop(nombre, ()):
+            try:
+                poner(imagenes().pixmap(nombre, lado))
+            except RuntimeError:
+                # La pieza ya no existe (se abrio otra ficha entre tanto).
+                pass
         if nombre in self._imagenes_ficha:
             self._imagenes_ficha.discard(nombre)
             if self.pedestal is not None and self._datos_actuales and \
@@ -601,13 +637,18 @@ class PestanaBuscador(QWidget):
                 # Varias imagenes de un set llegan casi a la vez: se repinta una sola vez.
                 self._repintado_imagenes.start()
 
-    def _pedir_imagen(self, nombre: str | None, lado: int):
-        """La imagen si ya esta en disco; si no, se pide y se apunta para repintar al llegar."""
+    def _pedir_imagen(self, nombre: str | None, lado: int, destino=None):
+        """La imagen si ya esta en disco; si no, se pide y se apunta para repintar al llegar.
+        Con `destino` (el poner_imagen de una pieza) al llegar solo se cambia esa imagen;
+        sin el, va dentro del HTML de la ficha y hay que rehacerla."""
         if not nombre:
             return None
         mapa = imagenes().pixmap(nombre, lado)
         if mapa is None:
-            self._imagenes_ficha.add(nombre)
+            if destino is not None:
+                self._destinos_imagen.setdefault(nombre, []).append((destino, lado))
+            else:
+                self._imagenes_ficha.add(nombre)
         return mapa
 
     # -- teclas ------------------------------------------------------------
@@ -1119,6 +1160,7 @@ class PestanaBuscador(QWidget):
         self._sin_resultados = None
         self._slug_actual = ""
         self._imagenes_ficha.clear()
+        self._destinos_imagen.clear()
         self._aparcar()
         self.ficha.clear()
         self.precios.hide()
@@ -1710,6 +1752,7 @@ class PestanaBuscador(QWidget):
         self._aparcar()
         f.vaciar()
         self._imagenes_ficha.clear()
+        self._destinos_imagen.clear()
         item, padre = datos["item"], datos["padre"]
         pasos = self._pasos_ruta(item["id"])
         # Un set sin fuentes propias ya dice pieza a pieza donde sale ("Donde se consigue"):
@@ -1727,7 +1770,8 @@ class PestanaBuscador(QWidget):
         # En una sola columna (la ventana de 1100x700) la imagen va pequena y al lado del
         # nombre: lo que se busca (como y donde conseguirlo) tiene que verse sin bajar.
         self.pedestal = Pedestal(96 if estrecha else 220)
-        self.pedestal.poner_imagen(self._pedir_imagen(item.get("imagen"), px(120 if estrecha else 240, False)))
+        self.pedestal.poner_imagen(self._pedir_imagen(item.get("imagen"), px(120 if estrecha else 240, False),
+                                                      self.pedestal.poner_imagen))
         alinear = Qt.AlignLeft if estrecha else Qt.AlignHCenter
         nombre = QVBoxLayout()
         nombre.setSpacing(px(4 if estrecha else 10, False))
@@ -1976,7 +2020,7 @@ class PestanaBuscador(QWidget):
             casilla = CasillaC(nombre_idioma(c), t("tú estás aquí") if c["id"] == actual else "", progreso,
                                marcada=c["id"] == actual, lado_imagen=46)
             casilla.nombre.setProperty("fuenteC", nombre_idioma(c))
-            casilla.poner_imagen(self._pedir_imagen(c.get("imagen"), px(46, False)))
+            casilla.poner_imagen(self._pedir_imagen(c.get("imagen"), px(46, False), casilla.poner_imagen))
             casilla.setMinimumWidth(px(84, False))
             casilla.pulsado.connect(lambda item_id=c["id"]: self.abrir(item_id))
             rejilla.addWidget(casilla, i // por_fila, i % por_fila)
@@ -1994,7 +2038,8 @@ class PestanaBuscador(QWidget):
             return None
         p = PALETA
         refinamiento, escuadra = ruta_prime.preferencias()
-        ruta = ruta_prime.ruta_pieza(self.con, item_id, refinamiento, escuadra)
+        ruta = ruta_prime.ruta_pieza(self.con, item_id, refinamiento, escuadra,
+                                      cache=self._cache_misiones)
         if ruta is not None:
             reliquia = ruta["reliquia"]
             m = ruta["mision"]
@@ -2170,7 +2215,8 @@ class PestanaBuscador(QWidget):
         refinamiento, escuadra = ruta_prime.preferencias()
         filas = []
         for c in componentes:
-            ruta_p = ruta_prime.ruta_pieza(self.con, c["id"], refinamiento, escuadra)
+            ruta_p = ruta_prime.ruta_pieza(self.con, c["id"], refinamiento, escuadra,
+                                           cache=self._cache_misiones)
             imagen = ""
             if c.get("imagen"):
                 ruta_img = imagenes().ruta(c["imagen"])
@@ -2377,7 +2423,7 @@ class PestanaBuscador(QWidget):
                 for ref in REFINAMIENTOS
                 if ref in r["probabilidades"]
             )
-            misiones_r = relaciones.misiones_de(self.con, r["reliquia_id"])[:3]
+            misiones_r = ruta_prime._misiones(self.con, r["reliquia_id"], self._cache_misiones)[:3]
             donde = "".join(
                 f"<div style='color:{p['suave']}'>{enlaces_wiki.donde(m, p['suave'])}"
                 + (f" &middot; {glosario.enlace_mision(m.get('modo'), m['mision'], p['suave'], m['rotacion'])}"

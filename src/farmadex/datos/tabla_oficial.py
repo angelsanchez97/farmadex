@@ -175,6 +175,12 @@ def _leer_misiones(seccion: str) -> dict:
     info = None
     rotacion = None
     raras = 0
+    # Los eventos repiten la cabecera entera ("Event: Europa/Cryotic Front (Capture)"
+    # sale tres veces con los mismos premios): la repeticion se junta con la primera y
+    # solo aporta las filas (rotacion, objeto, probabilidad) que aquella no tenga.
+    por_cabecera: dict[str, dict] = {}
+    vistas: dict[int, set] = {}
+    repetida = False
     for tipo, textos in _filas(seccion):
         if tipo == "th":
             rot = RE_ROTACION.match(textos[0])
@@ -190,6 +196,11 @@ def _leer_misiones(seccion: str) -> dict:
                 raras += 1
                 info = None
                 continue
+            cabecera = " ".join(textos[0].split())
+            if cabecera in por_cabecera:
+                info, rotacion, repetida = por_cabecera[cabecera], None, True
+                continue
+            repetida = False
             # Mismos nombres de nodo que WFCD, comprobado contra su missionRewards.json:
             # "(Variant) Annihilation" -> "Variant Annihilation"; alijos y tablas "Extra"
             # con su sufijo; y un nodo repetido (Duviri Normal/Hard) lleva el modo detras.
@@ -209,11 +220,17 @@ def _leer_misiones(seccion: str) -> dict:
                 continue
             info = {"gameMode": modo, "isEvent": bool(m.group("evento")), "rewards": []}
             planeta[nodo] = info
+            por_cabecera[cabecera] = info
         elif info is not None:
             premio = _premio(textos)
             if not premio:
                 raras += 1
                 continue
+            clave = (rotacion, premio["itemName"], premio["chance"])
+            ya = vistas.setdefault(id(info), set())
+            if repetida and clave in ya:
+                continue
+            ya.add(clave)
             if rotacion is None:
                 info["rewards"].append(premio)
             else:
@@ -331,6 +348,14 @@ RE_PIEZA_PRIME = re.compile(
 )
 
 
+def _nombre_reliquia(nombre) -> str:
+    """'a1' -> 'A1' y 'iv' -> 'IV', pero 'ETERNA' -> 'Eterna': solo los codigos van en mayusculas."""
+    texto = str(nombre or "").strip()
+    if re.fullmatch(r"[A-Za-z]{0,2}\d+|[IVXivx]+", texto):
+        return texto.upper()
+    return texto.title()
+
+
 def _categoria_por_piezas(componentes: list[str]) -> str:
     """Warframe si tiene chasis, neuropticas o sistemas (salvo piezas de companero)."""
     piezas = set(componentes)
@@ -376,8 +401,8 @@ class CreadorSinteticos:
         """Una reliquia por nombre canonico que no este ya en el catalogo."""
         antes = len(self.creados)
         for r in reliquias:
-            canonico = f"{str(r.get('tier', '')).title()} {str(r.get('relicName', '')).upper()}".strip()
-            if not canonico or normalizar(canonico) in self.imp.reliquias:
+            canonico = f"{str(r.get('tier', '')).title()} {_nombre_reliquia(r.get('relicName'))}".strip()
+            if not canonico or canonico.endswith(" Relic") or normalizar(canonico) in self.imp.reliquias:
                 continue
             era = canonico.split()[0]
             imagen = self._imagen_de(

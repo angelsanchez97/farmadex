@@ -39,7 +39,7 @@ log = obtener("actualizador.al_abrir")
 # El arranque que hace el propio instalador al acabar: no se vuelve a mirar nada.
 ARGUMENTO_TRAS_ACTUALIZAR = "--tras-actualizar"
 # Lo que se espera a GitHub antes de arrancar normal. Sin red no se nota.
-PLAZO_CONSULTA_S = 3.0
+PLAZO_CONSULTA_S = 1.5
 
 
 def motivo_para_no_hacerlo(config: dict, argumentos: list[str], es_instalada=None) -> str | None:
@@ -107,7 +107,7 @@ def consultar_ultima(plazo: float = PLAZO_CONSULTA_S, comprobador: ComprobadorAp
     hilo.start()
     hilo.join(plazo)
     if hilo.is_alive():
-        log.info("GitHub no ha contestado en %.0f s: se arranca normal", plazo)
+        log.info("GitHub no ha contestado en %.1f s: se arranca normal", plazo)
         return None
     if propio:
         comprobador.cerrar()
@@ -282,7 +282,7 @@ def _actualizar_al_abrir(config, argumentos, en_bandeja, es_instalada, carpeta, 
         log.info("Al abrir: no se pregunta a GitHub (comprobar actualizaciones esta desactivado)")
         return False
 
-    log.info("Al abrir: se mira si hay version nueva (plazo %.0f s)", plazo)
+    log.info("Al abrir: se mira si hay version nueva (plazo %.1f s)", plazo)
     version = consultar_ultima(plazo, comprobador)
     if version is None:
         log.info("Al abrir: no hay version nueva (o no se pudo mirar); se arranca normal")

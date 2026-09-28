@@ -66,6 +66,8 @@ EQUIPOS = [
     ("/w/Soma", "Soma Prime", "Soma Prime", "Primary", "Rifle", {"arma": {"critico": 0.30, "estado": 0.10}}),
     ("/w/Braton", "Braton", "Braton", "Primary", "Rifle", {"arma": {"critico": 0.05, "estado": 0.06}}),
     ("/w/Tonkor", "Tonkor", "Tonkor", "Primary", "Launcher", {"arma": {"critico": 0.25, "estado": 0.25}}),
+    # Arma recien salida: el indice aun no trae su critico ni su estado.
+    ("/w/Nueva", "Nueva", "Nueva", "Primary", "Rifle", {"arma": {"cadencia": 5.0}}),
     ("/w/Excalibur", "Excalibur", "Excalibur", "Warframes", "Warframe",
      {"warframe": {"vida": 300, "escudo": 300, "armadura": 225}}),
     ("/w/Inaros", "Inaros", "Inaros", "Warframes", "Warframe", {"warframe": {"vida": 550, "escudo": 0, "armadura": 200}}),
@@ -178,6 +180,16 @@ def test_critico_de_sobra_en_un_arma_sin_critico(indice):
     sobra = [p for p in ev.mal if p.texto.startswith("Sobra")]
     assert sobra and "Punto de impacto" in sobra[0].texto and "5 %" in sobra[0].texto
     assert set(sobra[0].ids) == {ids["Point Strike"], ids["Vital Sense"]}
+
+
+def test_arma_sin_critico_ni_estado_no_se_da_por_cero(indice):
+    # Sin el dato no se sabe si el arma es de critico: no se dice que "sobra" nada ni que
+    # "tiene 0 %"; las reglas de critico y estado se saltan.
+    con, ids = indice
+    ev = E.evaluar(con, ids["Nueva"], [ids["Serration"], ids["Point Strike"], ids["Vital Sense"]])
+    textos = " ".join(p.texto for p in ev.mal + ev.bien)
+    assert "Sobra" not in textos and "0 %" not in textos
+    assert "crítico" not in textos.lower()
 
 
 def test_versiones_del_mismo_mod_juntas(indice):

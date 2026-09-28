@@ -784,9 +784,24 @@ class PestanaPrimes(QWidget):
 
     # -- rejilla -------------------------------------------------------------------
 
+    # Rejilla o marcas pendientes de hacer porque la pestana no se ve (ver `_aplazar`).
+    _rejilla_pendiente = False
+    _marcas_pendientes = False
+
+    def _aplazar(self) -> bool:
+        """Dentro de la ventana y sin verse (otra seccion delante), montar la rejilla entera
+        congela la ventana al arrancar o al cambiar de tema en un PC normal aunque el usuario
+        no vaya a abrir Primes: se deja para su siguiente `showEvent`."""
+        return self.window() is not self and not self.isVisible()
+
     def _construir_rejilla(self) -> None:
         if not hasattr(self, "fluida"):
             return
+        if self._aplazar():
+            self._rejilla_pendiente = True
+            return
+        self._rejilla_pendiente = False
+        self._marcas_pendientes = False
         while self.fluida.count():
             elemento = self.fluida.takeAt(0)
             viejo = elemento.widget()
@@ -916,6 +931,12 @@ class PestanaPrimes(QWidget):
 
     def showEvent(self, evento):  # noqa: N802 - firma de Qt
         super().showEvent(evento)
+        if self._rejilla_pendiente:
+            # Primera visita (o primera tras cambiar idioma/tema/indice): se monta ahora.
+            self._construir_rejilla()
+            return
+        if self._marcas_pendientes:
+            self.refrescar_marcas()
         # Lo marcado o conseguido desde otra pestana cambia el orden: se aplica al volver
         # (no mientras se marca aqui, para que la caja no salte debajo del raton).
         if (self.orden.currentData() or "nombre") != "nombre":
@@ -1095,6 +1116,10 @@ class PestanaPrimes(QWidget):
         """Pinta las casillas segun los objetivos y rehace el resultado."""
         if self._cambiando:
             return
+        if self._aplazar():
+            self._marcas_pendientes = True
+            return
+        self._marcas_pendientes = False
         objetivos = self._objetivos()
         hay_perfil = self.indice is not None and perfil.hay_perfil(self.usuario)
         for caja in self._cajas:

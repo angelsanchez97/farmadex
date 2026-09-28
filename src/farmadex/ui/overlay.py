@@ -718,6 +718,9 @@ class VentanaOverlay(QWidget):
         self.lector_build.leida.connect(self._build_leida)
         self.lector_agrietado.leida.connect(self._agrietado_leido)
         self.lector_recompensas.leidas.connect(self._pintar_recompensas)
+        # La pantalla de recompensas se fue y EE.log aun no lo ha dicho: fuera el panel.
+        if hasattr(self.lector_recompensas, "tarjetas_fuera"):  # las pruebas lo cambian por uno falso
+            self.lector_recompensas.tarjetas_fuera.connect(self._tarjetas_fuera)
         self.lector_cursor.encontrado.connect(self._abrir_desde_cursor)
         # Una lectura bajo el cursor a la vez: pulsar el atajo muchas veces seguidas
         # encolaba una lectura entera por pulsacion y acababa tumbando el programa.
@@ -1411,7 +1414,8 @@ class VentanaOverlay(QWidget):
             return
         try:
             n = estado_inventario.guardar(self.objetivos.usuario, fiables, pagina.pantalla)
-            cambios = estado_inventario.sincronizar_objetivos(self.objetivos.usuario)
+            cambios = estado_inventario.sincronizar_objetivos(
+                self.objetivos.usuario, solo={c.unique_name for c in fiables})
         except Exception:  # noqa: BLE001
             log.exception("No se pudo guardar la lectura del inventario")
             return
@@ -1576,6 +1580,9 @@ class VentanaOverlay(QWidget):
         self._ultima_lectura = (time.time(), len(recompensas))
         if not recompensas:
             return
+        from ..captura.reliquias import copiar
+
+        recompensas = copiar(recompensas)  # la misma lista va al comparador, en otro hilo
         t0 = time.perf_counter()
         con = indice.conectar()
         try:
@@ -1622,6 +1629,10 @@ class VentanaOverlay(QWidget):
         )
         log.info("Reliquia: completar %.1f ms, pintar %.1f ms; nombres en pantalla %s desde el aviso de EE.log%s",
                  t_completar * 1000, (time.perf_counter() - t0) * 1000, desde, desde_pantalla)
+
+    def _tarjetas_fuera(self) -> None:
+        """Metodo (no lambda) para que Qt lo ejecute en el hilo de la ventana."""
+        self.etiquetas.hide()
 
     def _veredicto_recompensas(self, recompensas: list, veredicto) -> None:
         """Llega despues, con los precios: solo añade la marca de "mejor" a lo que ya se ve."""
@@ -2270,22 +2281,33 @@ class VentanaOverlay(QWidget):
             f"color: {PALETA['aviso']}; border: 1px solid {PALETA['aviso']};"
             " border-radius: 6px; padding: 4px 8px;"
         )
-        self.buscador.repintar()
-        self.objetivos.refrescar()
-        self.primes.repintar()
-        self.perfil.repintar()
-        self.compacta.repintar()
-        self.ajustes.repintar()
-        self.video.repintar()
-        self.web.repintar()
-        self.builds.repintar()
-        self.agrietados.repintar()
-        self.tablero.repintar()
+        # Solo se repinta ya lo que se ve; cada pestana escondida, al volver a ensenarse
+        # (repintar las 12 congelaba la ventana medio segundo o mas en un PC normal).
+        for pagina, metodo in (
+            (self.buscador, "repintar"), (self.objetivos, "refrescar"), (self.primes, "repintar"),
+            (self.perfil, "repintar"), (self.compacta, "repintar"), (self.ajustes, "repintar"),
+            (self.video, "repintar"), (self.web, "repintar"), (self.builds, "repintar"),
+            (self.agrietados, "repintar"), (self.tablero, "repintar"),
+        ):
+            self._repintar_al_ver(pagina, metodo)
         # Las piezas del estilo C se vuelven a medir con la escala nueva y se repintan.
         refrescar_todo(self)
         # Mundo genera su HTML con la paleta dentro; retraducir lo vuelve a pintar entero.
         self.mundo.retraducir()
         self._regenerar_avisos()
+
+    def _repintar_al_ver(self, pagina: QWidget, metodo: str) -> None:
+        """Llama a `pagina.metodo()` ya si se ve (o vive fuera de la ventana), o en su
+        siguiente evento Show si esta escondida dentro de ella."""
+        if pagina.window() is self and not pagina.isVisible():
+            pendientes = getattr(self, "_repintes_pendientes", None)
+            if pendientes is None:
+                pendientes = self._repintes_pendientes = {}
+            if pagina not in pendientes:
+                pagina.installEventFilter(self)
+            pendientes[pagina] = metodo
+            return
+        getattr(pagina, metodo)()
 
     # -- arrastre de la ventana ----------------------------------------------
 
@@ -2320,6 +2342,10 @@ class VentanaOverlay(QWidget):
         """El marco cubre toda la ventana: los eventos de raton en el borde llegan a el,
         no a self. Se interceptan aqui antes de que el marco los ignore y burbujeen hacia
         el arrastre de la cabecera, que sigue viviendo en mousePressEvent/mouseMoveEvent."""
+        pendientes = getattr(self, "_repintes_pendientes", None)
+        if pendientes and evento.type() == QEvent.Show and objeto in pendientes:
+            objeto.removeEventFilter(self)
+            getattr(objeto, pendientes.pop(objeto))()
         if objeto is self.marco:
             tipo = evento.type()
             if tipo == QEvent.MouseMove:
@@ -2533,9 +2559,10 @@ def _a_logicas(recompensas: list) -> list:
     escala = pantalla.escala_fisica_logica()
     if abs(escala - 1.0) < 0.01:
         return recompensas
-    for r in recompensas:
-        r.caja = tuple(round(v / escala) for v in r.caja)
-    return recompensas
+    from dataclasses import replace
+
+    # Copias: el lector guarda estas mismas recompensas para completar la siguiente mirada.
+    return [replace(r, caja=tuple(round(v / escala) for v in r.caja)) for r in recompensas]
 
 
 def ruta_icono() -> "Path":

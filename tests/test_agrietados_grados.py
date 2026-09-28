@@ -93,3 +93,42 @@ def test_todos_los_atributos_tienen_prefijo_y_sufijo_distintos():
     assert len(set(sufijos)) == len(sufijos)
     for a in grados.ATRIBUTOS:
         assert any(v is not None for v in a.base.values()), a.slug
+
+
+def test_valor_redondeado_a_una_decima_que_cruza_grados_ensena_el_rango():
+    # Atravesar en rifle: una decima de metro son varios puntos de desviacion. Si el
+    # juego ensena 2.7 m, el valor real esta entre 2.65 y 2.75, y eso puede ser dos grados.
+    minimo, maximo = grados.rango("punch_through", "rifle", 1.0, 2, 1)
+    centro = (minimo + maximo) / 2
+    # Un valor mostrado cuya decima cae a caballo entre B y B+ (desviacion 1.5 %).
+    real = centro * 1.015
+    mostrado = round(real, 1)
+    g_bajo = grados.grado(mostrado - 0.05, minimo, maximo)
+    g_alto = grados.grado(mostrado + 0.0499, minimo, maximo)
+    ev = grados.evaluar([("punch_through", mostrado, False), ("multishot", 60.0, False),
+                         ("zoom", -20.0, True)], "rifle", 1.0)[0]
+    if g_bajo != g_alto:
+        assert ev.grado == f"{g_bajo}–{g_alto}"
+    # En todo el rango, el grado del valor real siempre esta dentro de lo que se ensena.
+    orden = [g for g, _, _ in reversed(grados.GRADOS)]
+    for i in range(201):
+        real = minimo + (maximo - minimo) * i / 200
+        ensenado = grados.grado_con_margen(round(real, 1), minimo, maximo, False,
+                                           grados.paso_de_redondeo("punch_through", round(real, 1)))
+        verdad = grados.grado(real, minimo, maximo)
+        if verdad is None or ensenado is None:
+            continue
+        partes = ensenado.split("–")
+        assert orden.index(partes[0]) <= orden.index(verdad) <= orden.index(partes[-1]), (real, ensenado, verdad)
+
+
+def test_multiplicador_de_faccion_usa_media_centesima():
+    assert grados.paso_de_redondeo("damage_vs_grineer", 39.0) == 0.5
+    assert grados.paso_de_redondeo("damage_vs_grineer", 39.4) == 0.05
+    assert grados.paso_de_redondeo("multishot", 91.3) == 0.05
+    assert grados.paso_de_redondeo("multishot", 91.35) == 0.005
+
+
+def test_valor_lejos_del_borde_da_una_sola_letra():
+    minimo, maximo = grados.rango("multishot", "shotgun", 1.4, 3, 1)
+    assert grados.grado_con_margen(163.3, minimo, maximo, False, 0.05) == "A-"

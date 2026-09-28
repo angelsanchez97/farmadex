@@ -168,7 +168,7 @@ def test_el_resultado_de_una_lectura_vieja_no_abre_la_ficha(monkeypatch):
     region = SimpleNamespace(ancho=100, alto=100)
     monkeypatch.setattr(lector, "_preparado", lambda: True)
     monkeypatch.setattr(cursor.pantalla, "region_juego", lambda: None)
-    monkeypatch.setattr(cursor.pantalla, "region_alrededor_del_cursor", lambda limite=None: region)
+    monkeypatch.setattr(cursor.pantalla, "region_alrededor_del_cursor", lambda *a, limite=None: region)
     monkeypatch.setattr(cursor.pantalla, "capturar", lambda r: object())
     hallado = SimpleNamespace(caja=(40, 40, 20, 20), puntuacion=95, item_id=7, nombre="Ash Prime", texto_ocr="ASH")
     monkeypatch.setattr(lector, "_leer_protegido", lambda imagen, umbral: [hallado])
@@ -196,7 +196,7 @@ def _leer_con(monkeypatch, hallados, cursor_xy, region):
     lector = LectorCursor("rapidocr")
     monkeypatch.setattr(lector, "_preparado", lambda: True)
     monkeypatch.setattr(cursor.pantalla, "region_juego", lambda: None)
-    monkeypatch.setattr(cursor.pantalla, "region_alrededor_del_cursor", lambda limite=None: region)
+    monkeypatch.setattr(cursor.pantalla, "region_alrededor_del_cursor", lambda *a, limite=None: region)
     monkeypatch.setattr(cursor.pantalla, "capturar", lambda r: object())
     monkeypatch.setattr(cursor.pantalla, "_posicion_cursor", lambda: cursor_xy)
     monkeypatch.setattr(lector, "_leer_protegido", lambda imagen, umbral: hallados)
@@ -230,3 +230,31 @@ def test_alineado_con_raton():
     assert alineado_con_raton((100, 10, 80, 12), (140, 60), 620)  # encima del texto
     assert alineado_con_raton((100, 10, 80, 12), (205, 60), 620)  # un poco a la derecha
     assert not alineado_con_raton((100, 10, 80, 12), (300, 60), 620)  # la carta de al lado
+
+
+def test_recuadro_se_escala_con_el_alto_del_juego():
+    # A 4K los nombres miden el doble que a 1080p: el recuadro tambien.
+    assert cursor.tamano_recuadro(1080) == (620, 170)
+    assert cursor.tamano_recuadro(2160) == (1240, 340)
+    assert cursor.tamano_recuadro(1440) == (826, 226)
+    assert cursor.tamano_recuadro(720) == (413, 113)
+    assert cursor.tamano_recuadro(None) == (620, 170)
+
+
+def test_lectura_pide_el_recuadro_escalado(monkeypatch):
+    pedido = {}
+
+    def region(ancho=620, alto=170, limite=None):
+        pedido["tam"] = (ancho, alto)
+        return None
+
+    monkeypatch.setattr(cursor.pantalla, "region_juego", lambda: cursor.pantalla.Region(0, 0, 3840, 2160))
+    monkeypatch.setattr(cursor.pantalla, "region_alrededor_del_cursor", region)
+    monkeypatch.setattr(cursor.pantalla, "capturar", lambda r: None)
+    lector = cursor.LectorCursor.__new__(cursor.LectorCursor)
+    monkeypatch.setattr(lector, "_preparado", lambda: True, raising=False)
+    senales = []
+    lector.estado = type("S", (), {"emit": lambda self, x: senales.append(x)})()
+    lector.candidatos = type("S", (), {"emit": lambda self, x: senales.append(x)})()
+    lector._leer()
+    assert pedido["tam"] == (1240, 340)

@@ -897,11 +897,11 @@ class PestanaMundo(QWidget):
             glosario.aplicar(bloque.rotulo, termino)
         self._nueva_pagina_ajustes()
         self._pintar_aviso()
-        self.pintar()
+        self._pintar_o_aplazar()
 
     def repintar(self) -> None:
         """Tras cambiar de tema: el HTML lleva los colores dentro."""
-        self.pintar()
+        self._pintar_o_aplazar()
 
     # -- avisos de Windows ------------------------------------------------------------
 
@@ -981,7 +981,7 @@ class PestanaMundo(QWidget):
         """Tras anadir o completar un objetivo: las fisuras marcadas cambian."""
         self._eras_necesarias = self._calcular_eras()
         self._marcar_baro()
-        self.pintar()
+        self._pintar_o_aplazar()
 
     def _calcular_eras(self) -> dict[str, list[str]]:
         if self.indice is None or self.usuario is None:
@@ -1019,15 +1019,20 @@ class PestanaMundo(QWidget):
             self._eras_necesarias = self._calcular_eras()
         self._marcar_baro()
         self._pintar_aviso()
-        if self.window() is not self and not self.isVisible():
-            # Dentro de la ventana y sin verse (otra seccion delante, o Farmadex escondido):
-            # pintarla cuesta ~40 ms y llega cada poco; se pinta al volver a ensenarse.
-            self._pintar_pendiente = True
-        else:
-            self.pintar()
+        self._pintar_o_aplazar()
         self._avisar()
 
     _pintar_pendiente = False
+
+    def _pintar_o_aplazar(self) -> None:
+        """Dentro de la ventana y sin verse (otra seccion delante, o Farmadex escondido):
+        pintarla cuesta ~40 ms (mucho mas en un PC normal ocupado) y llega al arrancar, al
+        cambiar de tema o de idioma y cada poco con el mundo nuevo; se pinta al ensenarse."""
+        if self.window() is not self and not self.isVisible():
+            self._pintar_pendiente = True
+        else:
+            self._pintar_pendiente = False
+            self.pintar()
 
     def showEvent(self, evento):  # noqa: N802 - firma de Qt
         super().showEvent(evento)

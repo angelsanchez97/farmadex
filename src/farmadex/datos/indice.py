@@ -9,7 +9,7 @@ import sqlite3
 import time
 from pathlib import Path
 
-from rapidfuzz import fuzz, process as rf_process
+from .difuso import fuzz, rf_process
 
 from ..config import DIR_DATOS, DIR_RECURSOS, RUTA_INDICE, crear_carpetas
 from ..registro_log import obtener
@@ -37,7 +37,10 @@ log = obtener("indice")
 # 9: formato nuevo de WFCD (2026-09-24): piezas por referencia a Components.json y
 #    traducciones por idioma. El indice queda igual, pero los que tengan uno construido con
 #    un volcado a medias (la descarga fallaba con un 404) lo rehacen entero.
-VERSION_ESQUEMA = "14"
+VERSION_ESQUEMA = "15"
+# 15: misma estructura que la 14; cambia el contenido (Requiem fuera de boveda, piezas con
+#     su padre de verdad, eventos sin repetir, sabotajes con su modo, premios repetidos de
+#     una reliquia sumados). Sube para que cada indice se rehaga una vez con los arreglos.
 # 14: tabla recetas (recursos de fabricacion para Objetivos); tabla `detalles`
 #     (estadisticas de armas, efecto por rango de mods y arcanos, habilidades de
 #     warframes, codigo de canje de los glifos) y nombres oficiales en castellano de modos
@@ -52,7 +55,7 @@ VERSION_ESQUEMA = "14"
 # se sigue trabajando en vez de enseñar "Error preparando los datos". Al cambiar la
 # ESTRUCTURA de las tablas, dejar aqui solo la version nueva.
 # 14 solo AÑADE las tablas recetas y detalles; quien las lee tolera que falten.
-ESQUEMAS_COMPATIBLES = {"8", "9", "10", "11", "12", "13", "14"}
+ESQUEMAS_COMPATIBLES = {"8", "9", "10", "11", "12", "13", "14", "15"}
 
 # Piezas de receta que pueden quedarse sin completar (referencias a objetos que no estan en
 # ningun catalogo) antes de dar el volcado por roto. Con el de hoy son un punado de
@@ -355,6 +358,34 @@ def traducir(con: sqlite3.Connection, dominio: str, en: str | None) -> str:
     return fila[0] if fila else en
 
 
+def heredar_emparejado(con: sqlite3.Connection, anterior: Path) -> int:
+    """Copia market_slug/market_id del indice `anterior` a los objetos del nuevo con el
+    mismo unique_name. Devuelve cuantos se copiaron (0 si no hay indice anterior)."""
+    if not Path(anterior).exists():
+        return 0
+    try:
+        con.execute("ATTACH DATABASE ? AS anterior", (str(anterior),))
+    except sqlite3.Error:
+        log.debug("No se pudo abrir el indice anterior para heredar precios", exc_info=True)
+        return 0
+    try:
+        cur = con.execute(
+            "UPDATE items SET market_slug = v.market_slug, market_id = v.market_id "
+            "FROM anterior.items AS v WHERE v.unique_name = items.unique_name "
+            "AND v.market_slug IS NOT NULL AND v.market_slug <> '' "
+            "AND (items.market_slug IS NULL OR items.market_slug = '')"
+        )
+        copiados = cur.rowcount
+        con.commit()
+    except sqlite3.Error:
+        log.debug("No se pudo heredar el emparejado anterior", exc_info=True)
+        copiados = 0
+    finally:
+        con.execute("DETACH DATABASE anterior")
+    log.info("Emparejado con warframe.market heredado del indice anterior: %d objetos", copiados)
+    return copiados
+
+
 def poblar_busqueda(con: sqlite3.Connection) -> int:
     """Una fila por nombre buscable. Los componentes llevan tambien el nombre del padre."""
     con.execute("DELETE FROM busqueda")
@@ -416,6 +447,33 @@ def comprobar_piezas(importador: ImportadorItems) -> None:
         )
 
 
+# Probabilidad (en %) de cada rareza segun el refinamiento: 3 premios comunes, 2 poco
+# comunes y 1 raro. La rareza que traen los datos a veces es la del objeto y no la de su
+# hueco en la reliquia (piezas comunes marcadas "Uncommon"); la probabilidad manda.
+RAREZA_POR_PROBABILIDAD = {
+    "Intact": {25.33: "Common", 11.0: "Uncommon", 2.0: "Rare"},
+    "Exceptional": {23.33: "Common", 13.0: "Uncommon", 4.0: "Rare"},
+    "Flawless": {20.0: "Common", 17.0: "Uncommon", 6.0: "Rare"},
+    "Radiant": {16.67: "Common", 20.0: "Uncommon", 10.0: "Rare"},
+}
+
+
+def corregir_rareza_reliquias(con: sqlite3.Connection) -> int:
+    """Pone en reliquia_recompensas.rareza la rareza que corresponde a su probabilidad.
+    Las probabilidades que no son de ninguna tabla conocida se dejan como vienen."""
+    cambiadas = 0
+    for refinamiento, tabla in RAREZA_POR_PROBABILIDAD.items():
+        for probabilidad, rareza in tabla.items():
+            cambiadas += con.execute(
+                "UPDATE reliquia_recompensas SET rareza = ? WHERE refinamiento = ? "
+                "AND ABS(probabilidad - ?) < 0.05 AND COALESCE(rareza, '') <> ?",
+                (rareza, refinamiento, probabilidad, rareza),
+            ).rowcount
+    if cambiadas:
+        log.info("Rareza de premios de reliquia corregida por su probabilidad: %d filas", cambiadas)
+    return cambiadas
+
+
 def corregir_boveda(con: sqlite3.Connection) -> int:
     """Una reliquia esta en boveda si y solo si no sale en ninguna tabla de drops actual.
 
@@ -425,13 +483,19 @@ def corregir_boveda(con: sqlite3.Connection) -> int:
     Las tablas de drops son las que mandan: lo que se puede farmear no esta en boveda.
     Devuelve cuantas reliquias ha cambiado.
     """
+    # Las Requiem salen siempre de Sifones y Diluvios Kuva, que no estan en las tablas de
+    # misiones: nunca estan en boveda. WFCD las marca "vaulted" y la app decia "En boveda:
+    # comprala" de la Requiem I a la IV.
+    requiem = con.execute(
+        "UPDATE items SET vaulted = 0 WHERE categoria = 'Relics' AND nombre_en LIKE 'Requiem %'"
+        " AND COALESCE(vaulted, -1) != 0"
+    ).rowcount
     hay_drops = con.execute(
         "SELECT 1 FROM fuentes f JOIN items i ON i.id = f.item_id WHERE i.categoria = 'Relics' LIMIT 1"
     ).fetchone()
     if not hay_drops:  # sin tablas de reliquias no hay con que corregir: se deja lo de WFCD
-        return 0
-    # Las Requiem salen de Sifones y Diluvios Kuva, que no estan en las tablas de drops.
-    cambiadas = con.execute(
+        return requiem
+    cambiadas = requiem + con.execute(
         """
         UPDATE items SET vaulted = CASE
                WHEN EXISTS (SELECT 1 FROM fuentes f WHERE f.item_id = items.id) THEN 0 ELSE 1 END
@@ -641,7 +705,9 @@ def construir(progreso=None, forzar: bool = False) -> dict:
             log.exception("No se pudieron completar los nodos con WFCD")
         avisar("Enlazando misiones con el mapa", 0, 0)
         reenlace = nodos.reenlazar_fuentes(con)
+        nodos.corregir_modos(con)
         corregir_boveda(con)
+        corregir_rareza_reliquias(con)
         con.commit()
 
         avisar("Emparejando con warframe.market", 0, 0)
@@ -650,9 +716,14 @@ def construir(progreso=None, forzar: bool = False) -> dict:
             # buscador y el comparador, y no se cierra aqui porque ellos la usan.
             from ..online.market import compartido
 
-            compartido().emparejar(con)
+            casados = compartido().emparejar(con)
         except Exception:  # noqa: BLE001 - sin precios la aplicacion sigue entera
+            casados = 0
             log.exception("No se pudo emparejar con warframe.market")
+        if not casados:
+            # Mercado caido o respuesta rara al reconstruir: se conserva el emparejado del
+            # indice anterior en vez de dejar al usuario sin precios hasta la siguiente vez.
+            heredar_emparejado(con, RUTA_INDICE)
 
         avisar("Construyendo el indice de busqueda", 0, 0)
         entradas = poblar_busqueda(con)

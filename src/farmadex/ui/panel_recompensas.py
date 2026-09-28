@@ -47,7 +47,7 @@ from PySide6.QtGui import QColor, QFont, QPainter, QPen, QPolygonF
 from PySide6.QtWidgets import QWidget
 
 from ..captura import prioridad as prio
-from ..captura.reliquias import SIN_IDENTIFICAR, texto_platino
+from ..captura.reliquias import SIN_IDENTIFICAR, copiar, texto_platino
 from ..idiomas import t
 from ..registro_log import obtener
 from . import widgets
@@ -166,7 +166,8 @@ class PanelRecompensas(QWidget):
     # -- misma interfaz que EtiquetasRecompensas -----------------------------------
 
     def mostrar(self, recompensas: list, maestria: dict | None = None, extras: dict | None = None) -> None:
-        self.recompensas = [r for r in recompensas if r.caja]
+        # Copias: las cajas se pasan a coordenadas del monitor sin tocar las del lector.
+        self.recompensas = copiar([r for r in recompensas if r.caja])
         self.maestria = maestria or {}
         self.extras = extras or {}
         self._seguro = True

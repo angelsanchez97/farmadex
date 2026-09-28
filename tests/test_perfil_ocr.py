@@ -598,3 +598,41 @@ def test_la_herramienta_procesa_una_carpeta_y_guarda(catalogo, tmp_path, capsys)
     assert not P.estado_por_unique_name(usuario, catalogo, _un(catalogo, "Atlas")).dominado
     assert P.resumen(usuario)["rango"] == 21
     usuario.close()
+
+
+# --- lectura pasiva: de quien es el perfil y que no es el Codice -----------------------------
+
+def _pagina_con_cabecera(textos_arriba):
+    from farmadex.captura.perfil_equipo import PaginaLeida
+    return PaginaLeida(categoria="warframe", completado=(10, 20), cabecera_en_y=300, textos_arriba=textos_arriba)
+
+
+def test_perfil_de_otro_jugador_no_se_guarda(tmp_path, monkeypatch):
+    from farmadex.captura import lector_pasivo as LP
+    eelog = tmp_path / "EE.log"
+    eelog.write_bytes(b"13.092 Sys [Info]: Logged in Mi-Tenno_01\r\n14.000 Sys [Info]: otra cosa\r\n")
+    assert LP.nombre_de_cuenta_eelog(eelog) == "Mi-Tenno_01"
+    lector = LP.LectorPasivo.__new__(LP.LectorPasivo)
+    monkeypatch.setattr(lector, "nombres_usuario", lambda: {"Mi-Tenno_01"}, raising=False)
+    propia = _pagina_con_cabecera(["MiTenno01", "PERFIL", "EQUIPAMIENTO", "ESTADISTICAS"])
+    assert lector.motivo_para_no_guardar(propia) == ""
+    otro = _pagina_con_cabecera(["OtroJugador", "PERFIL", "EQUIPAMIENTO", "ESTADISTICAS"])
+    assert "otro jugador" in lector.motivo_para_no_guardar(otro)
+
+
+def test_sin_nombre_del_usuario_no_se_guarda(monkeypatch):
+    from farmadex.captura import lector_pasivo as LP
+    lector = LP.LectorPasivo.__new__(LP.LectorPasivo)
+    monkeypatch.setattr(lector, "nombres_usuario", lambda: set(), raising=False)
+    pagina = _pagina_con_cabecera(["MiTenno01", "PROFILE", "EQUIPMENT"])
+    assert "nombre de cuenta" in lector.motivo_para_no_guardar(pagina)
+
+
+def test_el_codice_no_es_el_perfil(monkeypatch):
+    # El Codice tambien pone "COMPLETADO x/y" y categorias parecidas, pero sin las
+    # pestanas del perfil.
+    from farmadex.captura import lector_pasivo as LP
+    lector = LP.LectorPasivo.__new__(LP.LectorPasivo)
+    monkeypatch.setattr(lector, "nombres_usuario", lambda: {"MiTenno01"}, raising=False)
+    assert "Codice" in lector.motivo_para_no_guardar(_pagina_con_cabecera(["CÓDICE", "MiTenno01"]))
+    assert "Codice" in lector.motivo_para_no_guardar(_pagina_con_cabecera(["MiTenno01"]))

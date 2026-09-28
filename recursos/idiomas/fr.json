@@ -1,5 +1,6 @@
 {
   "_comentario": "Textes de l'interface Farmadex. Clé = texte espagnol du code ; valeur = traduction. Les {accolades} sont des variables à conserver. Supprimez une ligne pour revenir à l'espagnol.",
+  "No se ve dónde acaban tus mods equipados (la barra de buscar está tapada): los mods se muestran todos juntos y no se evalúa la build. Cierra lo que tape la pantalla y vuelve a leer.": "On ne voit pas où finissent tes mods équipés (la barre de recherche est cachée) : tous les mods sont affichés ensemble et le build n'est pas évalué. Ferme ce qui cache l'écran et relis.",
   "Actualizar al abrir Farmadex": "Mettre à jour à l'ouverture de Farmadex",
   "Con «Actualizar al abrir», si al abrir Farmadex hay una versión nueva, se instala antes de empezar. Si Farmadex se abre solo con Windows, no sale ninguna ventana.": "Avec « Mettre à jour à l'ouverture », s'il y a une nouvelle version quand vous ouvrez Farmadex, elle s'installe avant de commencer. Si Farmadex s'ouvre tout seul avec Windows, aucune fenêtre n'apparaît.",
   "Actualizando Farmadex a la versión {version}...": "Mise à jour de Farmadex vers la version {version}...",

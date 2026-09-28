@@ -22,10 +22,12 @@ no se mira. F9 en `herramientas/escanear_perfil.py` sigue siendo el respaldo.
 
 from __future__ import annotations
 
+import re
 import time
 
 from PySide6.QtCore import QObject, QTimer, Signal, Slot
 
+from .. import config
 from ..datos import indice
 from ..registro_log import obtener
 from . import inventario as INV
@@ -36,6 +38,11 @@ from .ocr import ErrorMotorOCR, MotorOCR, resumen_tiempos, unir_filas
 log = obtener("lector_pasivo")
 
 INTERVALO_MS = 1500
+# Con la misma pagina quieta y ya vista se mira la mitad de veces (una captura de la
+# ventana entera a 4K no es gratis); al cambiar algo se vuelve a INTERVALO_MS.
+INTERVALO_QUIETO_MS = 3000
+# La ventana del juego (EnumWindows) se busca como mucho cada tanto, como el hover.
+CACHE_VENTANA_S = 2.0
 # Por debajo de esta altura de ventana el OCR se hace a 1,5x (ayuda a 1080p).
 ALTO_PARA_REESCALAR = 1200
 # Pantallas que EE.log identifica y en las que no hay nada que leer.
@@ -71,8 +78,12 @@ class LectorPasivo(QObject):
         self.detector = PE.DetectorPagina(quietas=2)
         self.casador_equipo = None
         self.casador_inventario = None
+        # Las cifras dudosas ("780WNED") solo entran si otra lectura da la misma.
+        self.confirmador = INV.ConfirmadorCantidades()
         self._temporizador: QTimer | None = None
         self._ocupado = False
+        self._hwnd = None
+        self._hwnd_hasta = 0.0
         self.lecturas = 0
         self.segundos_ocr = 0.0
 
@@ -124,6 +135,22 @@ class LectorPasivo(QObject):
             self.pantalla_log = None
         # Al cambiar de pantalla la siguiente captura quieta es una pagina nueva.
         self.detector = PE.DetectorPagina(quietas=2)
+        self._ritmo(INTERVALO_MS)
+
+    # Valores de clase: algunas pruebas crean el lector sin pasar por __init__.
+    _hwnd = None
+    _hwnd_hasta = 0.0
+
+    def _ritmo(self, intervalo: int) -> None:
+        if getattr(self, "_temporizador", None) is not None and self._temporizador.interval() != intervalo:
+            self._temporizador.setInterval(intervalo)
+
+    def _ventana_juego(self):
+        ahora = time.monotonic()
+        if ahora >= self._hwnd_hasta:
+            self._hwnd = pantalla.ventana_juego()
+            self._hwnd_hasta = ahora + CACHE_VENTANA_S
+        return self._hwnd
 
     @property
     def activo(self) -> bool:
@@ -144,8 +171,9 @@ class LectorPasivo(QObject):
         if self._ocupado or not self.activo:
             return
         try:
-            hwnd = pantalla.ventana_juego()
+            hwnd = self._ventana_juego()
             if not hwnd or pantalla._ventana_activa() != hwnd:
+                self._ritmo(INTERVALO_MS)
                 return
             if not self.merece_mirar():
                 return
@@ -155,7 +183,12 @@ class LectorPasivo(QObject):
             # Sin esconder Farmadex (cada 1,5 s lo haria parpadear): lo que tapan nuestras
             # ventanas se pinta de negro y, si tapan casi todo, esta vuelta no se lee.
             imagen = pantalla.descartar_propias(pantalla.capturar_sin_ocultar(region), region)
-            if imagen is None or not self.detector.observar(imagen):
+            if imagen is None:
+                return
+            nueva = self.detector.observar(imagen)
+            # Mas vueltas iguales de las que hacen falta para darla por quieta: ya leida.
+            self._ritmo(INTERVALO_QUIETO_MS if self.detector._iguales > self.detector.quietas else INTERVALO_MS)
+            if not nueva:
                 return
             self._ocupado = True
             self.leer_imagen(imagen)
@@ -190,11 +223,16 @@ class LectorPasivo(QObject):
                         pagina.categoria, pagina.completado, len(pagina.tarjetas), (time.perf_counter() - t0) * 1000,
                         resumen_tiempos(getattr(self.motor, "tiempos", None)),
                     )
-                    self.pagina_perfil.emit(pagina)
+                    motivo = self.motivo_para_no_guardar(pagina)
+                    if motivo:
+                        log.info("Pagina de perfil leida sola NO guardada: %s", motivo)
+                    else:
+                        self.pagina_perfil.emit(pagina)
             inventario_leido = None
             if perfil_leido is None and self.activo_inventario:
                 pagina = INV.interpretar_lineas(lineas, self.casador_inventario, con)
                 if pagina.pantalla is not None:
+                    self.confirmador.confirmar(pagina)
                     inventario_leido = pagina
                     log.info(
                         "Pantalla de %s leida sola: %d cantidades (%d fiables), %d sin casar (OCR %.0f ms: %s)",
@@ -207,6 +245,53 @@ class LectorPasivo(QObject):
             return perfil_leido, inventario_leido
         finally:
             con.close()
+
+    def motivo_para_no_guardar(self, pagina) -> str:
+        """Por que una pagina de perfil leida sola no se guarda ("" si se guarda).
+
+        La pantalla de perfil de OTRO jugador es igual que la tuya: sin el nombre de
+        cuenta de la cabecera casado con el del usuario no se sabe de quien es. Y el
+        Codice tambien lleva "COMPLETADO x/y" con nombres de categoria parecidos.
+        """
+        if pagina.es_codice:
+            return "no se ven las pestanas del perfil (puede ser el Codice)"
+        nombres = self.nombres_usuario()
+        if not nombres:
+            return "no se sabe el nombre de cuenta del usuario"
+        if not pagina.es_de(nombres):
+            return "el nombre de la cabecera no es el del usuario (perfil de otro jugador?)"
+        return ""
+
+    def nombres_usuario(self) -> set[str]:
+        """El nombre de cuenta del usuario: el del perfil importado y el de EE.log.
+
+        Solo en memoria: nunca se escribe ni se registra (EE.log lleva datos personales).
+        """
+        ahora = time.monotonic()
+        if getattr(self, "_nombres", None) is not None and ahora < getattr(self, "_nombres_hasta", 0.0):
+            return self._nombres
+        nombres: set[str] = set()
+        try:
+            nombre = nombre_de_cuenta_eelog(config.cargar().get("ruta_eelog", ""))
+            if nombre:
+                nombres.add(nombre)
+        except Exception:  # noqa: BLE001 - sin EE.log se usa lo demas
+            pass
+        try:
+            import sqlite3
+
+            if config.RUTA_USUARIO_DB.exists():
+                con = sqlite3.connect(f"file:{config.RUTA_USUARIO_DB}?mode=ro", uri=True)
+                try:
+                    fila = con.execute("SELECT valor FROM perfil_meta WHERE clave = 'nombre'").fetchone()
+                finally:
+                    con.close()
+                if fila and fila[0] and fila[0] != "Tenno":  # "Tenno": sin nombre de verdad
+                    nombres.add(fila[0])
+        except Exception:  # noqa: BLE001 - tabla sin crear: nunca se importo un perfil
+            pass
+        self._nombres, self._nombres_hasta = nombres, ahora + 60.0
+        return nombres
 
     def _lineas(self, imagen, escala: float):
         if escala != 1.0:
@@ -231,3 +316,21 @@ class LectorPasivo(QObject):
             con.close()
         pantalla.declarar_dpi()
         return True
+
+
+# "Sys [Info]: Logged in <nombre>" (en versiones viejas seguia " (<id>)"): solo se toma
+# el nombre, en memoria.
+_RE_LOGIN = re.compile(rb"Logged in ([^\s(]+)")
+
+
+def nombre_de_cuenta_eelog(ruta) -> str | None:
+    """El nombre con el que entro el jugador, del principio de EE.log (o None)."""
+    if not ruta:
+        return None
+    try:
+        with open(ruta, "rb") as f:
+            datos = f.read(8 * 1024 * 1024)  # el inicio de sesion va en los primeros segundos
+    except OSError:
+        return None
+    m = _RE_LOGIN.search(datos)
+    return m.group(1).decode("utf-8", errors="replace") if m else None

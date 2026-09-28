@@ -99,6 +99,10 @@ class Cantidad:
     pantalla: str = ""
     fiable: bool = True  # False cuando la cifra pudo absorber el icono de la placa
     motivo: str = ""
+    # No fiable solo por la cifra ("780WNED"): si otra lectura quieta da la misma cifra
+    # para el mismo objeto, `ConfirmadorCantidades` la marca como confirmada.
+    dudosa: bool = False
+    confirmada: bool = False
 
 
 @dataclass
@@ -111,7 +115,31 @@ class PaginaInventario:
 
     @property
     def fiables(self) -> list[Cantidad]:
-        return [c for c in self.cantidades if c.fiable]
+        """Las que se pueden guardar: fiables de por si o confirmadas en dos lecturas."""
+        return [c for c in self.cantidades if c.fiable or c.confirmada]
+
+
+class ConfirmadorCantidades:
+    """Confirma las cifras dudosas cuando dos lecturas quietas dan la misma.
+
+    "780WNED" puede ser "78 OWNED" o el icono de la placa ("7") delante de "8 OWNED":
+    con una sola lectura no se sabe. Si en otra lectura (otra vuelta a la pantalla, con
+    la placa en otro sitio o leida de otra forma) sale la misma cifra para el mismo
+    objeto, se da por buena. Una cifra distinta sustituye a la anterior.
+    """
+
+    def __init__(self) -> None:
+        self._vistas: dict[str, tuple[int, str]] = {}
+
+    def confirmar(self, pagina: "PaginaInventario") -> "PaginaInventario":
+        for c in pagina.cantidades:
+            if c.fiable or not c.dudosa:
+                continue
+            anterior = self._vistas.get(c.unique_name)
+            if anterior is not None and anterior[0] == c.cantidad:
+                c.confirmada = True
+            self._vistas[c.unique_name] = (c.cantidad, c.texto_ocr)
+        return pagina
 
 
 @dataclass
@@ -190,6 +218,7 @@ def interpretar_lineas(
                 pantalla=pagina.pantalla,
                 fiable=pareja.fiable and pareja.linea.confianza >= MINIMO_CONFIANZA_CIFRA,
                 motivo="" if pareja.fiable else "la cifra puede llevar pegado el icono de la placa",
+                dudosa=not pareja.fiable and pareja.linea.confianza >= MINIMO_CONFIANZA_CIFRA,
             )
         )
     pagina.cantidades.sort(key=lambda c: (c.caja[1], c.caja[0]))
@@ -226,9 +255,10 @@ def _como_cantidad(l: Leido, pantalla: str) -> _LineaCantidad | None:
         cantidad = _entero(cifra)
         if cantidad is None:
             return None
-        # Si delante de la cifra habia una letra, el icono se colo en la lectura;
-        # si se colo como CIFRA ("780WNED" por "8 OWNED") no hay forma de saberlo.
-        return _LineaCantidad(l, cantidad, "poseido", bool(re.match(r"^\d", texto)))
+        # Si delante de la cifra habia una letra, el icono se colo en la lectura. Y solo
+        # es fiable con la palabra entera ("78 OWNED", "78OWNED"): en "780WNED" la O se
+        # leyo como cero y puede ser 78, o el icono ("7") pegado a "8 OWNED".
+        return _LineaCantidad(l, cantidad, "poseido", _poseido_fiable(texto, m))
     m = RE_PLANOS.match(texto)
     if m and pantalla == "fundicion":
         cantidad = _entero(next(g for g in m.groups() if g))
@@ -240,6 +270,16 @@ def _como_cantidad(l: Leido, pantalla: str) -> _LineaCantidad | None:
             _lineas_raras.add(texto)
             log.info("Linea con cifra sin entender en %s (candidata a patron): %r", pantalla, texto)
     return None
+
+
+RE_PALABRA_ENTERA = re.compile(r"\d\s*(?:owned|pose[ií]d[oa]s?|en\s*posesi[oó]n|en\s*propiedad|unidades)\b",
+                               re.IGNORECASE)
+
+
+def _poseido_fiable(texto: str, m: re.Match) -> bool:
+    if m.group(3):
+        return True  # "POSEIDOS: 18": la cifra va detras de la palabra, sin icono delante
+    return bool(re.match(r"^\d", texto)) and bool(RE_PALABRA_ENTERA.search(texto))
 
 
 def _emparejar(caja, cantidades: list[_LineaCantidad], pantalla: str) -> _LineaCantidad | None:

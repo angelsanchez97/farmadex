@@ -200,6 +200,29 @@ def copiar_indice(origen: Path, destino: Path) -> None:
         fuente.close()
 
 
+def catalogo_market_de(indice: Path) -> bytes | None:
+    """Respuesta de `/v2/items` de warframe.market rehecha con el emparejado del indice
+    (slug, id y uniqueName como gameRef). None si el indice no tiene emparejado."""
+    import sqlite3
+
+    try:
+        con = sqlite3.connect(f"file:{indice}?mode=ro", uri=True)
+        try:
+            filas = con.execute(
+                "SELECT unique_name, market_slug, market_id, nombre_en FROM items "
+                "WHERE market_slug IS NOT NULL AND market_slug <> ''"
+            ).fetchall()
+        finally:
+            con.close()
+    except sqlite3.Error:
+        return None
+    if not filas:
+        return None
+    datos = [{"id": mid, "slug": slug, "gameRef": un, "i18n": {"en": {"name": nombre or ""}}}
+             for un, slug, mid, nombre in filas]
+    return json.dumps({"apiVersion": "0.0.0", "data": datos, "error": None}).encode("utf-8")
+
+
 def buscar_indice(opciones: dict) -> Path | None:
     if opciones.get("indice"):
         return Path(opciones["indice"])
@@ -263,6 +286,10 @@ class RedSimulada:
         self.retraso_s = 0.05
         self.instalador = b""
         self.huella = ""
+        # Catalogo /v2/items de warframe.market (JSON), sacado del indice de origen: al
+        # reconstruir el indice (cambio de esquema) el emparejado de precios sale igual que
+        # en el indice real en vez de perderse.
+        self.catalogo_market: bytes | None = None
         self._cerrojo = threading.Lock()
 
     def _fixture(self, nombre: str):
@@ -325,6 +352,8 @@ class RedSimulada:
         if "weeklyRivens" in url:
             return crudo(self._fixture("de_weekly_rivens.txt"))
         if "warframe.market" in url:
+            if url.split("?")[0].rstrip("/").endswith("/v2/items"):
+                return crudo(self.catalogo_market)
             if "riven/weapons" in url or "riven/items" in url:
                 return crudo(self._fixture("market_riven_weapons.json"))
             if "auctions" in url:
@@ -563,6 +592,36 @@ class Sondas:
 # -- la autoprueba ----------------------------------------------------------------------------
 
 
+
+def memoria_mb() -> float | None:
+    """Memoria del proceso en uso (working set, lo que el Administrador de tareas llama
+    memoria), en MB; None fuera de Windows o si no se puede leer."""
+    if sys.platform != "win32":
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class _Contadores(ctypes.Structure):
+            _fields_ = [("cb", wintypes.DWORD), ("PageFaultCount", wintypes.DWORD),
+                        ("PeakWorkingSetSize", ctypes.c_size_t), ("WorkingSetSize", ctypes.c_size_t),
+                        ("QuotaPeakPagedPoolUsage", ctypes.c_size_t), ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                        ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                        ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                        ("PagefileUsage", ctypes.c_size_t), ("PeakPagefileUsage", ctypes.c_size_t)]
+
+        contadores = _Contadores()
+        contadores.cb = ctypes.sizeof(contadores)
+        kernel = ctypes.WinDLL("kernel32")
+        kernel.GetCurrentProcess.restype = wintypes.HANDLE
+        psapi = ctypes.WinDLL("psapi")
+        psapi.GetProcessMemoryInfo.argtypes = [wintypes.HANDLE, ctypes.POINTER(_Contadores), wintypes.DWORD]
+        if not psapi.GetProcessMemoryInfo(kernel.GetCurrentProcess(), ctypes.byref(contadores), contadores.cb):
+            return None
+        return round(contadores.WorkingSetSize / 2**20, 1)
+    except Exception:  # noqa: BLE001 - la medida es informativa
+        return None
+
 class Autoprueba:
     def __init__(self, opciones: dict):
         self.op = opciones
@@ -610,13 +669,22 @@ class Autoprueba:
 
     # -- bombeo de eventos ----------------------------------------------------------------
 
+    def _atender(self) -> None:
+        """Una vuelta del bucle de eventos como la de `app.exec()`: `processEvents()` solo NO
+        entrega los `deleteLater()`, asi que sin esto cada ficha o pestana rehecha se
+        quedaba viva y la autoprueba media fugas y cambios de tema que la app real no tiene."""
+        from PySide6.QtCore import QEvent
+
+        self.app.processEvents()
+        self.app.sendPostedEvents(None, QEvent.DeferredDelete)
+
     def bombear(self, segundos: float) -> float:
         """Atiende eventos durante `segundos`; devuelve el mayor hueco sin atenderlos (congelada)."""
         fin = time.perf_counter() + segundos
         ultimo = time.perf_counter()
         hueco = 0.0
         while True:
-            self.app.processEvents()
+            self._atender()
             ahora = time.perf_counter()
             hueco = max(hueco, ahora - ultimo)
             ultimo = ahora
@@ -628,7 +696,7 @@ class Autoprueba:
         """Segundos hasta que se cumple `condicion` (atendiendo eventos), o None."""
         t0 = time.perf_counter()
         while time.perf_counter() - t0 < maximo:
-            self.app.processEvents()
+            self._atender()
             try:
                 if condicion():
                     return time.perf_counter() - t0
@@ -752,6 +820,7 @@ class Autoprueba:
                 metodo = getattr(self, f"flujo_{nombre}")
                 if self.vigia is not None:
                     self.vigia.flujo = nombre
+                rss_antes = memoria_mb()
                 t0 = time.perf_counter()
                 perfil = None
                 if self.op.get("perfil") == nombre:
@@ -775,7 +844,11 @@ class Autoprueba:
                     pstats.Stats(perfil, stream=salida).sort_stats("tottime").print_stats(40)
                     pstats.Stats(perfil, stream=salida).sort_stats("cumulative").print_stats(60)
                     (self.carpeta / f"perfil_{nombre}.txt").write_text(salida.getvalue(), encoding="utf-8")
-                self.resultado["flujos"].setdefault(nombre, {})["segundos"] = round(time.perf_counter() - t0, 2)
+                datos_flujo = self.resultado["flujos"].setdefault(nombre, {})
+                datos_flujo["segundos"] = round(time.perf_counter() - t0, 2)
+                # Memoria del proceso (RSS) antes y despues del flujo: lo que crece y no baja
+                # de un flujo a otro es una fuga.
+                datos_flujo["rss_mb"] = [rss_antes, memoria_mb()]
                 self.guardar()
         finally:
             parar_carga(procesos_carga)
@@ -828,6 +901,7 @@ class Autoprueba:
             candidata = Path(__file__).resolve().parents[2] / "tests" / "fixtures"
             fixtures = candidata if candidata.exists() else None
         self.red = RedSimulada(fixtures, estado, VERSION)
+        self.red.catalogo_market = catalogo_market_de(origen)
         self.red.modo_base = "sin_red" if self.op.get("sin_red") else "normal"
         self.red.modo = self.red.modo_base
         self.resultado["red"] = self.red.modo_base
@@ -954,7 +1028,7 @@ class Autoprueba:
             t0 = time.perf_counter()
             devuelto = al_abrir.actualizar_al_abrir(
                 config, [], es_instalada=lambda: True, carpeta=carpeta, comprobador=ComprobadorApp(),
-                instalar=instalar, plazo=3.0,
+                instalar=instalar, plazo=al_abrir.PLAZO_CONSULTA_S,
             )
             segundos = time.perf_counter() - t0
             self.red.huella = huella_buena
@@ -1241,8 +1315,19 @@ class Autoprueba:
             if imagen is None:
                 continue
             h, w = imagen.shape[:2]
-            # La tarjeta (recorte) en medio de una pantalla del juego del tamano que le toca.
+            # La tarjeta (recorte) en medio de una pantalla del juego del tamano que le toca,
+            # como mucho 4K: una captura mas grande se reduce a lo que mediria en 4K. Antes
+            # salian "pantallas" de 6400x3600 que ningun jugador tiene, y los lectores que
+            # miran la pantalla entera disparaban la memoria (1 GB de mas en este flujo).
             alto = int(max(1080, 1080 * max(w / ancho_t, h / alto_t) * 1.05))
+            if alto > 2160:
+                import cv2
+
+                factor = 2160 / alto
+                imagen = cv2.resize(imagen, (max(1, int(w * factor)), max(1, int(h * factor))),
+                                    interpolation=cv2.INTER_AREA)
+                h, w = imagen.shape[:2]
+                alto = 2160
             ancho = alto * 16 // 9
             lienzo = np.full((alto, ancho, 3), 18, np.uint8)
             y0, x0 = (alto - h) // 2, (ancho - w) // 2
@@ -1252,7 +1337,8 @@ class Autoprueba:
             v.leer_agrietado()
             tiempo = self.esperar(lambda: self.sondas.desde("VentanaOverlay._agrietado_leido", t0), 10.0)
             llamadas = self.sondas.desde("VentanaOverlay._agrietado_leido", t0)
-            fila = {"fichero": ruta.name, "ms": _ms(tiempo) if tiempo is not None else None}
+            fila = {"fichero": ruta.name, "ms": _ms(tiempo) if tiempo is not None else None,
+                    "rss_mb": memoria_mb()}
             if llamadas:
                 tarjeta = llamadas[-1][1][0]
                 leidas = [[e.slug, e.valor, e.negativo] for e in tarjeta.estadisticas]
@@ -1816,6 +1902,10 @@ class Autoprueba:
             d = {k: v for k, v in f.get(nombre, {}).items() if k not in ("casos",)}
             l.append(f"{nombre}: {json.dumps(d, ensure_ascii=False, default=str)[:400]}")
         congelaciones = [c for c in self.resultado.get("congelaciones", []) if c["flujo"] != "(autoprueba)"]
+        memoria = [(n, d["rss_mb"]) for n, d in f.items() if isinstance(d, dict) and d.get("rss_mb")]
+        if memoria:
+            l.append("memoria (RSS MB antes -> despues): " + ", ".join(
+                f"{n} {a}->{b}" for n, (a, b) in memoria if a is not None and b is not None))
         l.append(f"congelaciones de la ventana (>{self.op.get('vigia_ms') or 120} ms): {len(congelaciones)}")
         for c in sorted(congelaciones, key=lambda c: -c["ms"])[:8]:
             l.append(f"  {c['ms']} ms en {c['flujo']}: {' < '.join(reversed(c['pila'][-4:]))}")

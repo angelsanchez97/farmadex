@@ -181,3 +181,12 @@ def test_sincronizar_sube_los_objetivos_pero_nunca_los_baja(usuario):
     ).fetchone()
     assert origen == ("inventario", "inventario: 3")
     assert estado_inventario.sincronizar_objetivos(usuario) == []  # idempotente
+
+
+def test_sincronizar_solo_con_las_lecturas_confirmadas(usuario):
+    # Una cifra guardada de otra vez (quiza dudosa) no mueve el objetivo: solo las que se
+    # acaban de confirmar.
+    estado_objetivos.anadir(usuario, "/sys", "Sistemas", 5)
+    estado_objetivos.anadir(usuario, "/neu", "Neuroptica", 5)
+    estado_inventario.guardar(usuario, [_Cantidad("/sys", 3), _Cantidad("/neu", 4)])
+    assert estado_inventario.sincronizar_objetivos(usuario, solo={"/neu"}) == [("/neu", 0, 4)]

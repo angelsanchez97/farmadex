@@ -466,8 +466,10 @@ def _reglas_warframe(con: sqlite3.Connection, ev: Evaluacion, equipo: Equipo, mo
 
 def _reglas_arma(con: sqlite3.Connection, ev: Evaluacion, equipo: Equipo, mods: list[Mod], dispara: bool) -> None:
     arma = equipo.arma or {}
-    critico = float(arma.get("critico") or 0)
-    estado = float(arma.get("estado") or 0)
+    # Sin el dato (arma nueva o incompleta en el indice) no se sabe si es de critico o de
+    # estado: esas reglas se saltan en vez de decir "tiene poco critico" con un 0 inventado.
+    critico = float(arma["critico"]) if arma.get("critico") is not None else None
+    estado = float(arma["estado"]) if arma.get("estado") is not None else None
     base = _con(mods, "dano_base")
     if base:
         ev.bien.append(Punto(t("Llevas daño base: {mods}.", mods=_lista(base)),
@@ -496,7 +498,9 @@ def _reglas_arma(con: sqlite3.Connection, ev: Evaluacion, equipo: Equipo, mods: 
         ev.mal.append(Punto(t("No llevas ningún mod de elemento."),
                             t("Calor, frío, electricidad o toxina suman mucho daño; dos juntos dan un elemento más fuerte.")))
     de_critico = [m for m in mods if m.clases & {"crit_prob", "crit_dano"}]
-    if critico >= ALTO:
+    if critico is None:
+        pass
+    elif critico >= ALTO:
         if de_critico:
             ev.bien.append(Punto(t("Tu arma es de crítico y llevas mods de crítico: {mods}.", mods=_lista(de_critico)),
                                  t("Con crítico alto, estos mods multiplican el daño."), [m.item_id for m in de_critico]))
@@ -510,7 +514,9 @@ def _reglas_arma(con: sqlite3.Connection, ev: Evaluacion, equipo: Equipo, mods: 
                             [m.item_id for m in de_critico]))
     de_estado = [m for m in mods if "estado" in m.clases]
     solo_estado = [m for m in de_estado if "elemento" not in m.clases]
-    if estado >= ALTO:
+    if estado is None:
+        pass
+    elif estado >= ALTO:
         if de_estado or len(con_elemento) >= 2:
             ev.bien.append(Punto(t("Tu arma es de estado y la aprovechas."),
                                  t("Con estado alto, los elementos y la probabilidad de estado aplican más efectos.")))

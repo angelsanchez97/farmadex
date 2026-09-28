@@ -18,7 +18,7 @@ import unicodedata
 from dataclasses import dataclass, field
 
 from PySide6.QtCore import Signal, Slot
-from rapidfuzz import fuzz
+from ..datos.difuso import fuzz
 
 from ..idiomas import t
 from ..registro_log import obtener
@@ -164,6 +164,10 @@ class Build:
     # arreglar, el aviso que se le ensena (texto sin traducir, pasa por t()).
     idioma: str = ""
     aviso: str = ""
+    # De donde salio el corte entre lo equipado y la coleccion: "buscar" (la caja de
+    # busqueda, el orden o el filtro), "huecos" (la geometria de las filas de tarjetas) o
+    # "" si no se supo: entonces todo va a la coleccion y no se evalua.
+    separador: str = ""
 
     @property
     def vacia(self) -> bool:
@@ -478,6 +482,7 @@ def separar_build(
     categorias: dict[int, str],
     equipo: Reconocido | None = None,
     ancho: int | None = None,
+    alto: int | None = None,
 ) -> Build:
     """Reparte lo reconocido en equipo, mods equipados, coleccion y arcanos.
 
@@ -492,6 +497,21 @@ def separar_build(
     y_buscar = linea_separadora(lineas, ancho)
     capacidad, build.capacidad = fila_de_capacidad(lineas, ancho)
     panel = limite_panel(lineas, capacidad, ancho)
+    sin_separador = False
+    if y_buscar is not None:
+        build.separador = "buscar"
+    else:
+        # La caja de busqueda, el orden y el filtro tapados (la ayuda de un mod, el chat,
+        # otra ventana): sin nada que diga donde empieza la coleccion, TODO acababa en
+        # "equipados" y la evaluacion hablaba de 22 mods equipados. Se busca el corte
+        # por la geometria de las filas de tarjetas; si no sale claro, todo va a la
+        # coleccion y se avisa, en vez de inventar que esta equipado.
+        y_buscar = corte_por_filas(reconocidos, categorias, capacidad, panel, alto)
+        if y_buscar is not None:
+            build.separador = "huecos"
+        else:
+            sin_separador = True
+            y_buscar = -1  # todo por debajo: a la coleccion
     reconocidas_cajas = {r.caja for r in reconocidos}
     vistos_equipados: set[int] = set()
     vistos_arcanos: set[int] = set()
@@ -510,8 +530,9 @@ def separar_build(
             continue
         # El panel de estadisticas de la izquierda ("Alcance", "Salud"...) no lleva
         # tarjetas: lo que case ahi es una palabra de la interfaz, no un mod.
-        en_panel_izquierdo = _en_panel(r.caja, panel) and (y_buscar is None or r.caja[1] < y_buscar)
-        if en_panel_izquierdo and (y_buscar is not None or r.caja[1] < (lineas and max(l.y for l in lineas) or 0) * 0.6):
+        en_panel_izquierdo = _en_panel(r.caja, panel) and (sin_separador or r.caja[1] < y_buscar)
+        if en_panel_izquierdo and (not sin_separador
+                                   or r.caja[1] < (lineas and max(l.y for l in lineas) or 0) * 0.6):
             continue
         if categoria == "Arcanes":
             # El juego no deja llevar el mismo arcano dos veces: el segundo es el titulo
@@ -548,7 +569,7 @@ def separar_build(
             continue
         # El panel de estadisticas de la izquierda ("Cadencia De Fuego", "Muy alta"), por
         # encima de la busqueda: ahi no hay tarjetas.
-        if y_buscar is not None and _en_panel(linea, panel) and linea.y < y_buscar:
+        if not sin_separador and _en_panel(linea, panel) and linea.y < y_buscar:
             continue
         if _es_frase(texto):
             continue
@@ -561,7 +582,70 @@ def separar_build(
     build.sin_identificar = [s for s in build.sin_identificar if s.lower() not in reconocidos_texto]
     # Lo leido de una tarjeta tapada no se da por reconocido, pero tampoco se esconde.
     build.sin_identificar += [r.texto_ocr.strip() for r in cortados if r.texto_ocr.strip() not in build.sin_identificar]
+    if sin_separador and build.coleccion and not build.aviso:
+        build.aviso = AVISO_SIN_SEPARADOR
     return build
+
+
+AVISO_SIN_SEPARADOR = ("No se ve dónde acaban tus mods equipados (la barra de buscar está tapada): "
+                       "los mods se muestran todos juntos y no se evalúa la build. Cierra lo que tape "
+                       "la pantalla y vuelve a leer.")
+# El juego lleva 8 huecos de mod mas aura y exilus: por encima de 10 no es lo equipado.
+MAXIMO_EQUIPADOS = 10
+
+
+def corte_por_filas(reconocidos: list[Reconocido], categorias: dict[int, str], capacidad: Leido | None,
+                    panel: float, alto: int | None = None) -> int | None:
+    """La y donde empieza la coleccion, sacada de las filas de tarjetas; None si no sale claro.
+
+    Lo equipado son como mucho tres filas (aura y exilus, y dos filas de cuatro) por
+    debajo de "CAPACIDAD"; entre la ultima y la coleccion va la barra de buscar, asi que
+    ese hueco es claramente mayor que el paso entre filas. Los nombres se alinean por
+    abajo (los de dos lineas crecen hacia arriba), asi que las filas se agrupan por el
+    borde de abajo. Se exige: el mayor hueco al menos 1,3 veces el paso entre filas, que
+    por encima queden 10 mods o menos, y que el corte caiga en la mitad de abajo.
+    """
+    mods = [r for r in reconocidos if categorias.get(r.item_id) == "Mods"
+            and (capacidad is None or r.caja[1] > capacidad.y + capacidad.alto)
+            and not _en_panel(r.caja, panel)]
+    if len(mods) < 2:
+        return None
+    altos = sorted(r.caja[3] for r in mods)
+    tolerancia = max(6, altos[0] * 0.8)
+    filas: list[list[Reconocido]] = []
+    for r in sorted(mods, key=lambda r: r.caja[1] + r.caja[3]):
+        abajo = r.caja[1] + r.caja[3]
+        if filas and abajo - (filas[-1][-1].caja[1] + filas[-1][-1].caja[3]) <= tolerancia:
+            filas[-1].append(r)
+        else:
+            filas.append([r])
+    if len(filas) < 2:
+        return None
+    bordes = [sum(r.caja[1] + r.caja[3] for r in f) / len(f) for f in filas]
+    huecos = [bordes[i + 1] - bordes[i] for i in range(len(bordes) - 1)]
+    if alto is None:
+        alto = int(max(r.caja[1] + r.caja[3] for r in reconocidos) * 1.1)
+    candidatos = []
+    encima = 0
+    for i, hueco in enumerate(huecos):
+        encima += len(filas[i])
+        # Mas de 10 mods, o una fila por debajo del 60 % del alto: ya es la coleccion
+        # (medido en capturas reales de 1080p a 4K y 21:9, lo equipado acaba antes del
+        # 55 % y la coleccion empieza despues del 65 %).
+        if encima > MAXIMO_EQUIPADOS or bordes[i] > alto * 0.6:
+            break
+        candidatos.append((hueco, i))
+    if not candidatos:
+        return None
+    hueco, i = max(candidatos)
+    # El hueco de la barra de buscar se compara con el paso entre filas de lo equipado y
+    # con el de la primera fila de la coleccion a la siguiente.
+    otros = huecos[:i] + huecos[i + 1:i + 2]
+    if otros and hueco < 1.3 * max(otros):
+        return None
+    if bordes[i + 1] < alto * 0.5:
+        return None  # la coleccion nunca empieza en la mitad de arriba
+    return int(min(r.caja[1] for r in filas[i + 1])) - 1
 
 
 _PALABRAS_INTERFAZ = {
@@ -754,7 +838,7 @@ def leer_build(imagen, motor, casador: Casador, categorias: dict[int, str]) -> B
         # al lado): se relee sola la franja de arriba, que al ir aparte sale entera.
         texto_releido, equipo = _releer_cabecera(imagen, motor, casador, categorias, lineas)
     casado = time.perf_counter()
-    build = separar_build(lineas, reconocidos, categorias, equipo, ancho=imagen.shape[1])
+    build = separar_build(lineas, reconocidos, categorias, equipo, ancho=imagen.shape[1], alto=imagen.shape[0])
     if texto_releido and not build.equipo_texto:
         build.equipo_texto = texto_releido
     tiempos["casado"] = casado - inicio

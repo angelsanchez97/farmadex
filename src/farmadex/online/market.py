@@ -102,7 +102,13 @@ class Market:
 
     def items(self) -> list[dict]:
         datos = self.cliente.json(f"{BASE}/items", segundos_cache=86400)
-        return datos.get("data") or []
+        lista = datos.get("data") if isinstance(datos, dict) else None
+        if not isinstance(lista, list):
+            # Una respuesta con otra forma (cambio de la API, pagina de error) no debe
+            # tumbar el emparejado entero: se trata como catalogo vacio.
+            log.warning("Catalogo de warframe.market con forma inesperada: %s", type(lista).__name__)
+            return []
+        return [e for e in lista if isinstance(e, dict)]
 
     def emparejar(self, con: sqlite3.Connection) -> int:
         """Guarda el slug de warframe.market en cada objeto del indice.

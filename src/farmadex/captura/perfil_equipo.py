@@ -27,7 +27,7 @@ import re
 import sqlite3
 from dataclasses import dataclass, field
 
-from rapidfuzz import fuzz
+from ..datos.difuso import fuzz
 
 from ..datos.items import normalizar
 from ..perfil import maestria
@@ -132,6 +132,36 @@ class PaginaLeida:
     completado: tuple[int, int] | None = None  # (dominados, total) segun el juego
     cabecera_en_y: int | None = None  # borde inferior de la barra de categoria
     lineas: int = 0
+    # Lo leido por encima de la barra de categoria (nombre de cuenta, pestanas, MAS
+    # USADO): sirve para saber de quien es el perfil y que no es el Codice.
+    textos_arriba: list[str] = field(default_factory=list)
+
+    @property
+    def con_pestanas(self) -> bool:
+        """Si se ven las pestanas del perfil (EQUIPAMIENTO...): el Codice no las lleva."""
+        return any(_es_pestana_perfil(t) for t in self.textos_arriba)
+
+    @property
+    def es_codice(self) -> bool:
+        return any(_es_codice(t) for t in self.textos_arriba) or not self.con_pestanas
+
+    def es_de(self, nombres: set[str]) -> bool:
+        """Si el nombre de cuenta de la cabecera es uno de `nombres` (el del usuario).
+
+        En la pantalla de perfil de OTRO jugador todo es igual salvo el nombre: sin
+        casarlo con el del usuario no se sabe de quien es y no se guarda.
+        """
+        claves = {_clave_cuenta(n) for n in nombres if n and _clave_cuenta(n)}
+        if not claves:
+            return False
+        for texto in self.textos_arriba:
+            for trozo in [texto, *texto.split()]:
+                clave = _clave_cuenta(trozo)
+                if len(clave) < 3:
+                    continue
+                if clave in claves or any(len(c) >= 5 and fuzz.ratio(clave, c) >= 90 for c in claves):
+                    return True
+        return False
 
     @property
     def dominadas(self) -> list[Tarjeta]:
@@ -196,6 +226,7 @@ def interpretar_lineas(
     pagina.rango_maestria = leer_rango_maestria(lineas)
     leer_cabecera(lineas, pagina)
     if pagina.cabecera_en_y is not None:
+        pagina.textos_arriba = [l.texto for l in lineas if l.y + l.alto <= pagina.cabecera_en_y]
         # Todo lo que queda por encima de la barra (MAS USADO, pestanas) no es la rejilla.
         lineas = [l for l in lineas if l.y >= pagina.cabecera_en_y]
 
@@ -284,6 +315,27 @@ def _casar(casador: Casador, texto: str, umbral: int, confianza: float) -> tuple
         if item_id:
             return item_id, nombre, puntos
     return None, "", 0.0
+
+
+# La pestana "EQUIPAMIENTO" del perfil en los idiomas del juego que se leen.
+PESTANAS_PERFIL = ("equipamiento", "equipment", "equipement", "ausrustung", "equipaggiamento",
+                   "wyposazenie", "equipamento")
+PALABRAS_CODICE = ("codice", "codex", "kodex", "codeks")
+
+
+def _es_pestana_perfil(texto: str) -> bool:
+    return any(len(p) >= 6 and (p in c or fuzz.ratio(c, p) >= 85)
+               for c in normalizar(texto).split() for p in PESTANAS_PERFIL)
+
+
+def _es_codice(texto: str) -> bool:
+    return any(fuzz.ratio(c, p) >= 85 for c in normalizar(texto).split() for p in PALABRAS_CODICE)
+
+
+def _clave_cuenta(texto: str) -> str:
+    """El nombre de cuenta para comparar: minusculas, solo letras y cifras (el OCR se
+    come los guiones y puntos, y el juego puede anadir un sufijo de plataforma)."""
+    return "".join(c for c in (texto or "").lower() if c.isalnum())
 
 
 def _categoria_de(texto: str) -> str | None:

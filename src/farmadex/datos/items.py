@@ -577,6 +577,10 @@ class ImportadorItems:
         if not partido:
             return
         canonico, refinamiento = partido
+        if canonico.endswith(" Relic"):
+            # "Requiem Relic": el comodin de "una Requiem al azar" que trae WFCD. Salia en
+            # Buscar como "Requiem Relic Relic" con premios mezclados; no es una reliquia.
+            return
         _avisar_era(canonico.split()[0])
         clave = normalizar(canonico)
         vaulted = _bandera(obj.get("vaulted"))

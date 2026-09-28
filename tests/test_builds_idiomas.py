@@ -151,8 +151,11 @@ def test_aura_de_la_tarjeta_ampliada_no_es_el_filtro(catalogo):
     con, ids = catalogo
     lineas = [_l("Vitality", 900, 700), _l("La squadra ottiene il", 1250, 420, ancho=240), _l("AURA", 1300, 480, ancho=60)]
     reconocidos = [_r(ids, "/m/Vitality", "Vitality", (900, 700, 160, 24))]
+    assert B.linea_separadora(lineas, 2560) is None  # el "AURA" de la tarjeta no separa
     build = B.separar_build(lineas, reconocidos, _categorias(con), ancho=2560)
-    assert [r.nombre for r in build.equipados] == ["Vitality"] and build.coleccion == []
+    # Sin separador de verdad ni filas para deducirlo: nada se da por equipado y se avisa.
+    assert build.equipados == [] and [r.nombre for r in build.coleccion] == ["Vitality"]
+    assert build.aviso == B.AVISO_SIN_SEPARADOR
     # El filtro de polaridad de verdad va en la fila del buscador, con el orden a la derecha.
     aura = _l("AURA", 1300, 800, ancho=60)
     assert B.linea_separadora([aura, _l("POLARNOSC", 1950, 800, ancho=120)], 2560, 1440) == 824

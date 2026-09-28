@@ -12,11 +12,12 @@ import re
 import sqlite3
 from pathlib import Path
 
-from rapidfuzz import fuzz, process as rf_process
+from .difuso import fuzz, rf_process
 
 from ..registro_log import obtener
 from .items import _numero, _texto, normalizar
 from .relaciones import rareza_reliquia
+from .tabla_oficial import COMPONENTES_WARFRAME, PREFIJO_SINTETICO, _COMPONENTES, _camel
 
 log = obtener("drops")
 
@@ -24,6 +25,8 @@ RE_SUFIJO_PLANETA = re.compile(r"\s+\([^)]*\)$")
 # "200X Cubic Diodes": la cantidad va pegada al nombre en las tablas de recursos.
 RE_CANTIDAD = re.compile(r"^\d+\s*X\s+", re.IGNORECASE)
 RE_PARENTESIS = re.compile(r"\s*\([^)]*\)$")
+# "Venus/Ishtar (Caches), Rotation C": como escribe warframe-items el sitio de un drop.
+RE_ROTACION_FINAL = re.compile(r",\s*Rotation\s+\w+$", re.IGNORECASE)
 # Recompensas que no son objetos del catalogo y no tiene sentido intentar casar.
 RE_NO_ES_OBJETO = re.compile(
     r"^(\d+X\s+)?("
@@ -41,6 +44,12 @@ RE_RELIQUIA_REFINADA = re.compile(
 # Con los datos al dia quedan sin casar unas decenas de nombres (Endo, creditos,
 # recursos regionales). Por encima de esto, las tablas y el catalogo van desfasados.
 UMBRAL_SIN_CASAR = 400
+# Objetos con receta de piezas: a su nombre se le pueden colgar piezas sinteticas
+# ("Wrath Blade", "Equinox Day Chassis") cuando el catalogo no las trae con ese padre.
+CATEGORIAS_CON_PIEZAS = frozenset({
+    "Warframes", "Primary", "Secondary", "Melee", "Sentinels", "SentinelWeapons",
+    "Archwing", "Arch-Gun", "Arch-Melee", "Pets",
+})
 
 
 def _dicts(valor) -> list[dict]:
@@ -68,6 +77,13 @@ class ImportadorDrops:
         # cada aparicion repetia la busqueda difusa sobre 40.000 alias.
         self._memoria: dict[tuple[str, bool], int | None] = {}
         self.casados_difusos: dict[str, str] = {}
+        # Nombres que casaban con una pieza de OTRO padre ("Xiphos Fuselage Blueprint"
+        # con el fuselaje del Railjack): nombre -> id descartado. Solo para el log.
+        self.padre_equivocado: dict[str, int] = {}
+        self.sinteticos: list[str] = []
+        # id descartado -> ids que se quedaron con esos drops (ver quitar_misiones_ajenas).
+        self._rechazos: dict[int, set[int]] = {}
+        self._items: dict[int, tuple[str, int | None, str]] | None = None
         self.nodos_creados = 0
         self.nodos = {
             normalizar(clave): nid
@@ -101,6 +117,8 @@ class ImportadorDrops:
                 self.sin_casar[nombre] = self.sin_casar.get(nombre, 0) + 1
             return destino
         destino = self._resolver_item(nombre, difuso)
+        if destino and nombre in self.padre_equivocado:
+            self._rechazos.setdefault(self.padre_equivocado[nombre], set()).add(destino)
         self._memoria[clave_memoria] = destino
         return destino
 
@@ -120,8 +138,13 @@ class ImportadorDrops:
         candidatas += [c.removesuffix(" blueprint") for c in candidatas if c.endswith(" blueprint")]
         for candidata in candidatas:
             destino = self.alias.get(candidata)
-            if destino:
+            if destino and self._padre_encaja(candidata, destino):
                 return destino
+            if destino:
+                self.padre_equivocado[nombre] = destino
+        sintetico = self._pieza_sintetica(base)
+        if sintetico:
+            return sintetico
         if difuso and len(clave) > 6:
             # token_sort_ratio y no WRatio: este casaba por trozos y daba por buena
             # "Equinox Day Chassis Blueprint" contra un alias de Equinox a secas.
@@ -133,6 +156,134 @@ class ImportadorDrops:
                 return self.alias[mejor[0]]
         self.sin_casar[nombre] = self.sin_casar.get(nombre, 0) + 1
         return None
+
+    # -- piezas con padre explicito -------------------------------------
+
+    def _info_items(self) -> dict[int, tuple[str, int | None, str]]:
+        if self._items is None:
+            self._items = {
+                iid: (nombre or "", padre, categoria or "")
+                for iid, nombre, padre, categoria in self.con.execute(
+                    "SELECT id, nombre_en, padre_id, categoria FROM items"
+                )
+            }
+        return self._items
+
+    def _padre_encaja(self, candidata: str, destino: int) -> bool:
+        """Si el nombre trae padre delante ("Xiphos Fuselage"), la pieza tiene que ser de ese padre.
+
+        El alias "xiphos fuselage blueprint" apuntaba al plano del fuselaje del Railjack
+        y "wrath blade" a una "Blade" colgada de Pride: la ficha de esas piezas se llevaba
+        misiones que no eran suyas. Se acepta si el nombre es la pieza a secas o si las
+        palabras de delante estan en el nombre de su padre ("Kavasa Prime Band" es pieza
+        del "Kavasa Prime Kubrow Collar").
+        """
+        info = self._info_items()
+        fila = info.get(destino)
+        if not fila:
+            return True
+        nombre, padre, _cat = fila
+        pieza = normalizar(nombre)
+        if padre is None:
+            # Un objeto suelto con alias propio ("Synthetic Eidolon Shard") no es pieza de nadie.
+            return True
+        if pieza == "blueprint" and padre in info:
+            # Un plano ("Blueprint") es la pieza de su padre: se mira un nivel mas arriba.
+            nombre, padre, _cat = info[padre]
+            pieza = normalizar(nombre)
+        pieza = pieza.removesuffix(" blueprint")
+        clave = candidata.removesuffix(" blueprint")
+        if not pieza or clave == pieza or not clave.endswith(" " + pieza):
+            return True
+        delante = clave[: -len(pieza) - 1].split()
+        palabras_padre = set(normalizar(info[padre][0]).split()) if padre in info else set()
+        return set(delante) <= palabras_padre
+
+    def _pieza_sintetica(self, base: str) -> int | None:
+        """Da de alta "<Objeto> <Pieza> Blueprint" si el objeto existe y la pieza no.
+
+        Los planos de Equinox Day/Night (Tyl Regor) no estan en el catalogo, y la "Blade"
+        de Wrath esta colgada de Pride. Se crea la pieza como en tabla_oficial (unique_name
+        "/Farmadex/DE/..."), hija del objeto, y si este tiene una pieza intermedia que
+        empieza igual ("Day Aspect" para "Day Chassis") entra en su receta.
+        """
+        texto = RE_PARENTESIS.sub("", base).strip()
+        if not texto.endswith(" Blueprint"):
+            return None
+        palabras = texto.removesuffix(" Blueprint").split()
+        pieza_final = next(
+            (c for c in _COMPONENTES if " ".join(palabras).endswith(" " + c)), None
+        )
+        if not pieza_final:
+            return None
+        info = self._info_items()
+        for corte in range(len(palabras) - 1, 0, -1):
+            padre_en = " ".join(palabras[:corte])
+            resto = " ".join(palabras[corte:])
+            if not resto.endswith(pieza_final):
+                break
+            padre_id = self.alias.get(normalizar(padre_en))
+            fila = info.get(padre_id) if padre_id else None
+            if not fila or fila[1] is not None or fila[2] not in CATEGORIAS_CON_PIEZAS:
+                continue
+            # Si ya tiene una pieza parecida ("Keratinos Blades" para "Keratinos Blade"),
+            # no se inventa otra: esa la casa el parecido de mas abajo.
+            ultima, exacta = normalizar(pieza_final), normalizar(resto)
+            hijas = [(iid, normalizar(n)) for iid, (n, p, _c) in info.items()
+                     if p == padre_id and normalizar(n) != "blueprint"]
+            for iid, n in hijas:
+                if n == exacta:
+                    return iid  # ya creada (en otra construccion o por otro nombre)
+            if any(n.startswith(ultima) or ultima.startswith(n) for _iid, n in hijas):
+                return None
+            return self._crear_pieza(padre_id, fila, padre_en, resto)
+        return None
+
+    def _crear_pieza(self, padre_id: int, fila: tuple, padre_en: str, pieza: str) -> int:
+        _nombre_padre, _abuelo, categoria = fila
+        sufijo = _camel(pieza)
+        if pieza.split()[-1] in COMPONENTES_WARFRAME and categoria == "Warframes":
+            sufijo += "Component"
+        unico = f"{PREFIJO_SINTETICO}{_camel(padre_en)}{sufijo}"
+        ya = self.con.execute("SELECT id FROM items WHERE unique_name = ?", (unico,)).fetchone()
+        if ya:
+            return ya[0]
+        imagen = self.con.execute(
+            "SELECT imagen FROM items WHERE nombre_en = ? AND imagen IS NOT NULL "
+            "GROUP BY imagen ORDER BY count(*) DESC LIMIT 1",
+            (pieza.split()[-1],),
+        ).fetchone()
+        # El nombre en espanol de las demas piezas que se llaman igual ("Blade" -> "Hoja").
+        nombre_es = self.con.execute(
+            "SELECT nombre_es FROM items WHERE nombre_en = ? AND nombre_es IS NOT NULL "
+            "GROUP BY nombre_es ORDER BY count(*) DESC LIMIT 1",
+            (pieza,),
+        ).fetchone()
+        cur = self.con.execute(
+            "INSERT INTO items (unique_name, nombre_en, nombre_es, categoria, tipo, es_prime, "
+            "comerciable, imagen, padre_id, item_count) VALUES (?, ?, ?, ?, 'Componente', 0, 0, ?, ?, 1)",
+            (unico, pieza, nombre_es[0] if nombre_es else None, categoria,
+             imagen[0] if imagen else None, padre_id),
+        )
+        iid = cur.lastrowid
+        self._info_items()[iid] = (pieza, padre_id, categoria)
+        # Se pisa el alias viejo: apuntaba a la pieza de otro padre ("wrath blade" -> Pride).
+        for texto in (f"{padre_en} {pieza}", f"{padre_en} {pieza} Blueprint"):
+            self.alias[normalizar(texto)] = iid
+        # "Day Chassis" va en la receta de "Day Aspect", la pieza de Equinox que empieza igual.
+        primera = pieza.split()[0]
+        if " " in pieza:
+            intermedia = self.con.execute(
+                "SELECT id FROM items WHERE padre_id = ? AND nombre_en LIKE ? AND id != ? LIMIT 1",
+                (padre_id, f"{primera} %", iid),
+            ).fetchone()
+            if intermedia:
+                self.con.execute(
+                    "INSERT OR IGNORE INTO recetas (padre_id, item_id, cantidad) VALUES (?, ?, 1)",
+                    (intermedia[0], iid),
+                )
+        self.sinteticos.append(f"{padre_en} {pieza}")
+        return iid
 
     def nodo_id(self, planeta: str, nodo: str) -> int | None:
         nodo_limpio = RE_SUFIJO_PLANETA.sub("", nodo).strip()
@@ -230,7 +381,7 @@ class ImportadorDrops:
                 premios = info.get("rewards")
                 grupos = premios.items() if isinstance(premios, dict) else [(None, premios or [])]
                 for rotacion, lista in grupos:
-                    for premio in _dicts(lista):
+                    for premio in _sin_tabla_repetida(_dicts(lista)):
                         iid, refinamiento = self.item_con_refinamiento(
                             _nombre(premio, "itemName", "item")
                         )
@@ -259,6 +410,10 @@ class ImportadorDrops:
             if not rid:
                 continue
             refinamiento = _nombre(reliquia, "state") or "Intact"
+            # Un premio puede salir dos veces en la misma reliquia ("2X Forma" y "Forma"
+            # en la Meso D1): con la clave (reliquia, refinamiento, objeto) el segundo se
+            # perdia. Ahora se suman sus probabilidades, que es la de que salga Forma.
+            vistos: dict[int, float] = {}
             for premio in _dicts(reliquia.get("rewards")):
                 iid = self.item_id(_nombre(premio, "itemName", "item"))
                 if not iid:
@@ -267,10 +422,32 @@ class ImportadorDrops:
                 rareza = rareza_reliquia(
                     refinamiento, _numero(premio.get("chance")), _texto(premio.get("rarity"))
                 )
+                probabilidad = _numero(premio.get("chance"))
+                if iid in vistos:
+                    total = round(vistos[iid] + (probabilidad or 0), 4)
+                    vistos[iid] = total
+                    self.con.execute(
+                        "UPDATE reliquia_recompensas SET probabilidad = ? "
+                        "WHERE reliquia_id = ? AND refinamiento = ? AND item_id = ?",
+                        (total, rid, refinamiento, iid),
+                    )
+                    # Y una sola fila en la ficha del objeto, con la suma.
+                    filas = [r[0] for r in self.con.execute(
+                        "SELECT id FROM fuentes WHERE item_id = ? AND tipo = 'reliquia' "
+                        "AND origen_id = ? AND refinamiento = ? ORDER BY id",
+                        (iid, rid, refinamiento),
+                    )]
+                    if filas:
+                        self.con.execute("UPDATE fuentes SET probabilidad = ? WHERE id = ?",
+                                         (total, filas[0]))
+                        self.con.executemany("DELETE FROM fuentes WHERE id = ?",
+                                             [(f,) for f in filas[1:]])
+                    continue
+                vistos[iid] = probabilidad or 0
                 self.con.execute(
                     "INSERT OR IGNORE INTO reliquia_recompensas "
                     "(reliquia_id, refinamiento, item_id, rareza, probabilidad) VALUES (?,?,?,?,?)",
-                    (rid, refinamiento, iid, rareza, _numero(premio.get("chance"))),
+                    (rid, refinamiento, iid, rareza, probabilidad),
                 )
                 existe = self.con.execute(
                     "SELECT 1 FROM fuentes WHERE item_id=? AND tipo='reliquia' AND origen_id=? "
@@ -398,6 +575,41 @@ class ImportadorDrops:
                     datos_extra=json.dumps({"lugar": entrada.get("place")}),
                 )
 
+    def quitar_misiones_ajenas(self) -> int:
+        """Quita las misiones que el catalogo de WFCD le pone a un objeto y la tabla no.
+
+        warframe-items reparte los drops por nombre y le daba al plano del fuselaje del
+        Railjack los alijos de Terminus, Ishtar, Gradivus y Neruda, que son del "Xiphos
+        Fuselage Blueprint". Solo se quita la fila si en esa mision la tabla da la pieza
+        con la que se confundia (la que se quedo con el nombre que este objeto no casa):
+        el catalogo trae muchas misiones que la tabla escribe con otro nombre y esas se
+        dejan como estan.
+        """
+        if not self._rechazos:
+            return 0
+        filas = [
+            fila for fila in self.con.execute(
+                "SELECT id, item_id, origen_texto FROM fuentes WHERE tipo = 'otro' AND origen_texto LIKE '%/%'"
+            ) if fila[1] in self._rechazos
+        ]
+        if not filas:
+            return 0
+        tablas: dict[str, set[int]] = {}
+        for iid, origen in self.con.execute(
+            "SELECT item_id, origen_texto FROM fuentes WHERE tipo IN ('mision', 'llave')"
+        ):
+            tablas.setdefault(origen, set()).add(iid)
+        sobran = []
+        for fid, iid, origen in filas:
+            lugar = RE_ROTACION_FINAL.sub("", origen or "").strip()
+            en_tabla = tablas.get(lugar, set())
+            if iid not in en_tabla and en_tabla & self._rechazos[iid]:
+                sobran.append((fid,))
+        self.con.executemany("DELETE FROM fuentes WHERE id = ?", sobran)
+        if sobran:
+            log.info("Misiones del catalogo que la tabla no da a ese objeto: %d quitadas", len(sobran))
+        return len(sobran)
+
     # -- orquestacion -----------------------------------------------------
 
     def importar_todo(self, rutas: dict[str, Path], progreso=None, datos: dict | None = None) -> None:
@@ -469,8 +681,17 @@ class ImportadorDrops:
                 log.exception("Fallo importando %s", clave)
 
         self.traducir_nodos()
+        self.quitar_misiones_ajenas()
         if self.nodos_creados:
             log.info("Nodos dados de alta desde las tablas de drops: %d", self.nodos_creados)
+        if self.padre_equivocado:
+            log.info(
+                "Nombres que no se casan con una pieza de otro padre: %d. Ejemplos: %s",
+                len(self.padre_equivocado), ", ".join(list(self.padre_equivocado)[:15]),
+            )
+        if self.sinteticos:
+            log.info("Piezas sinteticas desde las tablas de drops: %d (%s)",
+                     len(self.sinteticos), ", ".join(self.sinteticos[:20]))
         if self.casados_difusos:
             ejemplos = list(self.casados_difusos.items())[:15]
             log.info(
@@ -488,6 +709,22 @@ class ImportadorDrops:
                 len(self.sin_casar),
                 ", ".join(n for n, _ in peores),
             )
+
+
+def _sin_tabla_repetida(premios: list[dict]) -> list[dict]:
+    """Quita las copias de una tabla de evento pegadas detras de ella.
+
+    WFCD trae "Cryotic Front" con sus 15 premios tres veces seguidas, y cada premio salia
+    con el triple de probabilidad. Solo se quita si la lista entera es la misma tabla
+    repetida (bloques de 3 filas o mas): un premio que sale dos veces en la misma tabla
+    ("Lith A13 Relic" en Hepit) es de verdad y se suma.
+    """
+    n = len(premios)
+    claves = [(_nombre(p, "itemName", "item"), p.get("chance"), p.get("rarity")) for p in premios]
+    for bloque in range(3, n // 2 + 1):
+        if n % bloque == 0 and claves == claves[:bloque] * (n // bloque):
+            return premios[:bloque]
+    return premios
 
 
 def _leer(ruta):

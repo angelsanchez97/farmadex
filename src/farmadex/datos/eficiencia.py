@@ -20,6 +20,7 @@ incursion es una al dia. Esas fuentes se quedan sin estimacion (`minutos_medios`
 
 from __future__ import annotations
 
+import json
 import re
 
 # Minutos de cargar la mision, volver al orbitador y entrar a la siguiente. Se paga
@@ -285,6 +286,23 @@ def _tramos(minutos: dict[str, float], rotacion: str | None) -> dict:
     return _info("tramos", (minutos.get(clave) or max(minutos.values())) + CARGA, rotacion=clave)
 
 
+def es_de_evento(f: dict) -> bool:
+    """Mision de un evento (Cryotic Front, Gradivus...): la tabla de drops la marca con
+    "evento" y solo se puede jugar mientras dura, asi que no se le calcula tiempo ni
+    entra en las recomendaciones como si estuviera siempre."""
+    if f.get("evento"):
+        return True
+    if f.get("tipo") not in ("mision", "llave"):
+        return False
+    extra = f.get("datos_extra")
+    if isinstance(extra, str) and '"evento"' in extra:
+        try:
+            extra = json.loads(extra)
+        except ValueError:
+            return False
+    return isinstance(extra, dict) and bool(extra.get("evento"))
+
+
 def _intento(f: dict) -> tuple[dict | None, str]:
     """Como es cada oportunidad de que salga el objeto, o por que no se estima.
 
@@ -303,7 +321,7 @@ def _intento(f: dict) -> tuple[dict | None, str]:
         return None, "reputacion"
     if tipo == "sortie":
         return None, "diaria"
-    if RE_EVENTO.search(f.get("origen_texto") or ""):
+    if RE_EVENTO.search(f.get("origen_texto") or "") or es_de_evento(f):
         return None, "evento"
     if tipo == "bounty":
         tanda = duracion_bounty(f.get("origen_texto") or "") + CARGA

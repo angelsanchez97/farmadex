@@ -310,3 +310,53 @@ def test_servicio_market_usa_el_compartido():
     finally:
         servicio.cerrar()
         market.cerrar_compartido()
+
+
+def test_emparejar_con_catalogo_de_forma_rara_no_rompe(con):
+    """Un /items cuyo "data" no es una lista (p. ej. la respuesta de /top, con sell/buy)
+    daba AttributeError 'str' object has no attribute 'get' al reconstruir el indice."""
+    from farmadex.online.market import BASE
+
+    _insertar_item(con, unique_name="/Lotus/X", nombre_en="X")
+    con.commit()
+    market = _market({f"{BASE}/items": {"data": {"sell": [], "buy": []}}})
+    assert market.emparejar(con) == 0
+    market = _market({f"{BASE}/items": {"data": ["texto", _entrada_catalogo("x", "X", game_ref="/Lotus/X")]}})
+    assert market.emparejar(con) == 1
+
+
+def test_heredar_emparejado_del_indice_anterior(tmp_path):
+    import sqlite3
+
+    from farmadex.datos.indice import heredar_emparejado
+
+    anterior = tmp_path / "viejo.sqlite"
+    v = sqlite3.connect(anterior)
+    v.execute("CREATE TABLE items (id INTEGER PRIMARY KEY, unique_name TEXT, market_slug TEXT, market_id TEXT)")
+    v.executemany("INSERT INTO items (unique_name, market_slug, market_id) VALUES (?, ?, ?)",
+                  [("/A", "a_slug", "ida"), ("/B", None, None)])
+    v.commit()
+    v.close()
+    nuevo = sqlite3.connect(":memory:")
+    nuevo.execute("CREATE TABLE items (id INTEGER PRIMARY KEY, unique_name TEXT, market_slug TEXT, market_id TEXT)")
+    nuevo.executemany("INSERT INTO items (unique_name) VALUES (?)", [("/A",), ("/B",), ("/C",)])
+    assert heredar_emparejado(nuevo, anterior) == 1
+    assert nuevo.execute("SELECT market_slug, market_id FROM items WHERE unique_name='/A'").fetchone() == ("a_slug", "ida")
+    assert heredar_emparejado(nuevo, tmp_path / "no_existe.sqlite") == 0
+
+
+def test_autoprueba_sirve_catalogo_market_del_indice(tmp_path):
+    import json
+    import sqlite3
+
+    from farmadex.autoprueba import catalogo_market_de
+
+    ruta = tmp_path / "i.sqlite"
+    c = sqlite3.connect(ruta)
+    c.execute("CREATE TABLE items (id INTEGER PRIMARY KEY, unique_name TEXT, market_slug TEXT, market_id TEXT, "
+              "nombre_en TEXT)")
+    c.execute("INSERT INTO items (unique_name, market_slug, market_id, nombre_en) VALUES ('/A', 'a', '1', 'A')")
+    c.commit()
+    c.close()
+    datos = json.loads(catalogo_market_de(ruta))
+    assert datos["data"] == [{"id": "1", "slug": "a", "gameRef": "/A", "i18n": {"en": {"name": "A"}}}]

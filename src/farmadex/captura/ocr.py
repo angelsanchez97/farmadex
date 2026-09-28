@@ -16,8 +16,8 @@ import threading
 import time
 from dataclasses import dataclass
 
-from rapidfuzz import fuzz, process as rf_process
-from rapidfuzz.distance import Levenshtein
+from ..datos.difuso import fuzz, rf_process
+from ..datos.difuso import Levenshtein
 
 from ..datos.items import normalizar
 from ..registro_log import obtener

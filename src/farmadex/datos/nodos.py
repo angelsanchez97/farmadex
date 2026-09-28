@@ -257,6 +257,44 @@ def aplicar_solnodes(con: sqlite3.Connection, datos: dict) -> dict:
     return {"anadidos": anadidos, "enlazados": enlazados, "descartados": descartados}
 
 
+# Modos de mision que las tablas o solNodes dejan mal puestos, y el de verdad. "Ancient
+# Retribution" era un evento viejo: sus 60 nodos son sabotajes normales.
+MODOS_CORREGIDOS = {"Ancient Retribution": "Sabotage"}
+
+
+def corregir_modos(con: sqlite3.Connection) -> int:
+    """Pone el modo de verdad a los nodos con uno de evento viejo o sin ninguno.
+
+    - "Ancient Retribution" pasa a "Sabotage".
+    - Un nodo sin modo que tiene tabla de alijos ("Terminus (Caches)") es un sabotaje:
+      los alijos solo existen en esas misiones, y DE no publica su tabla principal.
+    Devuelve cuantos nodos ha cambiado.
+    """
+    cambiados = 0
+    for viejo, nuevo in MODOS_CORREGIDOS.items():
+        cambiados += con.execute(
+            "UPDATE nodos SET mision_en = ?, mision_es = NULL WHERE mision_en = ?", (nuevo, viejo)
+        ).rowcount
+    cambiados += con.execute(
+        """
+        UPDATE nodos SET mision_en = 'Sabotage', mision_es = NULL
+         WHERE mision_en IS NULL AND EXISTS (
+               SELECT 1 FROM fuentes f WHERE f.origen_id = nodos.id
+                  AND f.tipo IN ('mision', 'llave') AND f.origen_texto LIKE '%(Caches)')
+        """
+    ).rowcount
+    con.execute(
+        """
+        UPDATE nodos SET mision_es = COALESCE(
+            (SELECT es FROM glosario WHERE dominio = 'mision' AND en = nodos.mision_en), mision_en)
+        WHERE mision_en IS NOT NULL AND mision_es IS NULL
+        """
+    )
+    if cambiados:
+        log.info("Modos de mision corregidos: %d nodos", cambiados)
+    return cambiados
+
+
 def reenlazar_fuentes(con: sqlite3.Connection) -> dict:
     """Asigna nodo a las fuentes de mision que quedaron sin enlazar.
 

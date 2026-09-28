@@ -13,7 +13,7 @@ from PySide6.QtGui import QColor, QFont, QFontMetrics, QGuiApplication, QPainter
 from PySide6.QtWidgets import QWidget
 
 from ..captura import prioridad as prio
-from ..captura.reliquias import texto_platino
+from ..captura.reliquias import copiar, texto_platino
 from ..idiomas import t
 from ..registro_log import obtener
 
@@ -131,7 +131,8 @@ class EtiquetasRecompensas(QWidget):
 
     def mostrar(self, recompensas: list, maestria: dict[int, tuple[str, str]] | None = None) -> None:
         """`maestria`: item_id -> (texto, clave de estado) para los que dan rango, si hay perfil."""
-        self.recompensas = [r for r in recompensas if r.caja]
+        # Copias: las cajas se pasan a coordenadas del monitor sin tocar las del lector.
+        self.recompensas = copiar([r for r in recompensas if r.caja])
         self.maestria = maestria or {}
         self._seguro = True  # se reactiva marca a marca cuando llegue el veredicto nuevo
         if not self.recompensas:

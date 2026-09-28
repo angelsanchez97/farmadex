@@ -113,14 +113,19 @@ def hay_lecturas(usuario: sqlite3.Connection) -> bool:
     return usuario.execute("SELECT 1 FROM inventario_lecturas LIMIT 1").fetchone() is not None
 
 
-def sincronizar_objetivos(usuario: sqlite3.Connection) -> list[tuple[str, int, int]]:
+def sincronizar_objetivos(usuario: sqlite3.Connection, solo=None) -> list[tuple[str, int, int]]:
     """Sube cada objetivo hasta la cantidad leida en el inventario (nunca la baja).
 
+    `solo` (unique_names) limita la subida a las lecturas confirmadas que se acaban de
+    guardar: una cifra dudosa de otra vez no mueve ningun objetivo.
     Devuelve [(unique_name, antes, despues)] de los objetivos que han cambiado.
     """
     preparar(usuario)
     cambios = []
+    solo = set(solo) if solo is not None else None
     for objetivo in estado_objetivos.listar(usuario):
+        if solo is not None and objetivo.unique_name not in solo:
+            continue
         lectura = cantidad_de(usuario, objetivo.unique_name)
         # El contador de un objetivo no pasa de su meta: tener 900 de 500 lo deja en 500.
         tope = min(lectura.cantidad, objetivo.objetivo) if lectura is not None else 0

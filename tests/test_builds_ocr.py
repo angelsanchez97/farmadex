@@ -159,3 +159,79 @@ def test_tarjeta_sintetica_con_ocr(motor, lector_tarjetas, caso):
     assert all(e.slug for e in tarjeta.estadisticas), tarjeta.estadisticas
     assert tarjeta.maestria == 12
     assert tarjeta.fiable, tarjeta.avisos
+
+
+# --- sin separador: la caja de buscar, el orden y el filtro tapados ------------------------
+
+def _pantalla_sin_separador(con_equipados=True, alto=1440):
+    """Como es_1440_mesa_a (captura real) sin "BUSCAR"/"ORDENAR"/"TODOS": aura y exilus a
+    y=260, dos filas de cuatro a y=490 y y=674, y la coleccion en dos filas desde y=916."""
+    from farmadex.captura.ocr import Leido, Reconocido
+    lineas = [Leido("CAPACIDAD", 206, 125, 180, 32, 0.9), Leido("MESA PRIME", 700, 40, 300, 40, 0.9)]
+    rec, cats, n = [], {}, 100
+
+    def mod(y, x, alto_caja=31):
+        nonlocal n
+        n += 1
+        cats[n] = "Mods"
+        rec.append(Reconocido(f"Mod {n}", n, f"Mod {n}", 100.0, (x, y, 230, alto_caja)))
+        return n
+
+    equipados = []
+    if con_equipados:
+        equipados += [mod(260, 1257, 80), mod(260, 1580, 80)]
+        equipados += [mod(490, x) for x in (910, 1232, 1566, 1909)]
+        equipados += [mod(674, x) for x in (913, 1290, 1586, 1936)]
+    coleccion = [mod(965, x) for x in (605, 1290, 1630, 1934)] + [mod(916, 934, 97)]
+    coleccion += [mod(1145, x) for x in (594, 914, 1249, 1596, 1954, 2296)]
+    return lineas, rec, cats, set(equipados), set(coleccion)
+
+
+def test_sin_separador_el_corte_sale_de_las_filas():
+    lineas, rec, cats, equipados, coleccion = _pantalla_sin_separador()
+    build = B.separar_build(lineas, rec, cats, ancho=2560, alto=1440)
+    assert {r.item_id for r in build.equipados} == equipados
+    assert {r.item_id for r in build.coleccion} == coleccion
+    assert build.separador == "huecos" and not build.aviso
+
+
+def test_sin_separador_y_sin_equipados_todo_a_la_coleccion_con_aviso():
+    # Antes toda la coleccion contaba como equipada (22/0) y se evaluaba esa "build".
+    lineas, rec, cats, _, coleccion = _pantalla_sin_separador(con_equipados=False)
+    build = B.separar_build(lineas, rec, cats, ancho=2560, alto=1440)
+    assert not build.equipados
+    assert {r.item_id for r in build.coleccion} == coleccion
+    assert build.separador == "" and build.aviso == B.AVISO_SIN_SEPARADOR
+
+
+def test_con_caja_de_buscar_no_cambia_nada():
+    from farmadex.captura.ocr import Leido
+    lineas, rec, cats, equipados, coleccion = _pantalla_sin_separador()
+    lineas.append(Leido("BUSCAR...", 200, 830, 150, 30, 0.9))
+    build = B.separar_build(lineas, rec, cats, ancho=2560, alto=1440)
+    assert {r.item_id for r in build.equipados} == equipados
+    assert build.separador == "buscar"
+
+
+def test_tarjeta_enorme_se_reduce_antes_del_ocr():
+    """Un recuadro mayor que el de una pantalla 4K se reduce: el OCR con entradas enormes
+    se quedaba con cientos de MB (autoprueba, flujo agrietado)."""
+    import numpy as np
+
+    from farmadex.captura.agrietados import ALTO_MAXIMO_LECTURA
+
+    vistos = []
+
+    class Motor:
+        def leer(self, imagen):
+            vistos.append(imagen.shape[:2])
+            return []
+
+    class Lector:
+        def leer(self, lineas):
+            return lineas
+
+    leer_tarjeta(np.zeros((2736, 2016, 3), np.uint8), Motor(), Lector())
+    leer_tarjeta(np.zeros((1000, 700, 3), np.uint8), Motor(), Lector())
+    assert vistos[0][0] == ALTO_MAXIMO_LECTURA
+    assert vistos[1] == (1000, 700)

@@ -295,6 +295,43 @@ def grado(valor: float, minimo: float, maximo: float, negativo: bool = False) ->
     return None
 
 
+def paso_de_redondeo(slug: str, valor: float) -> float:
+    """Media unidad de lo ultimo que ensena el juego: el valor real esta en [v - paso, v + paso).
+
+    El juego ensena un decimal ("+2.7m", "+91.3%"); el dano a una faccion va como
+    multiplicador con dos decimales ("x1.39" = +39 %), o sea media centesima del
+    multiplicador = medio punto del %. Un valor con dos decimales se tomo tal cual.
+    """
+    if slug.startswith("damage_vs_") and abs(valor - round(valor)) < 1e-6:
+        return 0.5  # vino de "x1.39": un % entero
+    if abs(valor * 10 - round(valor * 10)) > 1e-6:
+        return 0.005
+    return 0.05
+
+
+def grado_con_margen(valor: float, minimo: float, maximo: float, negativo: bool = False,
+                     paso: float = 0.0) -> str | None:
+    """Como `grado`, pero sabiendo que `valor` va redondeado (+-`paso`).
+
+    En las estadisticas pequenas (atravesar 2.7 m, alcance 1.9 m) una decima son varios
+    puntos de desviacion: si el valor real puede caer en dos grados se ensenan los dos,
+    de peor a mejor ("B–A-"), en vez de dar uno que puede estar mal.
+    """
+    if paso <= 0:
+        return grado(valor, minimo, maximo, negativo)
+    magnitud = abs(valor)
+    bajo, alto = magnitud - paso, magnitud + paso - 1e-9
+    # Con el negativo, cuanto mas quita, peor: el extremo "alto" es el peor.
+    peor_v, mejor_v = (alto, bajo) if negativo else (bajo, alto)
+    letras = [g for g in (grado(peor_v, minimo, maximo, negativo), grado(magnitud, minimo, maximo, negativo),
+                          grado(mejor_v, minimo, maximo, negativo)) if g is not None]
+    if not letras:
+        return None
+    if letras[0] == letras[-1]:
+        return letras[0]
+    return f"{letras[0]}–{letras[-1]}"
+
+
 def posicion(valor: float, minimo: float, maximo: float, negativo: bool = False) -> float:
     """0..1 de peor a mejor dentro del rango, para pintar una barra. Se recorta a 0..1."""
     desv = desviacion(valor, minimo, maximo)
@@ -339,7 +376,8 @@ def evaluar(estadisticas: list[tuple[str, float, bool]], clase: str, disposicion
         minimo, maximo = tramo
         salida.append(Evaluacion(
             slug, valor, negativo, minimo, maximo,
-            grado(valor, minimo, maximo, negativo), posicion(valor, minimo, maximo, negativo),
+            grado_con_margen(valor, minimo, maximo, negativo, paso_de_redondeo(slug, valor)),
+            posicion(valor, minimo, maximo, negativo),
         ))
     return salida
 

@@ -1,5 +1,37 @@
 # Cambios
 
+## 0.6.3
+
+Esta versión sale de una revisión a fondo de todo el programa, centrada en que lo que enseña
+Farmadex sea exactamente lo que hay en pantalla y en los datos.
+
+**Recompensas de reliquias**
+- En escuadra, tu pieza ya no se confunde con la pieza hermana que ha sacado otro jugador (por
+  ejemplo, tu Receptor con su Cañón).
+- Con el escalado de Windows al 125-150 % o con el juego en un segundo monitor ya no salen tarjetas
+  repetidas o descolocadas.
+- Funciona también en pantallas 16:10, 4:3 y ultrapanorámicas.
+- El panel se esconde solo si la pantalla de recompensas ya se ha cerrado.
+- Cuando no hay precios, elige bien la pieza más rara.
+
+**Builds, rivens y perfil**
+- Si algo tapa el buscador del arsenal, ya no toma toda la colección por equipada: lo deduce por
+  la posición y, si no está claro, avisa en vez de evaluar a ciegas.
+- En los rivens, cuando el redondeo del juego no deja saber la nota exacta, enseña el margen.
+- La lectura del perfil solo guarda el tuyo: si miras el de otro jugador, no se mezcla.
+- "Leer bajo el cursor" funciona mejor en 4K.
+
+**Datos**
+- Las reliquias Réquiem ya no salen como "en bóveda".
+- Corregidas piezas que aparecían en el objeto equivocado (Xiphos, Wrath, Equinox).
+- Los eventos que ya pasaron se marcan como tales y no se recomiendan.
+- Los sabotajes muestran su tipo de misión.
+- Las reliquias que dan el mismo premio dos veces enseñan su probabilidad completa.
+- Al actualizar, Farmadex vuelve a preparar los datos una vez.
+
+**Más rápido**
+- Arranca antes y no se para al abrir fichas grandes, cambiar de tema o de tamaño.
+
 ## 0.6.2
 
 **Más rápido y sin atascos**

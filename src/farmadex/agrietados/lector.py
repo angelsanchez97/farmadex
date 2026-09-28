@@ -15,7 +15,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from rapidfuzz import fuzz, process as rf_process
+from ..datos.difuso import fuzz, rf_process
 
 from ..captura.ocr import Leido
 from ..datos.items import normalizar
@@ -364,7 +364,10 @@ class LectorTarjeta:
         del_nombre = list(tarjeta.nombre_slugs or [])
         if del_nombre and len(stats) == len(del_nombre) + 1 and stats[-1].entendida and not negativos:
             stats[-1].negativo = True
-            stats[-1].signo_dudoso = False
+            # Deducido del nombre, que tambien lo lee el OCR (un prefijo mal leido cambia
+            # la cuenta): se marca, pero sigue en duda salvo con cuatro estadisticas, que
+            # siempre llevan negativo.
+            stats[-1].signo_dudoso = len(stats) != 4
             negativos = [stats[-1]]
             for e in stats[:-1]:
                 if e.slug in del_nombre:

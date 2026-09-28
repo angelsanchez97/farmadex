@@ -40,7 +40,8 @@ from .pantalla import Region
 
 log = obtener("reliquias")
 
-# La fila de nombres de las tarjetas, en proporciones de la ventana del juego.
+# La fila de nombres de las tarjetas, en proporciones de la ventana del juego. Lo
+# vertical vale tal cual; el ancho real de la tira lo calcula `region_fila`.
 FILA_NOMBRES = (0.24, 0.375, 0.76, 0.435)
 # Ancho de una tarjeta en proporcion del alto de la ventana (241/1080, 321/1440, 137/607).
 ANCHO_TARJETA = 0.2235
@@ -53,6 +54,8 @@ ALTO_FILA = 80
 UMBRAL_CONOCIDAS = 70
 UMBRAL_RELIQUIAS = 76
 UMBRAL_CATALOGO = 80
+# Una conocida (EE.log) con esta puntuacion o mas gana sin mirar el resto de escalones.
+SEGURA_CONOCIDA = 95
 
 SIN_IDENTIFICAR = 0  # mismo valor que en reliquias.py (aqui no se importa para no dar vueltas)
 RE_NOMBRE_PLAUSIBLE = re.compile(r"^[^\d]{6,}$")
@@ -154,8 +157,18 @@ class CasadorEscalonado:
         ]
 
     def casar(self, texto: str) -> tuple[int | None, str, float]:
+        """El mejor casado entre todos los escalones, no el primero que pase su umbral.
+
+        Lo que EE.log dio es de TODA la escuadra: si la tarjeta propia es otra pieza
+        del mismo objeto ("Receptor De Akbolto Prime" con el cañon de otro jugador
+        en el log), el escalon de conocidas casaba el cañon con 79 y ganaba sin
+        mirar que el catalogo daba el receptor con 100. Ahora una conocida solo gana
+        si es casi exacta (`SEGURA_CONOCIDA`) o si nadie la supera; entre escalones
+        con la misma puntuacion gana el mas cerrado.
+        """
         variantes = variantes_texto(texto)
-        for casador, umbral in self.escalones:
+        elegido = (None, "", 0.0)
+        for i, (casador, umbral) in enumerate(self.escalones):
             if casador is None:
                 continue
             mejor = (None, "", 0.0)
@@ -163,19 +176,63 @@ class CasadorEscalonado:
                 item_id, nombre, puntos = casador.casar(variante, umbral)
                 if item_id and puntos > mejor[2]:
                     mejor = (item_id, nombre, puntos)
-            if mejor[0]:
+            if not mejor[0]:
+                continue
+            if i == 0 and mejor[2] >= SEGURA_CONOCIDA:
                 return mejor
-        return None, "", 0.0
+            if mejor[2] > elegido[2]:
+                elegido = mejor
+            if elegido[2] >= 100:  # nadie la puede superar y el empate lo gana el escalon mas cerrado
+                break
+        return elegido
 
 
 # -- geometria de las tarjetas ------------------------------------------------
 
 
+def alto_interfaz(ventana: Region) -> float:
+    """Alto de referencia de la interfaz del juego: el de la ventana en 16:9 o mas ancha;
+    en mas estrecha (16:10, 4:3) la interfaz se ajusta al ancho, como una caja 16:9
+    centrada (asi lo calcula tambien WFInfo)."""
+    return min(ventana.alto, ventana.ancho * 9 / 16)
+
+
 def ranuras(ventana: Region, n: int) -> list[tuple[float, float]]:
     """Los n huecos de tarjeta, centrados en la ventana, como (x0, x1) de pantalla."""
-    ancho = ANCHO_TARJETA * ventana.alto
+    ancho = ANCHO_TARJETA * alto_interfaz(ventana)
     x0 = ventana.x + ventana.ancho / 2 - n * ancho / 2
     return [(x0 + i * ancho, x0 + (i + 1) * ancho) for i in range(n)]
+
+
+# Margen a cada lado de las tarjetas, en proporcion del alto: nombres que el juego
+# centra y se salen un poco de su tarjeta, y cajas del detector algo holgadas.
+MARGEN_FILA = 0.03
+
+
+def region_fila(ventana: Region) -> Region:
+    """La tira de nombres de `ventana`, sea cual sea su proporcion.
+
+    Con la tira en fraccion del ancho (24 %..76 %), a 16:10 y 4:3 las tarjetas
+    de los lados quedaban cortadas (a 1600x1200 cuatro tarjetas miden 1073 px y
+    la tira solo 832), y a 21:9 se leia mucho fondo de mas. Ahora el ancho sale
+    de las cuatro ranuras de tarjeta. En pantallas mas estrechas que 16:9 la
+    interfaz se ajusta al ancho (caja 16:9 centrada, `alto_interfaz`, como en
+    WFInfo); como no hay capturas reales de 16:10 y 4:3 en el banco, la tira cubre
+    tambien la otra posibilidad (tarjetas por el alto de la ventana).
+    """
+    arr, aba = FILA_NOMBRES[1], FILA_NOMBRES[3]
+    y0, y1 = ventana.y + arr * ventana.alto, ventana.y + aba * ventana.alto
+    alto_ui = alto_interfaz(ventana)
+    if alto_ui < ventana.alto:  # mas estrecha que 16:9: tambien la caja 16:9 centrada
+        base = ventana.y + (ventana.alto - alto_ui) / 2
+        y0, y1 = min(y0, base + arr * alto_ui), max(y1, base + aba * alto_ui)
+    # Ancho: el mayor de las dos posibilidades (tarjetas por el alto de la ventana o por
+    # el de la caja 16:9), mas un margen.
+    medio = 2 * ANCHO_TARJETA * ventana.alto + MARGEN_FILA * ventana.alto
+    centro = ventana.x + ventana.ancho / 2
+    x0 = max(ventana.x, centro - medio)
+    x1 = min(ventana.x + ventana.ancho, centro + medio)
+    return Region(round(x0), round(y0), max(1, round(x1 - x0)), max(1, round(y1 - y0)))
 
 
 def _partir(linea: Leido, huecos: list[tuple[float, float]], ancho_tarjeta: float):
@@ -231,7 +288,7 @@ def repartir(lineas: list[Leido], ventana: Region, region: Region, esperadas: in
     """
     if not lineas:
         return None
-    ancho_tarjeta = ANCHO_TARJETA * ventana.alto
+    ancho_tarjeta = ANCHO_TARJETA * alto_interfaz(ventana)
     cuentas = ([esperadas] if esperadas else []) + [n for n in (4, 3, 2, 1) if n != esperadas]
     for n in cuentas:
         huecos = [(a - region.x, b - region.x) for a, b in ranuras(ventana, n)]
@@ -349,7 +406,7 @@ def leer_pantalla(
     agrupa sin ella. Devuelve None si no se pudo capturar.
     """
     tiempos = tiempos if tiempos is not None else {}
-    region = ventana.recortar(*fila)
+    region = region_fila(ventana) if fila == FILA_NOMBRES else ventana.recortar(*fila)
     t0 = time.perf_counter()
     imagen = capturar(region)
     tiempos["captura"] = tiempos.get("captura", 0.0) + time.perf_counter() - t0

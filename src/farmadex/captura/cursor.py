@@ -23,11 +23,22 @@ from .reliquias import LectorBase
 
 log = obtener("cursor")
 
-# Hasta donde amplia RapidOCR el recuadro (620x170) antes de buscar texto. Con los
+# Hasta donde amplia RapidOCR el recuadro (620x170 a 1080p) antes de buscar texto. Con los
 # 736 de siempre se buscaba a 2684x736; con 608 cuesta ~30 % menos y, medido sobre
 # 72 capturas reales (12 recuadros cada una), encuentra 12 nombres mas de los que
 # pierde (1) sin colar mas falsos. Con 544 o menos ya perdia nombres.
 LADO_MINIMO = 608
+
+# El recuadro alrededor del raton medido a 1080p. Se escala con el alto del juego: a 4K
+# los nombres miden el doble y un recuadro fijo solo cogia media palabra; a 720p cogia
+# medio inventario de alrededor.
+ANCHO_RECUADRO, ALTO_RECUADRO = 620, 170
+
+
+def tamano_recuadro(alto_juego: int | None) -> tuple[int, int]:
+    """(ancho, alto) del recuadro para un juego de ese alto (1080p si no se sabe)."""
+    escala = max(0.5, (alto_juego or 1080) / 1080.0)
+    return int(ANCHO_RECUADRO * escala), int(ALTO_RECUADRO * escala)
 
 
 class LectorCursor(LectorBase):
@@ -75,7 +86,16 @@ class LectorCursor(LectorBase):
         self.estado.emit(t("Leyendo lo que hay bajo el cursor..."))
         inicio = time.perf_counter()
         # Con el juego en ventana, el recuadro no se sale de ella.
-        region = pantalla.region_alrededor_del_cursor(limite=pantalla.region_juego())
+        juego = pantalla.region_juego()
+        if juego is not None:
+            alto_juego = juego.alto
+        else:
+            try:
+                alto_juego = pantalla.region_pantalla_completa().alto
+            except Exception:  # noqa: BLE001 - sin Windows (pruebas): como a 1080p
+                alto_juego = None
+        ancho_r, alto_r = tamano_recuadro(alto_juego)
+        region = pantalla.region_alrededor_del_cursor(ancho_r, alto_r, limite=juego)
         imagen = pantalla.capturar(region)
         if imagen is None:
             self.estado.emit(t("No se pudo capturar la pantalla"))

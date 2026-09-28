@@ -30,6 +30,9 @@ ANCHO_TARJETA, ALTO_TARJETA = 560, 760
 MINIMO_CONFIANZA = 0.4
 # Por debajo de esta altura el OCR pierde decimales: se amplia la captura antes de leer.
 ALTO_MINIMO_LECTURA = 500
+# Y por encima de esta (el recuadro de una pantalla 4K) se reduce: el texto sigue sobrado de
+# grande y el OCR con entradas enormes se quedaba con cientos de MB que no devolvia.
+ALTO_MAXIMO_LECTURA = 1520
 
 
 def armas_conocidas(con=None) -> list[ArmaConocida]:
@@ -150,12 +153,15 @@ class LectorAgrietado(LectorBase):
 def leer_tarjeta(imagen, motor, lector: LectorTarjeta) -> TarjetaLeida:
     """OCR del recuadro (ampliado si es pequeno) e interpretacion de la tarjeta."""
     alto = imagen.shape[0]
-    if alto < ALTO_MINIMO_LECTURA:
+    if alto < ALTO_MINIMO_LECTURA or alto > ALTO_MAXIMO_LECTURA:
         try:
             import cv2
 
-            factor = ALTO_MINIMO_LECTURA / alto
-            imagen = cv2.resize(imagen, None, fx=factor, fy=factor, interpolation=cv2.INTER_CUBIC)
+            if alto < ALTO_MINIMO_LECTURA:
+                factor, modo = ALTO_MINIMO_LECTURA / alto, cv2.INTER_CUBIC
+            else:
+                factor, modo = ALTO_MAXIMO_LECTURA / alto, cv2.INTER_AREA
+            imagen = cv2.resize(imagen, None, fx=factor, fy=factor, interpolation=modo)
         except ImportError:  # pragma: no cover - cv2 viene con rapidocr
             pass
     lineas = [l for l in unir_filas(motor.leer(imagen)) if l.confianza >= MINIMO_CONFIANZA]

@@ -1,5 +1,6 @@
 {
   "_comentario": "Farmadex UI texts. Key = the Spanish text used in the code; value = the translation. {braces} are placeholders and must stay as they are. Delete a line to fall back to Spanish.",
+  "No se ve dónde acaban tus mods equipados (la barra de buscar está tapada): los mods se muestran todos juntos y no se evalúa la build. Cierra lo que tape la pantalla y vuelve a leer.": "Can't see where your equipped mods end (the search bar is covered): all mods are shown together and the build isn't rated. Close whatever is covering the screen and read again.",
   "Actualizar al abrir Farmadex": "Update when opening Farmadex",
   "Con «Actualizar al abrir», si al abrir Farmadex hay una versión nueva, se instala antes de empezar. Si Farmadex se abre solo con Windows, no sale ninguna ventana.": "With “Update when opening”, if there is a new version when you open Farmadex, it is installed before starting. If Farmadex opens by itself with Windows, no window appears.",
   "Actualizando Farmadex a la versión {version}...": "Updating Farmadex to version {version}...",
