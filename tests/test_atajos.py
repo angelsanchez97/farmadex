@@ -498,3 +498,36 @@ def test_sin_exclusion_de_capturas_el_recuadro_no_estorba_a_la_lectura(app):
     assert aviso.caja.y() < 540 - 300  # lejos de la tarjeta que hay bajo el cursor
     aviso.cerrar()
 
+
+
+def test_guia_bienvenida_y_modo_juego_ensenan_el_atajo_legible(app):
+    """Nada de "Mouse4" ni "Mando:View+A" en crudo: el mismo texto que la bandeja."""
+    from types import SimpleNamespace
+
+    from PySide6.QtWidgets import QWidget
+
+    from farmadex import idiomas
+    from farmadex.ui import bienvenida, guia, vista_compacta
+    from farmadex.ui.campo_atajo import texto_legible, texto_tecla
+
+    idiomas.cargar("es")
+    config = {"hotkey_overlay": "Mouse4", "hotkey_build": "Mando:View+A", "hotkey_agrietado": "F9"}
+    cuerpos = " ".join(p.cuerpo for p in guia._pasos(SimpleNamespace(config=config)))
+    assert texto_legible("Mouse4") in cuerpos and texto_legible("Mando:View+A") in cuerpos
+    assert "Mouse4" not in cuerpos and "Mando:View+A" not in cuerpos
+
+    ventana = QWidget()
+    ventana.config = config
+    capa = bienvenida.CapaBienvenida(ventana)
+    textos = " ".join(a + " " + b for a, b in capa._apartados)
+    assert texto_legible("Mouse4") in textos and "Mouse4" not in textos
+
+    vista = vista_compacta.VistaCompacta(SimpleNamespace(con=None))
+    vista.config = {"hotkey_overlay": "Mando:View+A"}
+    vista._poner_tecla()
+    assert vista.tecla.text() == texto_tecla("Mando:View+A") == "MANDO: VIEW+A"
+    vista.config = {"hotkey_overlay": "Mouse4"}
+    vista._poner_tecla()
+    assert vista.tecla.text() == texto_legible("Mouse4").upper() and "MOUSE4" not in vista.tecla.text()
+    vista.deleteLater()
+    ventana.deleteLater()

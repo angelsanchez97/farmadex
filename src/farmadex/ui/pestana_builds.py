@@ -38,6 +38,7 @@ from ..captura.builds import Build
 from ..config import cargar
 from ..datos import evaluar_build
 from ..idiomas import es_castellano, t
+from .campo_atajo import texto_legible, texto_tecla
 from ..registro_log import obtener
 from . import builds_overframe, colores_tipo, widgets
 from .estilo_c import (
@@ -299,12 +300,13 @@ class PestanaBuilds(QWidget):
         return en or es or respaldo
 
     def retraducir(self) -> None:
-        atajo = self.config.get("hotkey_build", "")
+        crudo = self.config.get("hotkey_build", "")
+        atajo = texto_legible(crudo) if crudo else ""
         self.boton.setText(t("Leer la pantalla de mejoras"))
         self.boton.setToolTip(
             t("Leer la pantalla de mejoras ({atajo})", atajo=atajo) if atajo else t("Leer la pantalla de mejoras")
         )
-        self.tecla_atajo.setText(atajo.upper())
+        self.tecla_atajo.setText(texto_tecla(crudo) if crudo else "")
         self.tecla_atajo.setVisible(bool(atajo))
         self.nota.setText(t(
             "En el juego, abre Arsenal > Mejorar de la warframe o el arma que quieras y pulsa el botón "

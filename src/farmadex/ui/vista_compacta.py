@@ -27,6 +27,7 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QSizePolicy, QVBox
 
 from ..datos import indice, items, relaciones
 from ..idiomas import es_castellano, glosa, nombre as nombre_idioma, t
+from .campo_atajo import texto_tecla
 from ..registro_log import obtener
 from . import ficha_detalles, glosario
 from .busqueda_fondo import BusquedaEnFondo
@@ -218,7 +219,7 @@ class VistaCompacta(QWidget):
         self.marcar_sucio()
 
     def _poner_tecla(self) -> None:
-        self.tecla.setText(str(self.config.get("hotkey_overlay") or ATAJO_POR_DEFECTO).upper())
+        self.tecla.setText(texto_tecla(str(self.config.get("hotkey_overlay") or ATAJO_POR_DEFECTO)))
 
     def tarjetas_activas(self) -> bool:
         return self.boton_tarjetas.isChecked()

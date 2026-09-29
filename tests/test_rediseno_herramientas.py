@@ -193,7 +193,8 @@ def test_la_bienvenida_va_por_pasos_numerados_y_avisa_de_como_empezar(ventana):
     assert capa.caja_empezar.isVisibleTo(capa) and capa.nota_empezar.isVisibleTo(capa)
     assert not capa.boton_guia.isVisibleTo(capa) and not capa.boton_empezar.isVisibleTo(capa)
     pasos = " ".join(e.text() for e in capa.textos)
-    assert ventana.config.get("hotkey_overlay", "Ctrl+Alt+W").upper() in pasos
+    from farmadex.ui.campo_atajo import texto_legible
+    assert texto_legible(ventana.config.get("hotkey_overlay", "Ctrl+Alt+W")).upper() in pasos
     assert "Ventana sin bordes" in pasos
     # Siempre como HTML: si no, los &quot; que deja frase() se verian tal cual.
     from PySide6.QtCore import Qt

@@ -31,6 +31,7 @@ from .. import config as config_modulo
 from ..config import cargar, guardar
 from ..datos import eficiencia, indice
 from ..idiomas import es_castellano, t
+from .campo_atajo import texto_legible
 from ..estado import inventario as estado_inventario
 from ..estado import objetivos as estado_objetivos
 from ..estado import aperturas as estado_aperturas
@@ -1683,7 +1684,7 @@ class VentanaOverlay(QWidget):
         elif getattr(self, "disparador", None) is not None and not self.disparador.activo:
             self._aviso_visible("auto", t(
                 "Reliquia abierta, pero la lectura automática está desactivada en Ajustes: "
-                "pulsa {atajo} para leerla.", atajo=self.config.get("hotkey_reliquias", ""),
+                "pulsa {atajo} para leerla.", atajo=texto_legible(self.config.get("hotkey_reliquias", "")),
             ))
 
     def diagnostico(self):
@@ -2447,7 +2448,7 @@ class VentanaOverlay(QWidget):
         self.logo.setPixmap(mapa)
 
     def _pintar_pista(self) -> None:
-        atajo = self.config.get("hotkey_overlay", "Ctrl+Alt+W")
+        atajo = texto_legible(self.config.get("hotkey_overlay", "Ctrl+Alt+W"))
         self.pista.setText(t("{atajo} o Escape para cerrar", atajo=atajo) + "  ")
         self._pintar_tooltip_minimizar()
         if hasattr(self, "compacta"):
@@ -2456,7 +2457,7 @@ class VentanaOverlay(QWidget):
     def _pintar_tooltip_minimizar(self) -> None:
         if not hasattr(self, "boton_minimizar"):
             return
-        atajo = self.config.get("hotkey_overlay", "Ctrl+Alt+W")
+        atajo = texto_legible(self.config.get("hotkey_overlay", "Ctrl+Alt+W"))
         if self._en_barra():
             texto = t("Minimizar: vuelve con {atajo}, desde la barra de tareas o con el icono de la bandeja",
                       atajo=atajo)

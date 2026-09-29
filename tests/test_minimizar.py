@@ -76,7 +76,7 @@ def test_el_boton_de_minimizar_va_justo_antes_de_la_x(ventana):
     assert i_min >= 0 and i_max == i_min + 1 and i_x == i_max + 1
     assert ventana.boton_minimizar.isVisibleTo(ventana)
     tip = ventana.boton_minimizar.toolTip()
-    assert "Ctrl+Alt+W" in tip and "barra de tareas" in tip
+    assert "Ctrl + Alt + W" in tip and "barra de tareas" in tip
 
 
 def test_en_el_modo_juego_tambien_esta_y_cabe(ventana):

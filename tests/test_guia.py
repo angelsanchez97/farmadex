@@ -238,6 +238,7 @@ def test_la_guia_ensena_lo_nuevo_de_la_0_5(ventana):
         assert guia._rect_resalte is not None and guia._rect_resalte.intersects(rect), titulo
     # Los atajos que salen en el texto son los que tiene configurados el usuario.
     guia._ir_a_paso(titulos.index("Build"))
-    assert ventana.config.get("hotkey_build", "Ctrl+Alt+B") in guia.cuerpo.text()
+    from farmadex.ui.campo_atajo import texto_legible
+    assert texto_legible(ventana.config.get("hotkey_build", "Ctrl+Alt+B")) in guia.cuerpo.text()
     compacto = guia._pasos[titulos.index("Modo juego")].cuerpo
     assert "Fijar" in compacto

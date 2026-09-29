@@ -105,6 +105,11 @@ def texto_legible(combinacion: str) -> str:
     return " + ".join(partes)
 
 
+def texto_tecla(combinacion: str) -> str:
+    """Lo mismo que texto_legible, apretado y en mayusculas para las teclitas de los botones."""
+    return texto_legible(combinacion).replace(" + ", "+").upper()
+
+
 def aviso_de(combinacion: str) -> str:
     """Aviso (no error) si el atajo va a estorbar jugando; '' si no."""
     if not (combinacion or "").strip():
