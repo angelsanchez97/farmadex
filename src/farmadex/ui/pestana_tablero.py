@@ -29,6 +29,7 @@ from ..idiomas import nombre as nombre_idioma, t
 from ..registro_log import obtener
 from . import widgets
 from .tooltip_reliquia import marcar, reliquia_de_ruta
+from .que_hago import PanelQueHago
 from .estilo_c import (
     BotonC,
     CasillaC,
@@ -291,6 +292,11 @@ class PestanaTablero(QWidget):
         self.pista_enter = EtiquetaC("Enter", "pequeno", tinta="tenue")
         self.panel_buscar.capa.addLayout(fila(icono("buscar", 19), self.caja, self.pista_enter, espacio=8))
 
+        # "¿Qué hago ahora?": la fisura abierta que antes te da una pieza de tus metas.
+        self.que_hago = PanelQueHago()
+        self.que_hago.abrir_item.connect(self.abrir_item.emit)
+        self.que_hago.navegar.connect(self.navegar.emit)
+
         self.heroe = PanelC(t("Tu siguiente paso"))
         self.capa_heroe = QVBoxLayout()
         self.capa_heroe.setSpacing(0)
@@ -334,6 +340,7 @@ class PestanaTablero(QWidget):
         cuerpo.setContentsMargins(0, px(4, False), px(4, False), px(4, False))
         cuerpo.setSpacing(px(16, False))
         cuerpo.addWidget(self.panel_buscar)
+        cuerpo.addWidget(self.que_hago)
         arriba = QHBoxLayout()
         arriba.setSpacing(px(16, False))
         arriba.addWidget(self.heroe, 3)
@@ -363,6 +370,7 @@ class PestanaTablero(QWidget):
         self.indice = indice
         self.usuario = usuario
         self._rutas.clear()
+        self.que_hago.conectar(indice, usuario)
         self.marcar_sucio()
 
     def conectar_indice(self, indice: sqlite3.Connection | None) -> None:
@@ -371,6 +379,7 @@ class PestanaTablero(QWidget):
     def actualizar_mundo(self, mundo) -> None:
         self.mundo = mundo
         self._fallo_mundo = None
+        self.que_hago.actualizar_mundo(mundo)
         self._pintar_mundo()
 
     def marcar_desactualizado(self, motivo: str) -> None:
@@ -380,12 +389,14 @@ class PestanaTablero(QWidget):
     def marcar_sucio(self) -> None:
         """Algo ha cambiado (objetivos, ritmo, indice): se recalcula al verse la pagina."""
         self._sucio = True
+        self.que_hago.marcar_sucio()
         if self.isVisible():
             self._diferido.start()
 
     def olvidar_rutas(self) -> None:
         """El ritmo de juego cambia los tiempos: las rutas guardadas ya no valen."""
         self._rutas.clear()
+        self.que_hago.olvidar_rutas()
         self.marcar_sucio()
 
     def showEvent(self, evento):  # noqa: N802 - firma de Qt
@@ -403,6 +414,7 @@ class PestanaTablero(QWidget):
     def retraducir(self) -> None:
         self._textos_fijos()
         self._rutas.clear()  # los nombres del indice van en el idioma de la interfaz
+        self.que_hago.retraducir()
         self.refrescar()
 
     def repintar(self) -> None:

@@ -46,6 +46,7 @@ from .estilo_c import (
     px,
     transparente,
 )
+from .ayuda_maestria import PanelAyudaMaestria
 from .pestana_buscador import categoria_es
 from .widgets import BarraProgreso
 
@@ -164,6 +165,11 @@ class PestanaPerfil(QWidget):
         self.estado.setTextFormat(Qt.PlainText)
         self._pintar_estado("")
 
+        # Que te falta por dominar y donde se consigue: un solo panel que sobrevive a los
+        # repintados (lleva su calculo en segundo plano y sus filtros).
+        self.ayuda_maestria = PanelAyudaMaestria()
+        self.ayuda_maestria.abrir_item.connect(self.abrir_item.emit)
+
         self.contenido = transparente(QWidget())
         self.capa_contenido = QVBoxLayout(self.contenido)
         self.capa_contenido.setContentsMargins(0, 0, px(6, False), px(6, False))
@@ -189,12 +195,14 @@ class PestanaPerfil(QWidget):
 
     def conectar_indice(self, con: sqlite3.Connection | None) -> None:
         self.indice = con
+        self.ayuda_maestria.conectar(con, self.usuario)
         self.pintar()
 
     def retraducir(self) -> None:
         self.boton.setText(t("Importar perfil (JSON)..."))
         self.filtro_acero.setText(t("Nodos pendientes del Camino de Acero"))
         self._pintar_estado("")  # el aviso de la ultima importacion era de un solo uso
+        self.ayuda_maestria.retraducir()
         self.pintar()
 
     def repintar(self) -> None:
@@ -302,6 +310,8 @@ class PestanaPerfil(QWidget):
 
     def pintar(self) -> None:
         posicion = self.desplazable.verticalScrollBar().value()
+        self.capa_contenido.removeWidget(self.ayuda_maestria)  # se conserva entre repintados
+        self.ayuda_maestria.hide()
         _vaciar(self.capa_contenido)
         self.rango = None
         if self.indice is None:
@@ -312,12 +322,18 @@ class PestanaPerfil(QWidget):
         if not self.hay_perfil():
             self.filtro_acero.setVisible(False)
             self._pintar_sin_perfil()
+            self._poner_ayuda()
             self.capa_contenido.addStretch(1)
             return
         self.filtro_acero.setVisible(True)
         self._pintar_perfil()
         self.capa_contenido.addStretch(1)
         self.desplazable.verticalScrollBar().setValue(posicion)
+
+    def _poner_ayuda(self) -> None:
+        self.capa_contenido.addWidget(self.ayuda_maestria)
+        self.ayuda_maestria.show()
+        self.ayuda_maestria.marcar_sucio()  # el perfil ha podido cambiar (OCR, importacion)
 
     def _pintar_sin_perfil(self) -> None:
         panel = PanelC(t("Perfil del jugador: preparado, pero hoy sin fuente de datos"))
@@ -367,6 +383,7 @@ class PestanaPerfil(QWidget):
         columnas.addLayout(izquierda, 3)
         columnas.addLayout(derecha, 2)
         self.capa_contenido.addLayout(columnas)
+        self._poner_ayuda()
         self.capa_contenido.addWidget(self._panel_origen())
 
     # -- paneles ---------------------------------------------------------------------

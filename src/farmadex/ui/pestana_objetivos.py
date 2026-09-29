@@ -990,7 +990,10 @@ class PestanaObjetivos(QWidget):
         self.panel_hoy.capa.addLayout(self.capa_hoy)
         self.boton_mundo = BotonC("", tam=11)
         self.boton_mundo.clicked.connect(self._ir_a_mundo)
-        self.panel_hoy.capa.addLayout(fila(None, self.boton_mundo))
+        # "¿Qué hago ahora?" vive en el Tablero: este boton lleva alli.
+        self.boton_que_hago = BotonC("", tam=11)
+        self.boton_que_hago.clicked.connect(self._ir_a_que_hago)
+        self.panel_hoy.capa.addLayout(fila(self.boton_que_hago, None, self.boton_mundo))
         self.panel_ayuda = PanelC("", remate=False)
         self.ayuda = EtiquetaC("", "pequeno", envolver=True)
         self.panel_ayuda.capa.addWidget(self.ayuda)
@@ -1064,6 +1067,8 @@ class PestanaObjetivos(QWidget):
         self.boton_anadir.setToolTip(t("Busca algo y pulsa '+ Objetivo' en su ficha."))
         self.panel_hoy.poner_titulo(t("Para esto te sirve hoy"))
         self.boton_mundo.setText(t("Ver el mundo"))
+        self.boton_que_hago.setText(t("¿Qué hago ahora?"))
+        self.boton_que_hago.setToolTip(t("La fisura abierta que antes te da una pieza de tus metas, en el Tablero."))
         self.panel_ayuda.poner_titulo(t("Cómo se usa"))
         self.ayuda.setText("<br>".join(html.escape(x) for x in (
             t("+ y - suman o restan; ×1 elige cuánto suma cada clic."),
@@ -1117,6 +1122,11 @@ class PestanaObjetivos(QWidget):
             caja = getattr(getattr(ventana, "buscador", None), "caja", None)
             if caja is not None:
                 caja.setFocus()
+
+    def _ir_a_que_hago(self) -> None:
+        ventana = self._ventana()
+        if ventana is not None:
+            ventana.ir_a("tablero")
 
     def _ir_a_mundo(self) -> None:
         ventana = self._ventana()
