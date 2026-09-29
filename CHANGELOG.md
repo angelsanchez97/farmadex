@@ -1,5 +1,82 @@
 # Cambios
 
+## 0.6.4
+
+Esta versión va de ayudarte a decidir: qué hacer con las fisuras de hoy, cuándo comprar barato,
+qué te falta por dominar y qué hacer con cada pieza que te sale.
+
+**¿Qué hago ahora?**
+- Nuevo en el Tablero: mira las fisuras abiertas y te dice qué reliquia abrir y dónde para
+  conseguir antes una pieza de tus metas, con el porqué en una línea (lo que se tarda, lo probable
+  que es y si tienes la reliquia o dónde se consigue). Pulsa en la reliquia o en la pieza para ver
+  su ficha. También se llega desde Mis metas > Objetivos.
+- Se actualiza solo cuando cambian las fisuras, y si ninguna te sirve te dice dónde farmear la
+  reliquia mientras tanto.
+- Las fisuras del Camino de Acero salen detrás de las normales, salvo que tu perfil diga que lo
+  tienes desbloqueado.
+
+**Maestría**
+- Nuevo en Mis metas > Perfil: "Qué te falta por dominar y dónde conseguirlo". Lista todo lo que
+  da maestría de lo más fácil a lo más difícil (lo que ya tienes a medias, lo que se compra con
+  créditos, lo que cae en misiones, sindicatos, fundición, reliquias, bóveda...), con filtros y
+  buscador.
+- Si Farmadex no sabe qué tienes dominado lo dice claro, y puedes marcarlo tú con "Ya lo tengo" o
+  pegar tu lista de nombres.
+
+**Alertas de precio**
+- Nuevo en Herramientas > Alertas: elige un objeto, pon un precio y Farmadex te avisa cuando
+  alguien conectado lo venda en warframe.market a ese precio o menos. El aviso dice quién lo vende
+  y por cuánto, y al pulsarlo se copia el mensaje para pegarlo tal cual en el chat del juego.
+- Las alertas se crean con el botón "Avisarme de precio" de la ficha de un objeto o con la
+  campanita de cada meta en Mis metas. En mods y arcanos eliges si te vale cualquier rango o solo
+  el máximo.
+- Desde la lista puedes pausar, reanudar o borrar cada alerta y ver lo más barato que se ha visto.
+  Si warframe.market no contesta, se dice claramente y nunca se enseña un precio antiguo como si
+  fuera de ahora.
+- Farmadex mira el mercado con calma y sin agobiar a la web, y el mismo vendedor al mismo precio no
+  te avisa dos veces. Se respeta la plataforma que tengas configurada.
+
+**Agrietados**
+- Al evaluar un agrietado, junto al veredicto sale lo que piden por agrietados parecidos al tuyo en
+  las subastas de warframe.market. Si hay muy pocos, dice "sin datos suficientes" en vez de
+  inventarse un precio, y la lectura va igual de rápida que antes.
+
+**Historial de reliquias**
+- Nueva pestaña Mis metas > Historial: cada pantalla de recompensas que lee Farmadex queda apuntada,
+  con lo que había y, cuando se sabe seguro, lo que te llevaste. En solitario lo sabe él solo; en
+  escuadra queda como "sin confirmar" hasta que marques tú cuál te quedaste. Nunca se apunta como
+  tuya una pieza dudosa.
+- Ves los ducados que llevas, una estimación del platino (avisando de que es una estimación y de
+  cuándo es el precio), tu suerte con las raras comparada con lo normal y cuántas aperturas hacen
+  falta de media para las piezas de tu lista.
+- Se puede apagar desde la propia pestaña y borrar entero con un botón. Del registro del juego solo
+  se guarda qué objeto salió, nada de tu cuenta.
+
+**Vender o fundir**
+- En el panel de recompensas y en el historial, cada pieza te dice si te conviene más venderla o
+  guardarla para cambiarla por ducados a Baro. Si la pieza está en tus metas, manda "te hace
+  falta". Sin un precio reciente no te aconseja nada, y el panel sigue saliendo igual de rápido.
+
+**Lectura de pantalla más rápida y ligera**
+- Leer una build es bastante más rápido, sobre todo en 4K y en equipos con el juego apretando la
+  CPU. Lee exactamente lo mismo que antes.
+- Las demás lecturas que pides con atajo (recompensas, bajo el cursor) también van más ágiles en
+  equipos de pocos núcleos.
+- La lectura automática del perfil en 4K gasta mucha menos memoria y tarda menos.
+
+**Arranque**
+- Si la conexión está colgada, comprobar si hay versión nueva ya no alarga el arranque más de lo
+  previsto.
+
+**Inventario automático**
+- La lectura automática de cantidades del Inventario sigue apagada por defecto: en las pruebas con
+  capturas reales todavía puede confundir alguna cifra, y preferimos no apuntarte cantidades que no
+  son.
+
+**Tabla de reliquia al pasar el ratón**
+- Ya no enseña la reliquia que había antes en ese mismo sitio cuando cambias de página o bajas
+  una fila en el inventario de reliquias.
+
 ## 0.6.3
 
 Esta versión sale de una revisión a fondo de todo el programa, centrada en que lo que enseña
