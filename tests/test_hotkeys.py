@@ -15,6 +15,12 @@ def test_no_distingue_mayusculas_ni_espacios():
     assert parsear("ctrl + shift + q") == (MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, ord("Q"))
 
 
+def test_una_tecla_sola_ya_vale():
+    """Desde 0.6.5 no hace falta modificador: el jugador elige una tecla que no le estorbe."""
+    assert parsear("W") == (MOD_NOREPEAT, ord("W"))
+    assert parsear("F9") == (MOD_NOREPEAT, 0x78)
+
+
 def test_teclas_con_nombre():
     assert parsear("Alt+F5")[1] == 0x74
     assert parsear("Ctrl+Espacio")[1] == 0x20
@@ -22,7 +28,7 @@ def test_teclas_con_nombre():
 
 @pytest.mark.parametrize(
     "combinacion",
-    ["", "W", "Ctrl", "Ctrl+Alt+W+Q", "Ctrl+tecla_inventada"],
+    ["", "Ctrl", "Ctrl+Alt+W+Q", "Ctrl+tecla_inventada", "Mouse4", "Mando:A"],
 )
 def test_combinaciones_invalidas(combinacion):
     with pytest.raises(ValueError):

@@ -56,7 +56,7 @@ ARGUMENTO_CARGA = "--autoprueba-carga"
 
 FLUJOS = (
     "instancia", "actualizar_al_abrir", "arranque", "recompensas", "cursor", "build", "agrietado",
-    "hover", "tarjeta_app", "buscar", "fichas", "secciones", "modo_juego", "refrescos", "minimizar",
+    "hover", "tarjeta_app", "rafagas", "buscar", "fichas", "secciones", "modo_juego", "refrescos", "minimizar",
     "bienvenida", "guia", "cierre",
 )
 
@@ -1462,6 +1462,135 @@ class Autoprueba:
             servicio.ocultar()
         self.flujo("tarjeta_app", {"tiempos": _resumen_tiempos(tiempos), "mostradas": mostradas,
                                    "total": len(ids)})
+
+    # atajos en rafaga ----------------------------------------------------------------------------
+
+    RAFAGA_N = 40
+
+    def _disparar(self, nombre: str) -> None:
+        """Lo mismo que hace la aplicacion al recibir un atajo (app.Aplicacion._hotkey)."""
+        v = self.ventana
+        metodo = {"overlay": "alternar", "reliquias": "leer_recompensas", "cursor": "leer_cursor",
+                  "build": "leer_build", "agrietado": "leer_agrietado"}[nombre]
+        getattr(v, metodo)()
+
+    def flujo_rafagas(self) -> None:
+        """Cada atajo pulsado muchas veces seguidas, y todos mezclados: nada peta, no se
+        encolan decenas de lecturas y, al acabar, una pulsacion normal sigue funcionando."""
+        import random
+
+        v = self.ventana
+        casos = self.casos()
+        imagen_de = {}
+        for tipo in ("build", "agrietado", "recompensas"):
+            for ruta, info in casos.get(tipo, []):
+                if info.get("fila") or info.get("franja") or info.get("no_legible"):
+                    continue
+                img = self.imagen(ruta)
+                if img is not None:
+                    imagen_de[tipo] = img
+                    break
+        sondas = {"build": "VentanaOverlay._build_leida", "agrietado": "VentanaOverlay._agrietado_leido",
+                  "reliquias": "VentanaOverlay._pintar_recompensas",
+                  "cursor": "VentanaOverlay._lectura_cursor_terminada"}
+        imagen_para = {"build": "build", "agrietado": "agrietado", "reliquias": "recompensas",
+                       "cursor": "recompensas"}
+        capturas_antes = self.sim.capturas
+        excepciones_antes = len(self.excepciones)
+        filas = []
+
+        def calmarse(claves: list[str], maximo: float, calma: float = 1.5) -> float:
+            """Espera a que no llegue ninguna lectura mas en `calma` s; devuelve cuando llego la ultima."""
+            t_fin = time.perf_counter() + maximo
+            previas, ultima_t = sum(self.sondas.n(c) for c in claves), time.perf_counter()
+            while time.perf_counter() < t_fin:
+                self.bombear(0.05)
+                n = sum(self.sondas.n(c) for c in claves)
+                if n != previas:
+                    previas, ultima_t = n, time.perf_counter()
+                elif time.perf_counter() - ultima_t > calma:
+                    break
+            return ultima_t
+
+        for nombre, clave in sondas.items():
+            img = imagen_de.get(imagen_para[nombre])
+            if img is None:
+                continue
+            self.sim.poner(img)
+            self.bombear(1.0)
+            n0 = self.sondas.n(clave)
+            t0 = time.perf_counter()
+            hueco = 0.0
+            for _ in range(self.RAFAGA_N):
+                self._disparar(nombre)
+                hueco = max(hueco, self.bombear(0.01))
+            ultima = calmarse([clave], 90.0)
+            lecturas = self.sondas.n(clave) - n0
+            # Despues de la rafaga, una pulsacion normal tiene que leer.
+            self.bombear(1.0)
+            t1 = time.perf_counter()
+            self._disparar(nombre)
+            despues = self.esperar(lambda: self.sondas.desde(clave, t1), 15.0)
+            filas.append({"atajo": nombre, "pulsaciones": self.RAFAGA_N, "lecturas": lecturas,
+                          "hasta_calmarse_ms": _ms(ultima - t0),
+                          "despues_ms": _ms(despues) if despues is not None else None,
+                          "congelada_ms": _ms(hueco)})
+            self.bombear(0.5)
+            if nombre == "reliquias":
+                v.etiquetas.hide()
+        # Todo mezclado, como quien aporrea el teclado (con el de ensenar/esconder incluido).
+        random.seed(11)
+        nombres = ("overlay", "reliquias", "cursor", "build", "agrietado")
+        self.sim.poner(imagen_de.get("build") if imagen_de.get("build") is not None
+                       else imagen_de.get("recompensas"))
+        t0 = time.perf_counter()
+        hueco = 0.0
+        for _ in range(150):
+            self._disparar(random.choice(nombres))
+            hueco = max(hueco, self.bombear(random.choice((0.0, 0.002, 0.01, 0.03))))
+        ultima_t = calmarse(list(sondas.values()), 120.0, calma=2.0)
+        mezcla = {"pulsaciones": 150, "hasta_calmarse_ms": _ms(ultima_t - t0), "congelada_ms": _ms(hueco)}
+        if not v.isVisible():
+            v.mostrar()
+        # Y otra vez una lectura normal de cada cosa (con el recuadro "Leyendo...", si lo hay).
+        normales = {}
+        recuadro = {}
+        aviso = getattr(v, "aviso_lectura", None)
+        for nombre, clave in sondas.items():
+            img = imagen_de.get(imagen_para[nombre])
+            if img is None:
+                continue
+            self.sim.poner(img)
+            self.bombear(1.0)
+            t1 = time.perf_counter()
+            self._disparar(nombre)
+            al_pulsar = bool(aviso is not None and aviso.visible() and aviso.estado == "leyendo")
+            r = self.esperar(lambda: self.sondas.desde(clave, t1), 15.0)
+            normales[nombre] = _ms(r) if r is not None else None
+            if aviso is not None:
+                self.bombear(0.05)
+                recuadro[nombre] = {"sale_al_pulsar": al_pulsar, "pintar_ms": round(aviso.ultimo_ms, 1),
+                                    "al_acabar": aviso.estado or "escondido"}
+        self.bombear(0.5)
+        v.etiquetas.hide()
+        self.sim.poner(None)
+        nuevas = self.excepciones[excepciones_antes:]
+        ok = (not nuevas and all(f["despues_ms"] is not None for f in filas)
+              and all(x is not None for x in normales.values())
+              and all(f["lecturas"] <= self.RAFAGA_MAX_LECTURAS for f in filas))
+        if recuadro:
+            # Sin exclusion de capturas (offscreen, Windows antiguo) la build va sin recuadro.
+            excluida = bool(aviso.caja is not None and aviso.caja.excluida)
+            ok = ok and all((r["sale_al_pulsar"] or (n == "build" and not excluida)) and r["al_acabar"] != "leyendo"
+                            for n, r in recuadro.items())
+        self.flujo("rafagas", {"atajos": filas, "mezcla": mezcla, "despues_de_la_mezcla_ms": normales,
+                               "recuadro": recuadro,
+                               "capturas": self.sim.capturas - capturas_antes,
+                               "excepciones": len(nuevas), "ok": ok})
+
+    # Una rafaga de 40 pulsaciones en medio segundo: como mucho la lectura en curso y una
+    # mas (la ultima pulsacion), con margen para los reintentos propios de cada lector.
+    RAFAGA_MAX_LECTURAS = 6
 
     # busqueda tecla a tecla ---------------------------------------------------------------------
 
