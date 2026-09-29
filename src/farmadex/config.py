@@ -142,6 +142,8 @@ POR_DEFECTO = {
     "historial_aperturas": True,
     # Recuadro "Leyendo..." al pulsar un atajo de lectura (ui/aviso_lectura.py).
     "aviso_lectura": True,
+    # La vista completa se cerro maximizada: vuelve a abrirse asi (ui/overlay.py).
+    "overlay_maximizada": False,
 }
 
 

@@ -19,6 +19,8 @@
   "Pulsa un atajo y luego la tecla que quieras: una tecla sola (F9), una combinación (Ctrl+Alt+W), la rueda o un botón lateral del ratón, o botones del mando.": "Clique sur un raccourci puis appuie sur la touche voulue : une touche seule (F9), une combinaison (Ctrl+Alt+W), la molette ou un bouton latéral de la souris, ou des boutons de la manette.",
   "Esc cancela y Retroceso lo deja sin atajo. Las teclas solas, el ratón y el mando siguen llegando al juego; las combinaciones con Ctrl o Alt, no.": "Échap annule et Retour arrière l'efface. Les touches seules, la souris et la manette arrivent toujours au jeu ; les combinaisons avec Ctrl ou Alt, non.",
   "{atajo} está puesto dos veces: cambia uno de los dos.": "{atajo} est utilisé deux fois : change l'un des deux.",
+  "Maximizar": "Agrandir",
+  "Restaurar": "Restaurer",
   "Ahora no hay ninguna fisura abierta de las eras que te sirven ({eras}).": "Aucune fissure n'est ouverte pour l'instant dans les ères qui te servent ({eras}).",
   "Las fisuras de tus eras que hay abiertas ({n}) se cierran antes de que te dé tiempo a terminarlas.": "Les fissures ouvertes de tes ères ({n}) se ferment avant que tu aies le temps de les finir.",
   "Hay {n} fisura(s) de tus eras abiertas, pero sus reliquias ni las tienes leídas en el inventario ni se sabe dónde farmearlas.": "Il y a {n} fissure(s) ouverte(s) de tes ères, mais leurs reliques ne sont ni lues dans ton inventaire ni farmables à un endroit connu.",

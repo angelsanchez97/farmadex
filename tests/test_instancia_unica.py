@@ -167,14 +167,18 @@ def test_el_instalador_puede_pedir_el_cierre_escribiendo_en_la_tuberia_a_pelo(qa
 
 def test_el_instalador_usa_el_mismo_nombre_de_tuberia_y_mutex():
     iss = (RAIZ / "empaquetado" / "instalador.iss").read_text(encoding="utf-8")
-    prefijo = re.search(r"PrefijoTuberia = '([^']+)'", iss).group(1)
+    # {#SufijoDatos} va vacio en la version real (solo lo rellenan las pruebas del instalador).
+    prefijo = re.search(r"PrefijoTuberia = '([^']+)'", iss).group(1).replace("{#SufijoDatos}", "")
     # El instalador habla con el Farmadex real, sin el sufijo que FARMADEX_DATOS pone en pruebas.
     sufijo = instancia_unica._sufijo_datos()
     assert prefijo == "\\\\.\\pipe\\" + instancia_unica.PREFIJO_TUBERIA.replace(sufijo, "")
     assert "GetUserNameString" in iss and "'salir' + #10" in iss
     assert instancia_unica.nombre_tuberia("ana") == instancia_unica.PREFIJO_TUBERIA + "ana"
-    # Y el instalador limpia las librerias viejas antes de copiar las nuevas.
-    assert re.search(r'^\[InstallDelete\]\s*\n(?:;.*\n)*Type: filesandordirs; Name: "\{app\}\\_internal"', iss, re.M)
+    # Las librerias viejas ya no se borran antes de copiar (si la instalacion se cortaba, el
+    # programa quedaba roto): _internal entero se sustituye al conmutar, y antes de copiar
+    # solo se limpian los restos de una instalacion cortada.
+    assert not re.search(r'^Type: filesandordirs; Name: "\{app\}\\_internal"', iss, re.M)
+    assert re.search(r'^\[InstallDelete\]\s*\n(?:;.*\n)*Type: filesandordirs; Name: "\{app\}\\_nuevo"', iss, re.M)
 
 
 # -- arranque duplicado -----------------------------------------------------------

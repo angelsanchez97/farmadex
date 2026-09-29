@@ -98,6 +98,9 @@ ICONO = {
 ICONO.update({"hecho": "", "editar": "", "leer": "", "importar": "", "menos": ""})
 # Minimizar la ventana (ChromeMinimize), junto a la x de la cabecera.
 ICONO["minimizar"] = ""
+# Maximizar y restaurar (ChromeMaximize / ChromeRestore), entre minimizar y la x.
+ICONO["maximizar"] = ""
+ICONO["restaurar"] = ""
 # Campana (Ringer): alertas de precio.
 ICONO["campana"] = ""
 
