@@ -305,3 +305,20 @@ def test_captura_real_de_la_pantalla_de_reliquias():
         recorte = np.ascontiguousarray(imagen[ry:ry + h, rx:rx + w])
         lector.cache.vaciar()
         assert lector.leer_imagen(recorte, (x - rx, y - ry), (x, y))[0] == esperado, (x, y)
+
+
+def test_la_cache_no_confunde_dos_reliquias_de_la_misma_casilla():
+    """Misma media (el nombre ocupa pocos pixeles) pero una casilla distinta: no es la misma."""
+    import numpy as np
+
+    from farmadex.captura import reliquia_hover as RH
+
+    a = np.full((12, 16), 80.0, np.float32)
+    b = a.copy()
+    b[5, 7] += 50  # el nombre cambiado cae en una casilla
+    assert float(np.abs(a - b).mean()) < 6  # con solo la media se daba por igual
+    assert not RH.misma_huella(a, b)
+    assert RH.misma_huella(a, a + 2)  # la misma pantalla con un poco de ruido sigue valiendo
+    cache = RH.CacheHover()
+    cache.guardar(600, 550, "reliquias", a, (11, "Intacta"))
+    assert cache.buscar(605, 548, "reliquias", b) == (None, False)
