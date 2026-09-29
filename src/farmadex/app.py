@@ -53,6 +53,10 @@ class Aplicacion:
         # Avisos que tienen que verse con la ventana escondida (reliquia en pantalla
         # completa exclusiva, lector que no carga): globo de la bandeja.
         self.ventana.aviso_bandeja.connect(self._aviso_bandeja)
+        # Alertas de precio: al pulsar el globo se copia el mensaje "/w" del vendedor.
+        self._copiar_al_pulsar = ""
+        self.ventana.aviso_alerta_precio.connect(self._aviso_alerta_precio)
+        self.bandeja.messageClicked.connect(self._globo_pulsado)
         self.hotkeys: GestorHotkeys | None = None
         self.recargar_hotkeys(
             {
@@ -113,7 +117,22 @@ class Aplicacion:
         self.ventana.ir_a("ajustes")
 
     def _aviso_bandeja(self, texto: str) -> None:
+        self._copiar_al_pulsar = ""
         self.bandeja.showMessage(NOMBRE_APP, texto, self.icono, 10000)
+
+    def _aviso_alerta_precio(self, texto: str, mensaje: str) -> None:
+        self._copiar_al_pulsar = mensaje
+        self.bandeja.showMessage(NOMBRE_APP, texto, self.icono, 15000)
+
+    def _globo_pulsado(self) -> None:
+        """Globo de una alerta de precio pulsado: el "/w" al portapapeles, listo para pegar.
+
+        No se abre la ventana: quien pulsa el globo suele estar jugando y lo que quiere
+        es pegar el mensaje en el chat del juego. La lista esta en Herramientas > Alertas.
+        """
+        mensaje, self._copiar_al_pulsar = self._copiar_al_pulsar, ""
+        if mensaje:
+            self.qt.clipboard().setText(mensaje)
 
     # -- atajos --------------------------------------------------------------
 

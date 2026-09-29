@@ -141,6 +141,8 @@ class _Contexto:
         self.pedir_imagen = lambda _unico, _miniatura: None
         # Ruta de un objeto (con la cache de la pestana).
         self.ruta = lambda _unico: None
+        # Alerta de precio en warframe.market (unique_name, nombre); None = sin boton.
+        self.avisar_precio = None
 
 
 # -- piezas pequenas -------------------------------------------------------------------
@@ -402,6 +404,17 @@ class FilaRecurso(QWidget):
         self.cambiado.emit()
 
 
+def _se_vende(indice, unique_name: str) -> bool:
+    """Si el objeto tiene ficha en warframe.market (para el boton de alerta de precio)."""
+    if indice is None or not unique_name:
+        return False
+    try:
+        fila_slug = indice.execute("SELECT market_slug FROM items WHERE unique_name = ?", (unique_name,)).fetchone()
+    except Exception:  # noqa: BLE001 - indice a medio reconstruir
+        return False
+    return bool(fila_slug and fila_slug[0])
+
+
 class FilaObjetivo(QWidget):
     """Un objetivo: su recuadro con nombre, ruta y botones y, si tiene receta, el panel
     de recursos de fabricacion debajo (abierto con la flecha o con un clic en la fila)."""
@@ -516,10 +529,23 @@ class FilaObjetivo(QWidget):
         self.quitar = BotonGlifo("cerrar", t("Quitar"))
         self.quitar.setToolTip(t("Quitar"))
         self.quitar.clicked.connect(self._borrar)
+        # Alerta de precio: solo si el objeto se vende en warframe.market.
+        self.alerta = None
+        if self.contexto.avisar_precio is not None and _se_vende(indice, objetivo.unique_name):
+            self.alerta = BotonGlifo("campana", t("Avisarme de precio"))
+            self.alerta.setToolTip(t("Te avisa cuando alguien lo venda en warframe.market a tu precio o menos."))
+            self.alerta.clicked.connect(
+                lambda: self.contexto.avisar_precio(objetivo.unique_name, objetivo.nombre_completo))
+        botones_alerta = [self.alerta] if self.alerta is not None else []
+        if self.alerta is None and self.contexto.avisar_precio is not None:
+            # Hueco del mismo ancho: que los botones de todas las filas sigan en columna.
+            hueco_alerta = transparente(QWidget())
+            hueco_alerta.setFixedWidth(px(14 + 12, False))
+            botones_alerta = [hueco_alerta]
 
         self.panel.capa.addLayout(fila(
             *delante, self.miniatura, textos, px(8, False), self.control, px(4, False),
-            self.completar, self.editar, self.quitar, espacio=px(6, False),
+            *botones_alerta, self.completar, self.editar, self.quitar, espacio=px(6, False),
         ))
 
         caja = QVBoxLayout(self)
@@ -715,12 +741,25 @@ class PanelSet(QWidget):
         self.quitar = BotonGlifo("cerrar", t("Quitar set"))
         self.quitar.setToolTip(t("Quitar set"))
         self.quitar.clicked.connect(self._borrar)
+        # Alerta de precio del set entero (el objeto padre), si se vende en warframe.market.
+        self.alerta = None
+        botones_alerta = []
+        if contexto.avisar_precio is not None:
+            if _se_vende(indice, grupo or ""):
+                self.alerta = BotonGlifo("campana", t("Avisarme de precio"))
+                self.alerta.setToolTip(t("Te avisa cuando alguien lo venda en warframe.market a tu precio o menos."))
+                self.alerta.clicked.connect(lambda: contexto.avisar_precio(grupo, self.titulo.text()))
+                botones_alerta = [self.alerta]
+            else:
+                hueco_alerta = transparente(QWidget())
+                hueco_alerta.setFixedWidth(px(14 + 12, False))
+                botones_alerta = [hueco_alerta]
 
         self.panel.capa.addLayout(fila(
             self.marcar, self.cabecera, self.miniatura,
             columna(fila(*cabeza, espacio=px(8, False)), self.etiqueta, espacio=px(1, False)),
             px(8, False), self.menos, self.cuenta, self.mas, hueco_paso, px(4, False),
-            self.completar, self.editar, self.quitar, espacio=px(6, False),
+            *botones_alerta, self.completar, self.editar, self.quitar, espacio=px(6, False),
         ))
 
         self.piezas = transparente(QWidget())
@@ -923,6 +962,8 @@ def lineas_hoy(mundo, pasos: list, ahora=None) -> list[dict]:
 class PestanaObjetivos(QWidget):
     # Se emite cada vez que la lista cambia (anadir, sumar, borrar): Mundo la usa.
     cambiados = Signal()
+    # "Avisarme de precio" de una meta: unique_name y nombre (Herramientas > Alertas).
+    avisar_precio = Signal(str, str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -933,6 +974,7 @@ class PestanaObjetivos(QWidget):
         self.contexto = _Contexto()
         self.contexto.pedir_imagen = self._pedir_imagen
         self.contexto.ruta = self._ruta
+        self.contexto.avisar_precio = self.avisar_precio.emit
         self.estado = SIN_EMPEZAR
         self.categoria: str | None = None
         self.pagina = 0

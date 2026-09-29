@@ -14,7 +14,7 @@ import threading
 from dataclasses import dataclass, field
 
 from .. import NOMBRE_APP, URL_CONTACTO, VERSION
-from ..config import PLATAFORMA
+from ..config import PLATAFORMA, cargar
 from ..datos.items import normalizar
 from ..registro_log import obtener
 from .http import Cliente
@@ -25,6 +25,17 @@ BASE = "https://api.warframe.market/v2"
 # Dos peticiones por segundo: el limite publicado son tres.
 POR_SEGUNDO = 2.0
 CACHE_SEGUNDOS = 600
+# Plataformas que entiende la cabecera "Platform" de warframe.market.
+PLATAFORMAS = ("pc", "ps4", "xbox", "switch", "mobile")
+
+
+def plataforma_configurada() -> str:
+    """La plataforma de config.json ("plataforma") si es una de las del mercado; si no, pc."""
+    try:
+        valor = str(cargar().get("plataforma") or "").strip().lower()
+    except Exception:  # noqa: BLE001 - una config rota no deja sin mercado
+        valor = ""
+    return valor if valor in PLATAFORMAS else PLATAFORMA
 
 
 @dataclass
@@ -93,7 +104,7 @@ class Market:
             cabeceras={
                 "User-Agent": f"{NOMBRE_APP}/{VERSION} (+{contacto})",
                 "Language": idioma,
-                "Platform": PLATAFORMA,
+                "Platform": plataforma_configurada(),
                 "Accept": "application/json",
             },
         )
@@ -212,6 +223,48 @@ class Market:
                 otro.por_rango = {}
                 precios.por_rango[r] = otro
         return precios
+
+    def ventas_ahora(self, slug: str, rango: int | None = None, segundos_cache: float = 60.0) -> Precios:
+        """Las ventas mas baratas de jugadores conectados, recien pedidas (para las alertas).
+
+        `/top` solo trae ordenes de gente conectada (en el juego u online). Un solo
+        intento: si falla (429, caida), quien vigila espera y lo vuelve a probar mas
+        tarde en vez de insistir en el acto. Con `rango`, solo las de ese rango.
+        """
+        if not self.disponible:
+            return Precios(slug=slug, error="Falta configurar el contacto del User-Agent")
+        url = f"{BASE}/orders/item/{slug}/top" + (f"?rank={rango}" if rango is not None else "")
+        try:
+            datos = self.cliente.json(url, segundos_cache=segundos_cache, intentos=1)
+        except RuntimeError as e:
+            return Precios(slug=slug, error=str(e))
+        try:
+            precios = analizar_ordenes(slug, datos, rango=rango)
+        except Exception as e:  # noqa: BLE001
+            log.warning("Respuesta de warframe.market con un formato inesperado para %s: %s", slug, e)
+            return Precios(slug=slug, error="respuesta con formato inesperado")
+        if rango is None and precios.con_rango:
+            # Sin rango pedido, cualquier rango vale: se juntan todas las ventas.
+            for otro in precios.por_rango.values():
+                precios.ventas.extend(otro.ventas)
+                precios.compras.extend(otro.compras)
+            precios.rango = None
+            precios.por_rango = {}
+            _ordenar(precios)
+        return precios
+
+    def ficha(self, slug: str) -> dict | None:
+        """Nombre en ingles y rango maximo del objeto segun warframe.market (cacheado un dia)."""
+        try:
+            datos = self.cliente.json(f"{BASE}/items/{slug}", segundos_cache=86400, intentos=1)
+        except RuntimeError as e:
+            log.info("Sin ficha de warframe.market para %s: %s", slug, e)
+            return None
+        cuerpo = datos.get("data") if isinstance(datos, dict) else None
+        if not isinstance(cuerpo, dict):
+            return None
+        nombre = ((cuerpo.get("i18n") or {}).get("en") or {}).get("name") or ""
+        return {"nombre_en": str(nombre), "rango_max": rango_maximo_de(datos)}
 
     def rango_maximo(self, slug: str) -> int | None:
         """maxRank de la ficha del objeto (cacheado un dia); None si no se sabe."""

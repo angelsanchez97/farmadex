@@ -283,3 +283,40 @@ def test_el_panel_de_precio_solo_se_ve_con_precio(pestana):
     assert not pestana.panel_precio.isHidden() and "no hay subastas" in pestana.precio.text()
     pestana.limpiar()
     assert pestana.panel_precio.isHidden()
+
+
+def test_horquilla_se_pide_sola_al_evaluar_y_se_ignora_la_vieja(pestana, armas):
+    """Al evaluar sin fallos se pide la horquilla de parecidos; la de otro agrietado no se pinta."""
+    from farmadex.agrietados import grados
+    from farmadex.ui.pestana_agrietados import clave_horquilla
+
+    pedidas = []
+
+    class _Falso:
+        pass
+
+    pestana.trabajador = _Falso()  # sin hilo: solo se mira lo que se pide
+    pestana._pedir_horquilla.connect(lambda *a: pedidas.append(a))
+    rubico = next(a for a in armas if a.slug == "rubico")
+    pestana.elegir_arma("rubico")
+    stats = []
+    for slug, negativo in (("critical_chance", False), ("critical_damage", False), ("zoom", True)):
+        minimo, maximo = grados.rango(slug, rubico.clase, rubico.disposicion, 2, 1, negativo=negativo)
+        stats.append((slug, round((minimo + maximo) / 2, 1), negativo))
+    pestana.poner_estadisticas(stats)
+    pestana.evaluar()
+    assert len(pedidas) == 1
+    clave, slug, positivos, negativo = pedidas[0]
+    assert slug == "rubico" and sorted(positivos) == ["critical_chance", "critical_damage"] and negativo == "zoom"
+    assert "consultando" in pestana.horquilla.text()
+    # Una respuesta de otro agrietado (clave distinta) no se pinta.
+    pestana._horquilla_lista(clave_horquilla("rubico", ["multishot"], ""), mercado.calcular_horquilla("rubico", [1] * 9, "exacto"))
+    assert "consultando" in pestana.horquilla.text()
+    pestana._horquilla_lista(clave, mercado.calcular_horquilla("rubico", [100, 150, 200, 250, 300], "exacto"))
+    assert "150p" in pestana.horquilla.text() and "250p" in pestana.horquilla.text()
+    # Un valor imposible (arma equivocada) no pide precio de "parecidos".
+    pedidas.clear()
+    pestana.poner_estadisticas([("critical_chance", 999.0, False), ("critical_damage", 50.0, False)])
+    pestana.evaluar()
+    assert pedidas == [] and not pestana.horquilla.isVisibleTo(pestana)
+    pestana.trabajador = None

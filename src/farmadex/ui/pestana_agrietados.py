@@ -118,6 +118,7 @@ class _Trabajador(QObject):
 
     armas = Signal(list)
     precio = Signal(str, object, object, object)  # slug, ResumenSubastas, MediaDE sin variar, MediaDE variado
+    horquilla = Signal(str, object)  # clave de la peticion, mercado.Horquilla
     fallo = Signal(str)
 
     @Slot()
@@ -141,6 +142,44 @@ class _Trabajador(QObject):
             self.fallo.emit(str(e))
 
 
+    @Slot(str, str, list, str)
+    def pedir_horquilla(self, clave: str, slug: str, positivos: list, negativo: str) -> None:
+        try:
+            h = mercado.compartido().horquilla(slug, list(positivos), negativo or None)
+        except Exception as e:  # noqa: BLE001 - el hilo de red no se cae por esto
+            log.warning("Fallo pidiendo la horquilla de %s: %s", slug, e)
+            h = mercado.Horquilla(arma=slug, error=str(e))
+        self.horquilla.emit(clave, h)
+
+
+def clave_horquilla(slug: str, positivos: list[str], negativo: str) -> str:
+    """Identifica una peticion de horquilla: si llega la de otro agrietado, se ignora."""
+    return f"{slug}|{','.join(sorted(positivos))}|{negativo}"
+
+
+def texto_horquilla(h) -> str:
+    """La horquilla de precio en una frase (HTML sencillo). Nunca pone un precio que no haya."""
+    if h is None:
+        return ""
+    if h.error:
+        return t("Precio de parecidos: warframe.market no responde ahora ({error}).", error=h.error)
+    if h.suficiente:
+        if h.nivel == "positivas":
+            base = t("Precio de parecidos: piden entre <b>{bajo}p</b> y <b>{alto}p</b> (mediana {mediana}p), "
+                     "según {n} subastas abiertas con las mismas positivas (la negativa cambia).",
+                     bajo=h.bajo, alto=h.alto, mediana=h.mediana, n=h.n)
+        else:
+            base = t("Precio de parecidos: piden entre <b>{bajo}p</b> y <b>{alto}p</b> (mediana {mediana}p), "
+                     "según {n} subastas abiertas con las mismas estadísticas.",
+                     bajo=h.bajo, alto=h.alto, mediana=h.mediana, n=h.n)
+        return base + " " + t("Es lo que piden, no lo que se acaba pagando.")
+    if h.n:
+        return t("Precio de parecidos: sin datos suficientes (solo {n} subastas parecidas abiertas; "
+                 "hacen falta {umbral}). La más barata pide {minimo}p.",
+                 n=h.n, umbral=mercado.UMBRAL_HORQUILLA, minimo=h.minimo)
+    return t("Precio de parecidos: sin datos suficientes (no hay subastas parecidas abiertas).")
+
+
 def _rotulo(clave: str = "") -> EtiquetaC:
     """Rotulo pequeno en mayusculas y apagado (ARMA, ESTADISTICA...)."""
     return EtiquetaC(t(clave) if clave else "", "rotulo", tinta="suave", mayus=True)
@@ -150,6 +189,7 @@ class PestanaAgrietados(QWidget):
     pedir_lectura = Signal()
     _pedir_armas = Signal()
     _pedir_precio = Signal(str, str, list, list)
+    _pedir_horquilla = Signal(str, str, list, str)
 
     def __init__(self, parent=None, con_red: bool = True):
         super().__init__(parent)
@@ -160,6 +200,7 @@ class PestanaAgrietados(QWidget):
         self.tarjeta: TarjetaLeida | None = None
         self.evaluaciones: list[grados.Evaluacion] = []
         self._precio_pedido: str | None = None
+        self._horquilla_pedida: str | None = None
 
         # -- lectura de pantalla (a la derecha de las sub-pestanas) --------------------
         self.boton_leer = BotonC(principal=True, icono="buscar", tam=11)
@@ -274,8 +315,13 @@ class PestanaAgrietados(QWidget):
         self.boton_precio.clicked.connect(self.consultar_precio)
         self.boton_precio.setEnabled(False)
         self.nota_precio = EtiquetaC("", "pequeno", envolver=True)
+        # Horquilla de precio de agrietados parecidos: se pide sola al evaluar, en el hilo de red.
+        self.horquilla = EtiquetaC("", "normal", envolver=True)
+        self.horquilla.setTextFormat(Qt.RichText)
+        self.horquilla.hide()
         self.panel_veredicto.capa.addWidget(self.titular)
         self.panel_veredicto.capa.addWidget(self.veredicto)
+        self.panel_veredicto.capa.addWidget(self.horquilla)
         self.panel_veredicto.capa.addLayout(fila(self.boton_precio, self.nota_precio, espacio=px(10, False)))
 
         # -- panel del precio (solo cuando hay algo que ensenar) --------------------------
@@ -317,6 +363,8 @@ class PestanaAgrietados(QWidget):
             self.trabajador.moveToThread(self.hilo)
             self.trabajador.armas.connect(self.poner_armas)
             self.trabajador.precio.connect(self._precio_listo)
+            self.trabajador.horquilla.connect(self._horquilla_lista)
+            self._pedir_horquilla.connect(self.trabajador.pedir_horquilla)
             self.trabajador.fallo.connect(self._fallo_red)
             self._pedir_armas.connect(self.trabajador.cargar_armas)
             self._pedir_precio.connect(self.trabajador.consultar)
@@ -508,7 +556,14 @@ class PestanaAgrietados(QWidget):
         self._poner_estado("")
         self._poner_veredicto("")
         self._poner_precio("")
+        self._poner_horquilla("")
         self._vaciar_tabla()
+
+    def _poner_horquilla(self, texto: str) -> None:
+        self.horquilla.setText(texto)
+        self.horquilla.setVisible(bool(texto))
+        if not texto:
+            self._horquilla_pedida = None
 
     def _poner_estado(self, texto: str) -> None:
         self.estado.setText(texto)
@@ -540,6 +595,7 @@ class PestanaAgrietados(QWidget):
         self._vaciar_tabla()
         self._poner_veredicto("")
         self._poner_precio("")
+        self._poner_horquilla("")
         if tarjeta.velado:
             self._poner_estado(t("La tarjeta está velada: no tiene estadísticas hasta que hagas su desafío."))
             return
@@ -584,6 +640,32 @@ class PestanaAgrietados(QWidget):
         self.evaluaciones = grados.evaluar(estadisticas, arma.clase, arma.disposicion)
         self._pintar_evaluaciones()
         self.boton_precio.setEnabled(True)
+        self._consultar_horquilla(arma, positivos, negativos)
+
+    def _consultar_horquilla(self, arma, positivos: list, negativos: list) -> None:
+        """Pide en el hilo de red la horquilla de parecidos; la evaluacion ya esta pintada.
+
+        Solo con una evaluacion sin valores imposibles: si el arma o un valor estan mal,
+        el precio de "parecidos" seria el de otro agrietado.
+        """
+        if any(ev.minimo is None or not ev.grado for ev in self.evaluaciones):
+            self._poner_horquilla("")
+            return
+        pos = [s for s, _v, _n in positivos]
+        neg = negativos[0][0] if negativos else ""
+        clave = clave_horquilla(arma.slug, pos, neg)
+        if self.trabajador is None:
+            return
+        self._poner_horquilla(t("Precio de parecidos: consultando warframe.market..."))
+        self._horquilla_pedida = clave
+        self._pedir_horquilla.emit(clave, arma.slug, pos, neg)
+
+    @Slot(str, object)
+    def _horquilla_lista(self, clave: str, h) -> None:
+        if clave != self._horquilla_pedida:
+            return  # de un agrietado anterior
+        self.horquilla.setText(texto_horquilla(h))
+        self.horquilla.show()
 
     def _celda(self, texto: str, tinta: str = "texto", rol: str = "normal", alineacion=None) -> QTableWidgetItem:
         celda = QTableWidgetItem(texto)

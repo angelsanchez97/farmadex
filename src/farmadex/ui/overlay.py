@@ -55,6 +55,7 @@ from ..captura.reliquia_hover import HoverReliquias, LectorHoverReliquia
 from ..online.servicio_market import ServicioMarket
 from ..online.worldstate import ServicioMundo
 from .pestana_agrietados import PestanaAgrietados
+from .pestana_alertas import PestanaAlertas
 from .pestana_ajustes import PestanaAjustes
 from .pestana_builds import PestanaBuilds
 from .pestana_buscador import PestanaBuscador
@@ -100,7 +101,8 @@ SECCIONES = (
 )
 SUBSECCIONES = {
     "metas": (("objetivos", "Objetivos"), ("primes", "Primes"), ("perfil", "Perfil")),
-    "herramientas": (("build", "Build"), ("agrietados", "Agrietados"), ("video", "Vídeo"), ("web", "Web")),
+    "herramientas": (("build", "Build"), ("agrietados", "Agrietados"), ("alertas", "Alertas"), ("video", "Vídeo"),
+                     ("web", "Web")),
 }
 # Ruta -> atributo de la ventana con la pagina (se lee al navegar: una pagina puede
 # rehacerse, como Mundo al cambiar de disposicion).
@@ -113,6 +115,7 @@ PAGINAS = {
     "mundo": "mundo",
     "herramientas/build": "builds",
     "herramientas/agrietados": "agrietados",
+    "herramientas/alertas": "alertas",
     "herramientas/video": "video",
     "herramientas/web": "web",
     "ajustes": "ajustes",
@@ -251,6 +254,8 @@ class VentanaOverlay(QWidget):
     # Aviso que tiene que verse aunque la ventana este escondida (lo ensena la bandeja):
     # reliquia abierta en pantalla completa exclusiva, lector de pantalla que no carga...
     aviso_bandeja = Signal(str)
+    # Alerta de precio cumplida: texto del globo y mensaje "/w" que se copia al pulsarlo.
+    aviso_alerta_precio = Signal(str, str)
     # Cada cuanto se repite el mismo aviso de bandeja, como mucho.
     REPETIR_AVISO_S = 10 * 60
 
@@ -391,6 +396,11 @@ class VentanaOverlay(QWidget):
         self.builds.abrir_web.connect(self.abrir_web)
         self.agrietados = PestanaAgrietados()
         self.agrietados.pedir_lectura.connect(self.leer_agrietado)
+        # Alertas de precio (warframe.market): se crean desde la ficha o desde una meta.
+        self.alertas = PestanaAlertas()
+        self.alertas.aviso.connect(self.aviso_alerta_precio.emit)
+        self.buscador.avisar_precio.connect(self.preparar_alerta_precio)
+        self.objetivos.avisar_precio.connect(self._alerta_desde_meta)
         self.objetivos.cambiados.connect(self.mundo.refrescar_objetivos)
         self.ajustes.reconstruir.connect(lambda: self.preparar_datos(forzar=True))
         self.ajustes.tema_cambiado.connect(self.cambiar_tema)
@@ -1469,6 +1479,22 @@ class VentanaOverlay(QWidget):
             self.aplicar_modo("completo")
         self.ir_a("herramientas/agrietados")
 
+    def preparar_alerta_precio(self, slug: str, nombre: str, unique_name: str = "") -> None:
+        """Lleva el objeto al formulario de Herramientas > Alertas."""
+        self.alertas.preparar_alerta(slug, nombre, unique_name)
+        self.ir_a("herramientas/alertas")
+
+    def _alerta_desde_meta(self, unique_name: str, nombre: str) -> None:
+        slug = ""
+        con = getattr(self.objetivos, "indice", None)
+        if con is not None:
+            try:
+                fila_slug = con.execute("SELECT market_slug FROM items WHERE unique_name = ?", (unique_name,)).fetchone()
+                slug = (fila_slug[0] if fila_slug else "") or ""
+            except Exception:  # noqa: BLE001 - indice reconstruyendose: sin alerta, se dice
+                slug = ""
+        self.preparar_alerta_precio(slug, nombre, unique_name)
+
     def leer_cursor(self) -> None:
         """Atajo de "leer el objeto bajo el cursor": una lectura a la vez.
 
@@ -2215,7 +2241,7 @@ class VentanaOverlay(QWidget):
                 self._seccion_con_sub(clave).subpestanas.poner_texto(sub, t(titulo))
         self.estado.setText("")
         for pestana in (self.tablero, self.buscador, self.objetivos, self.primes, self.mundo, self.perfil, self.ajustes,
-                        self.compacta, self.video, self.web, self.builds, self.agrietados):
+                        self.compacta, self.video, self.web, self.builds, self.agrietados, self.alertas):
             pestana.retraducir()
         self._regenerar_avisos()
 
@@ -2287,7 +2313,7 @@ class VentanaOverlay(QWidget):
             (self.buscador, "repintar"), (self.objetivos, "refrescar"), (self.primes, "repintar"),
             (self.perfil, "repintar"), (self.compacta, "repintar"), (self.ajustes, "repintar"),
             (self.video, "repintar"), (self.web, "repintar"), (self.builds, "repintar"),
-            (self.agrietados, "repintar"), (self.tablero, "repintar"),
+            (self.agrietados, "repintar"), (self.tablero, "repintar"), (self.alertas, "repintar"),
         ):
             self._repintar_al_ver(pagina, metodo)
         # Las piezas del estilo C se vuelven a medir con la escala nueva y se repintan.
@@ -2423,6 +2449,8 @@ class VentanaOverlay(QWidget):
         # El reproductor de guias que lanzo esta ventana (solo ese proceso, por su PID).
         self.video.cerrar()
         self.web.cerrar()
+        # El vigilante de alertas de precio usa la conexion comun con warframe.market.
+        self.alertas.cerrar()
         self.etiquetas.hide()
         if getattr(self, "comprobador_datos", None):
             self.comprobador_datos.parar()

@@ -329,6 +329,7 @@ class PestanaBuscador(QWidget):
     estado = Signal(str)
     pedir_precios = Signal(str)
     anadir_objetivo = Signal(int, bool)  # item_id, set completo
+    avisar_precio = Signal(str, str, str)  # market_slug, nombre, unique_name (alertas de precio)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -412,13 +413,17 @@ class PestanaBuscador(QWidget):
         self.boton_overframe = BotonC("Overframe")
         self.boton_overframe.hide()
         self.boton_overframe.clicked.connect(self._abrir_overframe)
+        # Alerta de precio en warframe.market del objeto abierto (Herramientas > Alertas).
+        self.boton_alerta = BotonC(icono="campana")
+        self.boton_alerta.hide()
+        self.boton_alerta.clicked.connect(self._avisar_precio)
         for boton in (self.atras, self.boton_objetivo, self.boton_set, self.boton_wiki, self.boton_youtube,
                       self.boton_overframe):
             boton.installEventFilter(self._teclas)
         self.barra_acciones = transparente(QWidget())
         self.barra_acciones.setLayout(fila(
             self.atras, None, self.boton_objetivo, self.boton_set, self.boton_wiki, self.boton_youtube,
-            self.boton_overframe, espacio=px(8, False),
+            self.boton_overframe, self.boton_alerta, espacio=px(8, False),
         ))
 
         # -- resultados -------------------------------------------------------------------
@@ -609,6 +614,9 @@ class PestanaBuscador(QWidget):
         self.boton_objetivo.setText(t("+ Objetivo"))
         self.boton_set.setText(t("+ Set completo"))
         self.boton_wiki.setText(t("Wiki"))
+        self.boton_alerta.setText(t("Avisarme de precio"))
+        self.boton_alerta.setToolTip(t("Avisarme de precio") + ": "
+                                     + t("Te avisa cuando alguien lo venda en warframe.market a tu precio o menos."))
         self.boton_youtube.setText(t("YouTube"))
         self.boton_youtube.setToolTip(t("Busca guías en YouTube de la misión o el objeto abierto, "
                                         "ordenadas por visitas, y las abre en el reproductor de Farmadex."))
@@ -709,6 +717,15 @@ class PestanaBuscador(QWidget):
     def resizeEvent(self, evento):  # noqa: N802 - firma de Qt
         super().resizeEvent(evento)
         self._ajustar_pie()
+        self._ajustar_boton_alerta()
+
+    def _ajustar_boton_alerta(self) -> None:
+        """"Avisarme de precio" se queda solo con la campana si la barra de acciones no cabe."""
+        if self.boton_alerta.isHidden() or self.barra_acciones.width() <= 0:
+            return
+        self.boton_alerta.poner_solo_icono(False)
+        necesario = self.barra_acciones.layout().sizeHint().width()
+        self.boton_alerta.poner_solo_icono(necesario > self.barra_acciones.width())
 
     def _ajustar_pie(self) -> None:
         """En una ventana estrecha la barra de teclas no cabe: se esconde (las teclas siguen)."""
@@ -934,9 +951,19 @@ class PestanaBuscador(QWidget):
         self._montar()
         self.ficha.verticalScrollBar().setValue(0)
 
+    def _avisar_precio(self) -> None:
+        datos = self._datos_actuales if self._actual else None
+        if not datos or not self._slug_actual:
+            return
+        item, padre = datos["item"], datos.get("padre")
+        nombre = _con_padre(nombre_idioma(item), nombre_idioma(padre) if padre else None)
+        self.avisar_precio.emit(self._slug_actual, nombre, item["unique_name"] or "")
+
     def _consultar_precio(self, item: dict) -> None:
         slug = item.get("market_slug")
         self._slug_actual = slug or ""
+        self.boton_alerta.setVisible(bool(slug))
+        self._ajustar_boton_alerta()
         if not slug:
             self.precios.hide()
             return
@@ -1159,6 +1186,7 @@ class PestanaBuscador(QWidget):
         self._nota_novedad = None
         self._sin_resultados = None
         self._slug_actual = ""
+        self.boton_alerta.hide()
         self._imagenes_ficha.clear()
         self._destinos_imagen.clear()
         self._aparcar()
@@ -1287,6 +1315,7 @@ class PestanaBuscador(QWidget):
             del self._historial[:-MAX_HISTORIAL]
         self.atras.setEnabled(len(self._historial) > 1)
         self._slug_actual = ""
+        self.boton_alerta.hide()
         self.precios.hide()
         self.boton_objetivo.setEnabled(False)
         self.boton_set.setEnabled(False)
