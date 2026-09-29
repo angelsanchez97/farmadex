@@ -28,6 +28,7 @@ from pathlib import Path
 from .. import VERSION
 from ..config import DIR_LOGS
 from ..ficheros import reemplazar, temporal_de
+from ..instancia_unica import _sufijo_datos
 from ..registro_log import obtener
 from .app import numeros
 from .descarga import DIR_DESCARGAS
@@ -37,8 +38,12 @@ log = obtener("actualizador.instalacion")
 # El AppId de instalador.iss, tal y como Inno Setup nombra su clave de desinstalacion.
 APP_ID = "{9E2B7C41-5B1A-4F0E-9E1E-FARMADEX0001}"
 CLAVE_DESINSTALACION = rf"Software\Microsoft\Windows\CurrentVersion\Uninstall\{APP_ID}_is1"
-# Nombre del mutex por el que el instalador sabe que Farmadex sigue abierto.
-MUTEX = "FarmadexEnEjecucion"
+# Nombre del mutex por el que el instalador sabe que Farmadex sigue abierto. Con
+# FARMADEX_DATOS (pruebas) lleva el mismo sufijo que el candado de instancia unica: un
+# Farmadex de pruebas no hace esperar al instalador real ni al reves (las pruebas del
+# instalador compilan con /DSufijoDatos=<ese sufijo>).
+MUTEX_BASE = "FarmadexEnEjecucion"
+MUTEX = MUTEX_BASE + _sufijo_datos()
 # Parametro propio con el que el instalador distingue una actualizacion automatica
 # de una instalacion a mano (relanza Farmadex al acabar, sin asistente).
 PARAMETRO_AUTO = "/AUTOACTUALIZAR=1"
@@ -237,6 +242,10 @@ def _comillas(texto: str) -> str:
 # Lo que el setup escribe en instalador.log (Log() en PrepareToInstall, instalador.iss)
 # cuando se rinde porque otro Farmadex sigue abierto. Se busca literalmente.
 MARCA_OTRA_INSTANCIA = "Farmadex sigue abierto"
+# Lo que escribe el setup cuando copio la version nueva pero no la puso porque no estaba
+# entera, no arrancaba o habia ficheros en uso (CurStepChanged en instalador.iss). La
+# version anterior sigue intacta; lo que va detras de los dos puntos es el motivo.
+MARCA_NO_COMPLETADA = "No se ha podido completar la instalacion"
 MOTIVO_SIN_RASTRO = "el instalador no llegó a arrancar (instalador.log no tiene nada de esa hora)"
 MOTIVO_DETENIDO = "el instalador se detuvo: {detalle}"
 RE_LINEA_INSTALADOR = re.compile(r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)\.\d+\s+(.*)$")
@@ -266,6 +275,10 @@ def diagnostico_instalador(desde: float, ruta_log: Path | None = None) -> tuple[
         return ("sin_rastro", "")
     if any(MARCA_OTRA_INSTANCIA in texto for texto in recientes):
         return ("otra_instancia", "")
+    no_completada = [t for t in recientes if t.startswith(MARCA_NO_COMPLETADA)]
+    if no_completada:
+        motivo = no_completada[-1][len(MARCA_NO_COMPLETADA):].lstrip(": ").split(". La version")[0]
+        return ("detenido", motivo[:160])
     # La ultima linea con sustancia: "Log closed." y "Deinitializing Setup." no cuentan nada.
     con_sustancia = [t for t in recientes if not t.startswith(("Log closed", "Deinitializing"))]
     return ("detenido", (con_sustancia or recientes)[-1][:160])

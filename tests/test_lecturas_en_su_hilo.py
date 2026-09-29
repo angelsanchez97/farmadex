@@ -35,6 +35,7 @@ class LectorFalso(QObject):
     encontrado = Signal(int, str)
     candidatos = Signal(list)
     terminado = Signal(int)
+    turno_terminado = Signal(int)
     pagina_perfil = Signal(object)
     pagina_inventario = Signal(object)
     hilos: dict = {}
@@ -57,6 +58,11 @@ class LectorFalso(QObject):
     @Slot()
     def leer_ahora(self):
         self._apunta("leer")
+
+    @Slot(int)
+    def leer_turno(self, numero):  # como LectorBase.leer_turno
+        self._apunta("leer")
+        self.turno_terminado.emit(numero)
 
     @Slot(int)
     def leer_solicitud(self, numero):
@@ -218,4 +224,28 @@ def test_los_lectores_se_preparan_en_el_hilo_de_captura(app, ventana, lector):
     assert _esperar(app, lambda: any(q == "iniciar" for q, _h in LectorFalso.hilos.get(lector, [])))
     hilos = [h for q, h in LectorFalso.hilos[lector] if q == "iniciar"]
     assert all(h is ventana.hilo_captura for h in hilos)
+
+
+@pytest.mark.parametrize("metodo, tipo", [
+    ("leer_recompensas", "reliquias"), ("leer_build", "build"), ("leer_agrietado", "agrietado"),
+    ("leer_cursor", "cursor"),
+])
+def test_el_fin_de_una_lectura_por_atajo_se_atiende_en_el_hilo_de_la_ventana(app, ventana, monkeypatch, metodo, tipo):
+    """El "ya termine" llega desde el hilo de captura y tiene que atenderse en el de la
+    ventana: con una lambda se atendia en el de captura y tocaba los temporizadores del
+    recuadro "Leyendo..." desde alli."""
+    import threading
+
+    hilos = []
+    original = type(ventana)._turno_terminado
+
+    def espia(self, t, numero):
+        hilos.append((t, threading.current_thread() is threading.main_thread()))
+        return original(self, t, numero)
+
+    monkeypatch.setattr(type(ventana), "_turno_terminado", espia)
+    getattr(ventana, metodo)()
+    assert _esperar(app, lambda: hilos)
+    assert hilos[0] == (tipo, True)
+    assert not ventana.turnos[tipo].ocupado
 

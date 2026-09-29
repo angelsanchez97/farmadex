@@ -1,5 +1,55 @@
 # Cambios
 
+## 0.6.5
+
+Esta versión sale de lo que nos contó quien la prueba a diario: atajos que no se atascan y se
+eligen pulsándolos, una ventana que se porta como cualquier programa de Windows y unas
+actualizaciones que ya no pueden dejarte sin Farmadex.
+
+**Atajos**
+- Se acabó que los atajos se quedaran colgados al pulsarlos seguidos. Antes, si pulsabas varias
+  veces el atajo de leer la build, un agrietado o las recompensas, Farmadex leía la pantalla una
+  vez por pulsación y todo lo demás se quedaba esperando. Ahora solo hay una lectura en marcha a la
+  vez, las pulsaciones de mientras cuentan como una sola y el atajo vuelve a responder al momento.
+- Los atajos se eligen pulsándolos: en Ajustes > Atajos, pulsa el que quieras cambiar y luego la
+  tecla. Vale una tecla sola (por ejemplo F9), una combinación como antes, la rueda o los botones
+  laterales del ratón, y también el mando de Xbox o compatibles (mantén los botones y suéltalos).
+  Esc cancela y Retroceso deja ese atajo sin usar. Los atajos que ya tenías siguen igual.
+- Las teclas solas, el ratón y el mando no se le quitan al juego: sigue recibiendo la pulsación.
+  Si eliges una tecla que el juego usa (W, espacio, E...), Farmadex te avisa, pero te deja ponerla.
+  Y si estás escribiendo dentro de Farmadex, una letra suelta no dispara el atajo.
+- Al pulsar un atajo de lectura sale al instante un recuadro con "Leyendo…" junto al cursor (o
+  arriba, en las recompensas). Cuando termina se quita y aparece el resultado; si no ha podido leer
+  nada, te lo dice y se va solo. El recuadro no sale en las capturas ni en el directo.
+- La guía, la bienvenida, el modo juego y los botones de leer enseñan el atajo con palabras
+  claras ("Ratón lateral 1", "Mando: View + A"), igual que el icono de la bandeja.
+- Arreglado un fallo por el que, al actualizarse el estado del mundo, el modo juego podía cerrar
+  Farmadex de golpe.
+
+**Instalar y actualizar sin riesgo**
+- Si la instalación o una actualización se corta a medias (la cancelas, se va la luz, el antivirus
+  bloquea un fichero, falta espacio...), la versión que tenías se queda tal cual y sigue abriendo.
+  Antes se borraba una parte del programa antes de copiar la nueva y, si algo fallaba, Farmadex
+  dejaba de arrancar.
+- La versión nueva se copia aparte y solo ocupa el sitio de la anterior cuando está entera y se ha
+  comprobado que arranca. Si no, el instalador te dice claramente qué ha pasado y que no se ha
+  cambiado nada.
+- En la actualización automática, si la versión nueva no se puede poner, vuelve a abrirse la que
+  tenías y Farmadex te cuenta el motivo.
+- Si una instalación anterior se quedó a medias, el siguiente instalador lo arregla solo antes de
+  empezar.
+- Al desinstalar, Farmadex se cierra solo antes de borrar nada (así no quedan restos en la
+  carpeta), se quita también el "abrir con Windows" si lo activaste desde Ajustes, y tus datos
+  solo se borran si dices que sí.
+
+**Como una ventana normal de Windows**
+- La vista completa tiene botón de maximizar junto al de minimizar. También se maximiza con doble
+  clic en la cabecera o con Windows + flecha arriba, y se restaura igual.
+- Si arrastras la ventana maximizada desde la cabecera, vuelve a su tamaño y la sigues moviendo,
+  como en cualquier programa.
+- Si la cierras maximizada, la próxima vez se abre maximizada. El modo juego sigue siendo una
+  ventana pequeña que no se maximiza.
+
 ## 0.6.4
 
 Esta versión va de ayudarte a decidir: qué hacer con las fisuras de hoy, cuándo comprar barato,

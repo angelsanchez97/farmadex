@@ -42,6 +42,7 @@ from PySide6.QtWidgets import (
 
 from .. import NOMBRE_APP
 from ..idiomas import t
+from .campo_atajo import texto_legible
 from .acerca_de import (
     URL_AVISOS,
     URL_REPOSITORIO,
@@ -256,7 +257,7 @@ class CapaBienvenida(QWidget):
         self.obligatoria = obligatoria
         config = getattr(ventana, "config", {}) or {}
         self._ofrecer_guia = not config.get("guia_vista")
-        atajo = config.get("hotkey_overlay", "Ctrl+Alt+W")
+        atajo = texto_legible(config.get("hotkey_overlay", "Ctrl+Alt+W"))
         self._apartados = _apartados(atajo)
 
         self.setAttribute(Qt.WA_TranslucentBackground)

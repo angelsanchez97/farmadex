@@ -326,7 +326,8 @@ def test_en_la_bandeja_el_setup_va_sin_ventana_y_vuelve_a_la_bandeja(tmp_path):
     orden = instalacion._linea_de_ordenes(tmp_path / "s.exe", tmp_path / "Farmadex.exe", en_bandeja=True)
     assert orden.rstrip('"').endswith("--bandeja")
     iss = (RAIZ / "empaquetado" / "instalador.iss").read_text(encoding="utf-8-sig")
-    assert 'Parameters: "{code:ArgumentosRelanzar}"' in iss
+    # Desde 0.6.5 el relanzado va por codigo (RelanzarTrasActualizar), no por [Run].
+    assert "ArgumentosRelanzar('')" in iss and "RelanzarTrasActualizar" in iss
     assert "'--tras-actualizar'" in iss and "{param:BANDEJA|0}" in iss
 
 

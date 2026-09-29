@@ -50,7 +50,8 @@ from ..captura import ocr
 from ..captura import prioridad as prio
 from ..config import DIR_BASE, cargar, guardar
 from ..datos import eficiencia, indice
-from ..hotkeys import parsear
+from ..hotkeys import interpretar, normalizar
+from .campo_atajo import CampoAtajo, aviso_de, texto_legible
 from ..idiomas import t
 from . import widgets
 from .acerca_de import abrir_acerca_de, enlace_discord, frase, texto_autor, texto_discord_corto
@@ -859,15 +860,18 @@ class PestanaAjustes(QWidget):
         self._meter("general", self._grupo("Versión"), version)
 
     def _construir_atajos(self) -> None:
+        # Se rellenan pulsando la tecla (o el boton del raton, o el mando), no escribiendo.
         self.campos_hotkey = {
-            "overlay": QLineEdit(self.config["hotkey_overlay"]),
-            "cursor": QLineEdit(self.config["hotkey_cursor"]),
-            "reliquias": QLineEdit(self.config["hotkey_reliquias"]),
-            "build": QLineEdit(self.config.get("hotkey_build", "")),
-            "agrietado": QLineEdit(self.config.get("hotkey_agrietado", "")),
+            "overlay": CampoAtajo(self.config["hotkey_overlay"]),
+            "cursor": CampoAtajo(self.config["hotkey_cursor"]),
+            "reliquias": CampoAtajo(self.config["hotkey_reliquias"]),
+            "build": CampoAtajo(self.config.get("hotkey_build", "")),
+            "agrietado": CampoAtajo(self.config.get("hotkey_agrietado", "")),
         }
         for campo in self.campos_hotkey.values():
-            campo.setMaximumWidth(px(260, False))
+            campo.setMinimumWidth(px(200, False))
+            # Al capturar un atajo se aplica ya: no hace falta acordarse de pulsar Aplicar.
+            campo.cambiado.connect(lambda _texto: self._aplicar_hotkeys())
         formulario = self._formulario()
         self._fila(formulario, "Abrir y cerrar el overlay", self.campos_hotkey["overlay"])
         formulario.addRow(self._nota("Abre y cierra esta ventana encima del juego."))
@@ -890,7 +894,14 @@ class PestanaAjustes(QWidget):
         self.aviso_hotkey.setStyleSheet(f"color: {PALETA['aviso']};")
         boton_hotkeys = self._boton("Aplicar atajos", principal=True)
         boton_hotkeys.clicked.connect(self._aplicar_hotkeys)
-        formulario.addRow(self._nota("Escríbelos así: Ctrl+Alt+W. Los cambios valen al pulsar Aplicar."))
+        formulario.addRow(self._nota(
+            "Pulsa un atajo y luego la tecla que quieras: una tecla sola (F9), una combinación "
+            "(Ctrl+Alt+W), la rueda o un botón lateral del ratón, o botones del mando."
+        ))
+        formulario.addRow(self._nota(
+            "Esc cancela y Retroceso lo deja sin atajo. Las teclas solas, el ratón y el mando siguen "
+            "llegando al juego; las combinaciones con Ctrl o Alt, no."
+        ))
         fila_hotkeys = fila(boton_hotkeys, espacio=px(10, False))
         fila_hotkeys.addWidget(self.aviso_hotkey, 1)
         formulario.addRow(fila_hotkeys)
@@ -1485,6 +1496,8 @@ class PestanaAjustes(QWidget):
         self._pintar_aspecto()
         self._ajustar_ancho_secciones()
         self.aviso_hotkey.setText("")
+        for campo in self.campos_hotkey.values():
+            campo.poner_valor(campo.valor())  # el texto que se ve, en el idioma nuevo
         self.estado_version(t("Estás en la última versión"))
         self.refrescar_estado()
         if self._modo_pantalla is not None:
@@ -1639,17 +1652,29 @@ class PestanaAjustes(QWidget):
 
     def _aplicar_hotkeys(self) -> None:
         nuevas = {}
+        vistos: dict[str, str] = {}
+        avisos = []
         for nombre, campo in self.campos_hotkey.items():
-            texto = campo.text().strip()
-            try:
-                parsear(texto)
-            except ValueError as e:
-                self.aviso_hotkey.setText(f"{texto or t('(vacío)')}: {e}")
-                return
+            texto = campo.valor().strip()
+            if texto:  # vacio = sin atajo (se puede dejar alguno sin usar)
+                try:
+                    interpretar(texto)
+                    texto = normalizar(texto)
+                except ValueError as e:
+                    self.aviso_hotkey.setText(f"{texto}: {e}")
+                    return
+                if texto in vistos:
+                    self.aviso_hotkey.setText(t("{atajo} está puesto dos veces: cambia uno de los dos.",
+                                                atajo=texto_legible(texto)))
+                    return
+                vistos[texto] = nombre
+                aviso = aviso_de(texto)
+                if aviso and aviso not in avisos:
+                    avisos.append(aviso)
             nuevas[nombre] = texto
         for nombre, texto in nuevas.items():
             self._guardar(f"hotkey_{nombre}", texto)
-        self.aviso_hotkey.setText(t("Atajos aplicados."))
+        self.aviso_hotkey.setText(" ".join([t("Atajos aplicados.")] + avisos))
         self.hotkeys_cambiadas.emit(nuevas)
 
     def _abrir_carpeta(self) -> None:

@@ -40,6 +40,7 @@ from ..agrietados import grados, mercado
 from ..agrietados.lector import TarjetaLeida
 from ..config import cargar
 from ..idiomas import t
+from .campo_atajo import texto_legible, texto_tecla
 from ..registro_log import obtener
 from .estilo_c import (
     TITULAR,
@@ -399,12 +400,13 @@ class PestanaAgrietados(QWidget):
             self.hilo = None
 
     def retraducir(self) -> None:
-        atajo = self.config.get("hotkey_agrietado", "")
+        crudo = self.config.get("hotkey_agrietado", "")
+        atajo = texto_legible(crudo) if crudo else ""
         self.boton_leer.setText(t("Leer la tarjeta bajo el cursor"))
         self.boton_leer.setToolTip(
             t("Leer la tarjeta bajo el cursor ({atajo})", atajo=atajo) if atajo else t("Leer la tarjeta bajo el cursor")
         )
-        self.tecla_atajo.setText(atajo.upper())
+        self.tecla_atajo.setText(texto_tecla(crudo) if crudo else "")
         self.tecla_atajo.setVisible(bool(atajo))
         self.nota.setText(t(
             "Elige el arma, apunta cada estadística con su valor (marca la negativa) y pulsa Evaluar: "

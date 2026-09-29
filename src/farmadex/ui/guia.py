@@ -20,6 +20,7 @@ from PySide6.QtWidgets import QScrollArea, QWidget
 
 from .. import NOMBRE_APP
 from ..idiomas import t
+from .campo_atajo import texto_legible
 from .estilo_c import BotonC, EtiquetaC, PanelC, Rombo, fila, px, ruta_chaflan
 from .widgets import PALETA
 
@@ -60,7 +61,7 @@ def _en_ajustes(ventana, seccion: str, *nombres: str):
 def _pasos(ventana) -> list[Paso]:
     """Textos y objetivos de cada paso. Se recalcula en cada arranque de la guia para que
     salga siempre en el idioma activo y con el atajo que el usuario tenga configurado."""
-    atajo = ventana.config.get("hotkey_overlay", "Ctrl+Alt+W")
+    atajo = texto_legible(ventana.config.get("hotkey_overlay", "Ctrl+Alt+W"))
     return [
         Paso(
             titulo=t("Bienvenido a Farmadex"),
@@ -245,7 +246,7 @@ def _pasos(ventana) -> list[Paso]:
                 "Abre en el juego la pantalla de mejoras de un warframe o un arma y "
                 "pulsa {atajo}: Farmadex lee sus mods y arcanos y los lista aquí. "
                 "Pulsas uno y te dice de dónde sale.",
-                atajo=ventana.config.get("hotkey_build", "Ctrl+Alt+B"),
+                atajo=texto_legible(ventana.config.get("hotkey_build", "Ctrl+Alt+B")),
             ),
             pestana="builds",
             # El boton de leer y su atajo, a la derecha de las sub-pestanas de Herramientas.
@@ -261,7 +262,7 @@ def _pasos(ventana) -> list[Paso]:
                 "Para saber si un mod agrietado es bueno: pon el ratón sobre la tarjeta en el juego y "
                 "pulsa {atajo}, o apunta sus estadísticas a mano. Te da la nota de cada una, de S (lo "
                 "mejor) a F, entre qué valores puede salir y un precio de referencia en warframe.market.",
-                atajo=ventana.config.get("hotkey_agrietado", "Ctrl+Alt+G"),
+                atajo=texto_legible(ventana.config.get("hotkey_agrietado", "Ctrl+Alt+G")),
             ),
             pestana="agrietados",
             objetivo=lambda v: tuple(

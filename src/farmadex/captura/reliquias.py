@@ -115,6 +115,8 @@ class LectorBase(QObject):
     """
 
     estado = Signal(str)
+    # Numero de la lectura por atajo que acaba de terminar (ver `leer_turno`).
+    turno_terminado = Signal(int)
 
     def __init__(self, motor_ocr: str = "rapidocr", categorias=None, parent=None):
         super().__init__(parent)
@@ -134,6 +136,22 @@ class LectorBase(QObject):
         arrancar. Este metodo no se redefine en ninguna subclase.
         """
         self.iniciar()
+
+    @Slot(int)
+    def leer_turno(self, numero: int) -> None:
+        """Lectura pedida por un atajo (`TurnoLecturas`): lee y SIEMPRE avisa al acabar.
+
+        Con el aviso, la ventana sabe que ya puede lanzar la siguiente: las pulsaciones
+        que llegan mientras tanto se juntan en una sola, en vez de encolar una lectura
+        entera por pulsacion. Como `arrancar`, no se redefine en ninguna subclase (un
+        slot redefinido PySide6 lo ejecuta en el hilo de la ventana).
+        """
+        try:
+            self.leer_ahora()
+        except Exception:  # noqa: BLE001 - leer_ahora ya se protege; esto es la ultima red
+            log.exception("Fallo inesperado en una lectura por atajo")
+        finally:
+            self.turno_terminado.emit(numero)
 
     @Slot()
     def iniciar(self) -> None:

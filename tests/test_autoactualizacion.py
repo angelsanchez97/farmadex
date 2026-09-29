@@ -482,14 +482,16 @@ def test_el_aviso_de_actualizando_se_ensena_por_el_boton_y_por_el_cierre(monkeyp
 def test_el_instalador_relanza_farmadex_solo_en_actualizaciones_automaticas():
     iss = (Path(__file__).resolve().parents[1] / "empaquetado" / "instalador.iss").read_text(encoding="utf-8")
     assert "EsActualizacionAutomatica" in iss and "{param:AUTOACTUALIZAR|0}" in iss
-    assert "PrepareToInstall" in iss and f"'{instalacion.MUTEX}'" in iss
+    assert "PrepareToInstall" in iss and f"'{instalacion.MUTEX_BASE}{{#SufijoDatos}}'" in iss
     assert instalacion.APP_ID in iss.replace("{{", "{")
     entradas = re.findall(r'^Filename: "\{app\}\\\{#NombreApp\}\.exe".*$', iss, re.M)
-    assert len(entradas) == 2
-    manual = next(e for e in entradas if "postinstall" in e)
-    automatica = next(e for e in entradas if "EsActualizacionAutomatica" in e)
-    assert "skipifsilent" in manual
-    assert "skipifsilent" not in automatica and "postinstall" not in automatica
+    # A mano: la casilla "Abrir Farmadex" del final del asistente (nunca en silencio).
+    assert len(entradas) == 1 and "postinstall" in entradas[0] and "skipifsilent" in entradas[0]
+    # La automatica lo vuelve a abrir desde el codigo, solo si la version nueva quedo puesta:
+    # las entradas de [Run] sin postinstall van antes de ssPostInstall, que es cuando se conmuta.
+    cuerpo = re.search(r"procedure CurStepChanged.*?\nend;", iss, re.S).group(0)
+    assert "if Completada and EsActualizacionAutomatica then" in cuerpo and "RelanzarTrasActualizar" in cuerpo
+    assert "ArgumentosRelanzar" in re.search(r"procedure RelanzarTrasActualizar;.*?\nend;", iss, re.S).group(0)
 
 
 # -- que paso con la instalacion anterior: motivo claro, veto por version, aplazamiento --

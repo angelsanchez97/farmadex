@@ -70,11 +70,13 @@ def _tipo(v) -> Qt.WindowType:
 def test_el_boton_de_minimizar_va_justo_antes_de_la_x(ventana):
     botones = ventana._botones_ventana
     i_min = botones.indexOf(ventana.boton_minimizar)
+    i_max = botones.indexOf(ventana.boton_maximizar)
     i_x = botones.indexOf(ventana.boton_cerrar)
-    assert i_min >= 0 and i_x == i_min + 1
+    # Minimizar, maximizar y la x, en ese orden, como en cualquier ventana de Windows.
+    assert i_min >= 0 and i_max == i_min + 1 and i_x == i_max + 1
     assert ventana.boton_minimizar.isVisibleTo(ventana)
     tip = ventana.boton_minimizar.toolTip()
-    assert "Ctrl+Alt+W" in tip and "barra de tareas" in tip
+    assert "Ctrl + Alt + W" in tip and "barra de tareas" in tip
 
 
 def test_en_el_modo_juego_tambien_esta_y_cabe(ventana):
@@ -308,11 +310,12 @@ from farmadex.ui import overlay
 app = QApplication([])
 GWL_STYLE, GWL_EXSTYLE = -16, -20
 WS_MINIMIZEBOX, WS_CAPTION, WS_THICKFRAME = 0x00020000, 0x00C00000, 0x00040000
+WS_MAXIMIZEBOX = 0x00010000
 WS_EX_TOOLWINDOW, WS_EX_TOPMOST = 0x00000080, 0x00000008
 user32 = ctypes.WinDLL("user32")
 user32.GetWindowLongW.argtypes = [ctypes.c_void_p, ctypes.c_int]
 for en_barra in (True, False):
-    falsa = SimpleNamespace(_quiere_encima=lambda: True, _en_barra=lambda e=en_barra: e)
+    falsa = SimpleNamespace(_quiere_encima=lambda: True, _en_barra=lambda e=en_barra: e, modo="completo")
     w = QWidget(None, overlay.VentanaOverlay._banderas_ventana(falsa))
     hwnd = ctypes.c_void_p(int(w.winId()))  # crea la ventana nativa SIN ensenarla
     estilo = user32.GetWindowLongW(hwnd, GWL_STYLE) & 0xFFFFFFFF
@@ -321,6 +324,7 @@ for en_barra in (True, False):
     assert not estilo & (WS_CAPTION | WS_THICKFRAME), hex(estilo)  # sigue sin marco
     if en_barra:
         assert estilo & WS_MINIMIZEBOX, hex(estilo)
+        assert estilo & WS_MAXIMIZEBOX, hex(estilo)  # Windows + flecha arriba la maximiza
         assert not ex & WS_EX_TOOLWINDOW, hex(ex)
     else:
         assert ex & WS_EX_TOOLWINDOW, hex(ex)

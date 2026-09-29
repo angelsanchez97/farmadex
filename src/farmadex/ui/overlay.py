@@ -13,6 +13,7 @@ from PySide6.QtGui import (
     QColor, QCursor, QDesktopServices, QFont, QGuiApplication, QIcon, QKeySequence, QPainter, QPixmap, QShortcut,
 )
 from PySide6.QtWidgets import (
+    QApplication,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -30,6 +31,7 @@ from .. import config as config_modulo
 from ..config import cargar, guardar
 from ..datos import eficiencia, indice
 from ..idiomas import es_castellano, t
+from .campo_atajo import texto_legible
 from ..estado import inventario as estado_inventario
 from ..estado import objetivos as estado_objetivos
 from ..estado import aperturas as estado_aperturas
@@ -49,6 +51,7 @@ from ..captura.agrietados import LectorAgrietado
 from ..captura.builds import LectorBuild
 from ..captura.comparador import ServicioComparador
 from ..captura.cursor import LectorCursor, TurnoLecturas
+from .aviso_lectura import AvisoLectura
 from ..captura.lector_pasivo import LectorPasivo
 from ..captura.ocr import modo_de_config
 from ..captura.reliquias import DisparadorAutomatico, LectorRecompensas, Recompensa, completar, resumir
@@ -183,6 +186,14 @@ CURSOR_POR_BORDE = {
 }
 
 
+def es_doble_clic(anterior: tuple[float, QPoint], actual: tuple[float, QPoint], intervalo_s: float,
+                  distancia: int = 6) -> bool:
+    """Dos clics (momento monotonic, posicion global) forman un doble clic si caen a
+    tiempo y casi en el mismo sitio."""
+    (t0, p0), (t1, p1) = anterior, actual
+    return 0 <= t1 - t0 <= intervalo_s and (p1 - p0).manhattanLength() <= distancia
+
+
 def borde_en_posicion(x: int, y: int, ancho: int, alto: int, margen: int = MARGEN_REDIMENSION) -> str | None:
     """A que borde o esquina cae (x, y) dentro de una ventana de (ancho, alto).
 
@@ -249,6 +260,10 @@ class VentanaOverlay(QWidget):
     _pedir_recompensas = Signal()
     _pedir_build = Signal()
     _pedir_agrietado = Signal()
+    # Lo mismo por turnos (ver `_leer_por_turno`): numero de la lectura pedida por atajo.
+    _turno_recompensas = Signal(int)
+    _turno_build = Signal(int)
+    _turno_agrietado = Signal(int)
     # Cadencia del mundo (True=visible, False=oculto), en cola hasta el hilo de
     # ServicioMundo: llamar a `cadencia()` a pelo desde este hilo tocaria su
     # QTimer desde fuera de su hilo (ver ServicioMundo.cadencia).
@@ -324,6 +339,19 @@ class VentanaOverlay(QWidget):
         self.boton_minimizar.bajar = 4  # a la altura del centro de la x, que es texto
         self.boton_minimizar.clicked.connect(self.minimizar)
         self._pintar_tooltip_minimizar()
+        # Maximizar / restaurar (solo en la vista completa), como en cualquier programa;
+        # tambien con doble clic en un hueco de la cabecera y con Windows + flecha arriba.
+        self.boton_maximizar = BotonGlifo("maximizar", t("Maximizar"), tam=12)
+        self.boton_maximizar.bajar = 4
+        self.boton_maximizar.setToolTip(t("Maximizar"))
+        self.boton_maximizar.clicked.connect(self.alternar_maximizado)
+        # Doble clic "a mano": el primer clic ya arranca el movimiento nativo de Windows y
+        # el evento de doble clic de Qt no siempre llega. (momento, posicion global)
+        self._ultimo_clic: tuple[float, QPoint] | None = None
+        # Arrastrar la ventana maximizada la restaura (como una barra de titulo de verdad).
+        self._arrastre_maximizada: QPoint | None = None
+        # Se abre maximizada si se cerro asi (se aplica al ensenarla por primera vez).
+        self._maximizar_al_mostrar = bool(self.config.get("overlay_maximizada", False))
         self.boton_modo = BotonC(icono="juego", pista=ATAJO_MODO)
         self.boton_modo.clicked.connect(self.alternar_modo)
         # La guia, solo con su icono: el menu necesita el sitio. El texto va en el tooltip.
@@ -360,6 +388,7 @@ class VentanaOverlay(QWidget):
         self._botones_ventana = QHBoxLayout()
         self._botones_ventana.setSpacing(0)
         self._botones_ventana.addWidget(self.boton_minimizar, 0, Qt.AlignVCenter)
+        self._botones_ventana.addWidget(self.boton_maximizar, 0, Qt.AlignVCenter)
         self._botones_ventana.addWidget(boton_cerrar, 0, Qt.AlignVCenter)
         cabecera.addLayout(self._botones_ventana)
         self.filete = Filete()
@@ -460,6 +489,8 @@ class VentanaOverlay(QWidget):
         # Tabla de una reliquia al dejar el raton encima: una sola tarjeta para la app
         # (cualquier enlace o texto marcado de una reliquia) y para el juego (OCR).
         self.tarjeta_reliquia = ServicioTarjeta(usuario=lambda: self.objetivos.usuario, parent=self)
+        # Recuadro "Leyendo..." que sale al pulsar un atajo de lectura (ui/aviso_lectura.py).
+        self.aviso_lectura = AvisoLectura(self, activo=bool(self.config.get("aviso_lectura", True)))
         self.ayuda_reliquias = AyudaHoverApp(self.tarjeta_reliquia, parent=self)
         self.ayuda_reliquias.instalar()
         self.hover_reliquias: HoverReliquias | None = None
@@ -700,7 +731,9 @@ class VentanaOverlay(QWidget):
         self.servicio_mundo.actualizado.connect(self.tablero.actualizar_mundo)
         # "Para esto te sirve hoy" de Objetivos cruza el mismo mundo con tus metas.
         self.servicio_mundo.actualizado.connect(self.objetivos.actualizar_mundo)
-        self.servicio_mundo.actualizado.connect(lambda _m: self.compacta.marcar_sucio())
+        # A un metodo, no a una lambda: la lambda corria en el hilo del mundo y tocaba el modo
+        # juego (temporizadores y widgets) desde alli.
+        self.servicio_mundo.actualizado.connect(self._mundo_actualizado_compacta)
         self.servicio_mundo.fallo.connect(self.tablero.marcar_desactualizado)
         self.hilo_mundo.start()
 
@@ -748,6 +781,22 @@ class VentanaOverlay(QWidget):
         self._pedir_build.connect(self.lector_build.leer_ahora)
         self._pedir_agrietado.connect(self.lector_agrietado.leer_ahora)
         self.lector_cursor.terminado.connect(self._lectura_cursor_terminada)
+        # Recompensas, build y agrietado tambien van por turnos: pulsar el atajo veinte
+        # veces seguidas encolaba veinte lecturas enteras en el hilo de captura (medido:
+        # 40 pulsaciones de build = 17 s leyendo sin parar), con la lectura automatica de
+        # reliquias y la de bajo el cursor esperando detras. Ahora hay una en marcha como
+        # mucho, y las pulsaciones de mientras cuentan como una sola, la ultima.
+        self.turnos = {"cursor": self.turno_cursor}
+        # El aviso de "terminada" va a un metodo de la ventana, NO a una lambda: una lambda
+        # conectada a una senal de un objeto de otro hilo se ejecuta en ESE hilo (medido:
+        # los temporizadores del recuadro se tocaban desde el hilo de captura).
+        for tipo, lector, senal, al_acabar in (
+                ("reliquias", self.lector_recompensas, self._turno_recompensas, self._turno_reliquias_terminado),
+                ("build", self.lector_build, self._turno_build, self._turno_build_terminado),
+                ("agrietado", self.lector_agrietado, self._turno_agrietado, self._turno_agrietado_terminado)):
+            senal.connect(lector.leer_turno)
+            self.turnos[tipo] = TurnoLecturas(senal.emit, pausa_s=self.PAUSA_TURNO_S)
+            lector.turno_terminado.connect(al_acabar)
         # Lectura pasiva del perfil, el inventario y la fundicion: mismo hilo, mismo motor.
         self.lector_pasivo = LectorPasivo(
             motor,
@@ -1451,6 +1500,66 @@ class VentanaOverlay(QWidget):
             self.objetivos.refrescar()
         self.buscador.repintar()
 
+    # Pausa minima entre el inicio de una lectura por atajo y el de la siguiente. Ninguna:
+    # las pulsaciones de mientras ya se juntan en una, y una pausa solo retrasaria la lectura
+    # de quien pasa de un agrietado a otro deprisa (medido: 100 -> 300 ms con 0,3 s).
+    PAUSA_TURNO_S = 0.0
+    # Recompensas: el lector vuelve a mirar solo durante unos segundos si la pantalla aun
+    # no estaba pintada; el "no se ha podido leer" espera a que acabe de intentarlo.
+    ESPERA_FALLO_RECOMPENSAS_MS = 3200
+
+    def _leer_por_turno(self, tipo: str, recuadro: bool = True) -> bool:
+        """Pide la lectura `tipo` a su turno y saca el recuadro "Leyendo..." al instante.
+
+        Devuelve False si todavia no se puede leer (datos preparandose)."""
+        if self.hilo_captura is None or tipo not in getattr(self, "turnos", {}):
+            self.estado.setText(t("Los datos todavía se están preparando"))
+            return False
+        try:
+            if recuadro:
+                self.aviso_lectura.leyendo(tipo)
+        except Exception:  # noqa: BLE001 - el recuadro nunca impide leer
+            log.exception("No se pudo ensenar el recuadro de lectura")
+        if self.turnos[tipo].pedir() != "lanzada":
+            log.debug("Lectura %s apuntada para cuando acabe la que esta en marcha", tipo)
+        return True
+
+    def _turno_terminado(self, tipo: str, numero: int) -> None:
+        """Una lectura por atajo ha acabado: se libera el turno y, si no leyo nada, se dice."""
+        turno = self.turnos.get(tipo)
+        if turno is None:
+            return
+        turno.terminada(numero)
+        if turno.ocupado or turno.pendiente:
+            return  # viene otra detras: el recuadro sigue en "Leyendo..."
+        if self.aviso_lectura.tipo != tipo or self.aviso_lectura.estado != "leyendo":
+            return  # ya se ensena el resultado (o otra lectura)
+        if tipo == "reliquias":
+            QTimer.singleShot(self.ESPERA_FALLO_RECOMPENSAS_MS, self._recompensas_sin_leer)
+        elif tipo == "cursor":
+            self.aviso_lectura.fallo(tipo, t("No se reconoció nada bajo el cursor"))
+        else:
+            self.aviso_lectura.fallo(tipo)
+
+    def _mundo_actualizado_compacta(self, _mundo=None) -> None:
+        self.compacta.marcar_sucio()
+
+    def _turno_reliquias_terminado(self, numero: int) -> None:
+        self._turno_terminado("reliquias", numero)
+
+    def _turno_build_terminado(self, numero: int) -> None:
+        self._turno_terminado("build", numero)
+
+    def _turno_agrietado_terminado(self, numero: int) -> None:
+        self._turno_terminado("agrietado", numero)
+
+    def _recompensas_sin_leer(self) -> None:
+        turno = self.turnos.get("reliquias")
+        if turno is not None and (turno.ocupado or turno.pendiente):
+            return
+        if self.aviso_lectura.tipo == "reliquias" and self.aviso_lectura.estado == "leyendo":
+            self.aviso_lectura.fallo("reliquias", t("No se reconoció ninguna recompensa"))
+
     def leer_recompensas(self) -> None:
         """Lee la pantalla de recompensas de reliquia (atajo o aviso de EE.log)."""
         if self.hilo_captura is None:
@@ -1462,19 +1571,21 @@ class VentanaOverlay(QWidget):
             # (lectura por "Relic rewards initialized" y "Got rewards" que llega tarde),
             # esconderlos hasta la relectura solo haria parpadear el panel.
             self.etiquetas.hide()
-        self._pedir_recompensas.emit()
+        # Con el panel de esta pantalla ya a la vista (relectura), sin recuadro: solo haria
+        # parpadear algo encima del panel que ya esta bien.
+        self._leer_por_turno("reliquias", recuadro=not self.etiquetas.isVisible())
 
     def leer_build(self) -> None:
         """Atajo o boton de la pestana Build: lee la pantalla de mejoras del arsenal."""
-        if self.hilo_captura is None:
-            self.estado.setText(t("Los datos todavía se están preparando"))
-            return
-        self._pedir_build.emit()
+        self._leer_por_turno("build")
 
     def _build_leida(self, build) -> None:
         self.builds.mostrar_build(build)
         if build.vacia:
+            self.aviso_lectura.fallo("build", t(build.aviso) if getattr(build, "aviso", "") else
+                                     t("No se reconoció nada en la pantalla de mejoras"))
             return
+        self.aviso_lectura.listo("build")
         self.mostrar()
         if self.modo != "completo":
             self.aplicar_modo("completo")
@@ -1482,15 +1593,17 @@ class VentanaOverlay(QWidget):
 
     def leer_agrietado(self) -> None:
         """Atajo o boton de la pestana Agrietados: lee la tarjeta que hay bajo el cursor."""
-        if self.hilo_captura is None:
-            self.estado.setText(t("Los datos todavía se están preparando"))
-            return
-        self._pedir_agrietado.emit()
+        self._leer_por_turno("agrietado")
 
     def _agrietado_leido(self, tarjeta) -> None:
         self.agrietados.mostrar_tarjeta(tarjeta)
-        if tarjeta.velado or (not tarjeta.estadisticas and not tarjeta.arma_texto):
+        if tarjeta.velado:
+            self.aviso_lectura.fallo("agrietado", t("La tarjeta está velada: no hay nada que evaluar"))
             return
+        if not tarjeta.estadisticas and not tarjeta.arma_texto:
+            self.aviso_lectura.fallo("agrietado", t("No se ve ninguna tarjeta de agrietado bajo el cursor"))
+            return
+        self.aviso_lectura.listo("agrietado")
         self.mostrar()
         if self.modo != "completo":
             self.aplicar_modo("completo")
@@ -1521,13 +1634,20 @@ class VentanaOverlay(QWidget):
         """
         if self.hilo_captura is None:
             return
+        try:
+            self.aviso_lectura.leyendo("cursor")
+        except Exception:  # noqa: BLE001 - el recuadro nunca impide leer
+            log.exception("No se pudo ensenar el recuadro de lectura")
         estado = self.turno_cursor.pedir()
         self.lector_cursor.ultima_pedida = self.turno_cursor.ultima
         if estado != "lanzada":
             log.debug("Lectura bajo el cursor apuntada para cuando acabe la actual")
 
     def _lectura_cursor_terminada(self, numero: int) -> None:
-        self.turno_cursor.terminada(numero)
+        if getattr(self, "turnos", None) and self.turnos.get("cursor") is self.turno_cursor:
+            self._turno_terminado("cursor", numero)
+        else:  # pruebas que cambian el turno por uno suyo
+            self.turno_cursor.terminada(numero)
 
     # -- avisos que tienen que verse y diagnostico -----------------------------------
 
@@ -1564,7 +1684,7 @@ class VentanaOverlay(QWidget):
         elif getattr(self, "disparador", None) is not None and not self.disparador.activo:
             self._aviso_visible("auto", t(
                 "Reliquia abierta, pero la lectura automática está desactivada en Ajustes: "
-                "pulsa {atajo} para leerla.", atajo=self.config.get("hotkey_reliquias", ""),
+                "pulsa {atajo} para leerla.", atajo=texto_legible(self.config.get("hotkey_reliquias", "")),
             ))
 
     def diagnostico(self):
@@ -1623,6 +1743,7 @@ class VentanaOverlay(QWidget):
         self._ultima_lectura = (time.time(), len(recompensas))
         if not recompensas:
             return
+        self.aviso_lectura.listo("reliquias")
         from ..captura.reliquias import copiar
 
         recompensas = copiar(recompensas)  # la misma lista va al comparador, en otro hilo
@@ -1818,6 +1939,7 @@ class VentanaOverlay(QWidget):
         return not (w.isWindow() and w.testAttribute(Qt.WA_TranslucentBackground))
 
     def _abrir_desde_cursor(self, item_id: int, nombre: str) -> None:
+        self.aviso_lectura.listo("cursor")
         self.mostrar()
         if self.modo == "compacto":
             self.compacta.abrir(item_id)
@@ -1851,7 +1973,11 @@ class VentanaOverlay(QWidget):
             return
         if guardar_config:
             self._guardar_geometria()
+        if modo != "completo" and self.isMaximized():
+            # El modo juego y el video son ventanas pequenas: nunca maximizadas.
+            self.showNormal()
         self.modo = modo
+        self.boton_maximizar.setVisible(modo == "completo")
         compacto = modo == "compacto"
         video = modo == "video"
         self.aplicar_opacidad(self._opacidad)
@@ -1903,6 +2029,9 @@ class VentanaOverlay(QWidget):
         self._pintar_banner()
         self._asegurar_en_pantalla()
         self._aplicar_encima()
+        if modo == "completo" and guardar_config and self.isVisible() and self.config.get("overlay_maximizada"):
+            # Vuelve a la completa como estaba: maximizada.
+            self.showMaximized()
         if guardar_config:
             self.config["overlay_modo"] = modo
             guardar(self.config)
@@ -1975,6 +2104,10 @@ class VentanaOverlay(QWidget):
             # Sin la pista de minimizar, Windows no la esconde al pulsar su boton en la
             # barra (una ventana sin marco no trae ese estilo). No pinta ningun boton.
             banderas |= Qt.Window | Qt.WindowMinimizeButtonHint
+            if self.modo == "completo":
+                # Igual con maximizar: Windows + flecha arriba y "Maximizar" en el menu
+                # del boton de la barra de tareas.
+                banderas |= Qt.WindowMaximizeButtonHint
         else:
             banderas |= Qt.Tool
         return banderas
@@ -2065,6 +2198,25 @@ class VentanaOverlay(QWidget):
         self._reloj_encima.stop()
         self.showMinimized()
 
+    def alternar_maximizado(self) -> None:
+        """Boton de la cabecera o doble clic en ella: maximizar y restaurar la completa."""
+        if self.modo != "completo":
+            return
+        if self.isMaximized():
+            self.showNormal()
+        else:
+            self.showMaximized()
+        self._guardar_geometria()
+
+    def _pintar_boton_maximizar(self) -> None:
+        if not hasattr(self, "boton_maximizar"):
+            return
+        maximizada = self.isMaximized()
+        self.boton_maximizar.poner_glifo("restaurar" if maximizada else "maximizar")
+        texto = t("Restaurar") if maximizada else t("Maximizar")
+        self.boton_maximizar.setText(texto)
+        self.boton_maximizar.setToolTip(texto)
+
     def _restaurar_si_minimizada(self, activar: bool) -> None:
         """Quita el minimizado antes de ensenarla. Sin activar (juego en pantalla completa
         exclusiva) se le pide a Windows que la restaure sin quitarle el foco a nadie."""
@@ -2085,6 +2237,7 @@ class VentanaOverlay(QWidget):
                 self._aplicar_encima()
             if self.servicio_mundo is not None and self.isVisible():
                 self._cadencia_mundo.emit(not minimizada)
+            self._pintar_boton_maximizar()
         super().changeEvent(evento)
 
     def mostrar(self) -> None:
@@ -2115,6 +2268,10 @@ class VentanaOverlay(QWidget):
         self.setAttribute(Qt.WA_ShowWithoutActivating, False)
         self._restaurar_si_minimizada(activar=True)
         self._asegurar_en_pantalla()
+        if self._maximizar_al_mostrar:
+            self._maximizar_al_mostrar = False
+            if self.modo == "completo":
+                self.setWindowState(self.windowState() | Qt.WindowMaximized)
         self.show()
         self.raise_()
         self.activateWindow()
@@ -2133,10 +2290,15 @@ class VentanaOverlay(QWidget):
             self._cadencia_mundo.emit(False)
 
     def _guardar_geometria(self) -> None:
-        g = self.geometry()
+        maximizada = self.isMaximized() or bool(self.windowState() & Qt.WindowMaximized)
+        # Maximizada, el sitio que se guarda es el de antes de maximizar (al que vuelve al
+        # restaurar), y aparte que estaba maximizada. Solo la completa se maximiza.
+        g = self.normalGeometry() if maximizada and self.normalGeometry().isValid() else self.geometry()
         if self.isMinimized() and g.x() <= -30000:
             # Windows aparca las minimizadas en (-32000, -32000): eso no es un sitio.
             return
+        if self.modo == "completo":
+            self.config["overlay_maximizada"] = maximizada
         # Lo que la compacta crecio por el banner no es tamano elegido por el usuario.
         alto = g.height() - (self._alto_banner_compacto if self.modo == "compacto" else 0)
         self.config[self._clave_geometria()] = [g.x(), g.y(), g.width(), alto]
@@ -2286,7 +2448,7 @@ class VentanaOverlay(QWidget):
         self.logo.setPixmap(mapa)
 
     def _pintar_pista(self) -> None:
-        atajo = self.config.get("hotkey_overlay", "Ctrl+Alt+W")
+        atajo = texto_legible(self.config.get("hotkey_overlay", "Ctrl+Alt+W"))
         self.pista.setText(t("{atajo} o Escape para cerrar", atajo=atajo) + "  ")
         self._pintar_tooltip_minimizar()
         if hasattr(self, "compacta"):
@@ -2295,7 +2457,7 @@ class VentanaOverlay(QWidget):
     def _pintar_tooltip_minimizar(self) -> None:
         if not hasattr(self, "boton_minimizar"):
             return
-        atajo = self.config.get("hotkey_overlay", "Ctrl+Alt+W")
+        atajo = texto_legible(self.config.get("hotkey_overlay", "Ctrl+Alt+W"))
         if self._en_barra():
             texto = t("Minimizar: vuelve con {atajo}, desde la barra de tareas o con el icono de la bandeja",
                       atajo=atajo)
@@ -2313,6 +2475,7 @@ class VentanaOverlay(QWidget):
         self.boton_fijar.setText(t("Fijar"))
         self.boton_cerrar.setToolTip(t("Esconder (Escape)"))
         self.boton_minimizar.setText(t("Minimizar"))
+        self._pintar_boton_maximizar()
         self._pintar_tooltip_minimizar()
         for clave, titulo in SECCIONES:
             self.menu.poner_texto(clave, t(titulo))
@@ -2428,20 +2591,60 @@ class VentanaOverlay(QWidget):
         """
         if evento.button() != Qt.LeftButton:
             return
+        donde = evento.globalPosition().toPoint()
+        ahora = time.monotonic()
+        anterior, self._ultimo_clic = self._ultimo_clic, (ahora, donde)
+        if (anterior is not None and self._en_cabecera(evento.position().toPoint())
+                and es_doble_clic(anterior, (ahora, donde), QApplication.doubleClickInterval() / 1000.0)):
+            # Doble clic en la cabecera, como en la barra de titulo de cualquier programa.
+            self._ultimo_clic = None
+            self.alternar_maximizado()
+            evento.accept()
+            return
+        if self.isMaximized():
+            # Maximizada no se mueve con un clic suelto; si se arrastra, se restaura.
+            self._arrastre_maximizada = donde
+            evento.accept()
+            return
         ventana = self.windowHandle()
         if ventana is not None and ventana.startSystemMove():
             evento.accept()
             return
-        self._arrastre = evento.globalPosition().toPoint() - self.frameGeometry().topLeft()
+        self._arrastre = donde - self.frameGeometry().topLeft()
         evento.accept()
 
+    def _en_cabecera(self, pos: QPoint) -> bool:
+        """Si un punto (coordenadas de la ventana) cae en la franja de la cabecera."""
+        barra = getattr(self, "barra_cabecera", None)
+        if barra is None or not barra.isVisible():
+            return False
+        return pos.y() <= barra.mapTo(self, QPoint(0, barra.height())).y()
+
     def mouseMoveEvent(self, evento):  # noqa: N802
+        if self._arrastre_maximizada is not None and evento.buttons() & Qt.LeftButton:
+            donde = evento.globalPosition().toPoint()
+            if (donde - self._arrastre_maximizada).manhattanLength() < QApplication.startDragDistance():
+                return
+            # Se restaura con el cursor en el mismo sitio relativo de la cabecera y se sigue
+            # arrastrando: lo que hace Windows con una barra de titulo de verdad.
+            marco = self.frameGeometry()
+            proporcion = (self._arrastre_maximizada.x() - marco.left()) / max(1, marco.width())
+            alto_agarre = self._arrastre_maximizada.y() - marco.top()
+            self._arrastre_maximizada = None
+            self.showNormal()
+            self.move(donde.x() - round(self.width() * proporcion), donde.y() - alto_agarre)
+            ventana = self.windowHandle()
+            if ventana is None or not ventana.startSystemMove():
+                self._arrastre = donde - self.frameGeometry().topLeft()
+            evento.accept()
+            return
         if self._arrastre and evento.buttons() & Qt.LeftButton:
             self.move(evento.globalPosition().toPoint() - self._arrastre)
             evento.accept()
 
     def mouseReleaseEvent(self, evento):  # noqa: N802
         self._arrastre = None
+        self._arrastre_maximizada = None
 
     # -- redimensionado por los bordes ---------------------------------------
 
@@ -2469,6 +2672,9 @@ class VentanaOverlay(QWidget):
         return super().eventFilter(objeto, evento)
 
     def _borde_bajo_cursor(self, evento) -> str | None:
+        if self.isMaximized():
+            # Maximizada ocupa toda la pantalla: sin bordes que arrastrar.
+            return None
         pos = evento.position().toPoint()
         return borde_en_posicion(pos.x(), pos.y(), self.width(), self.height())
 
@@ -2552,6 +2758,7 @@ class VentanaOverlay(QWidget):
         self.ayuda_reliquias.quitar()
         self.tarjeta_reliquia.ocultar()
         self.tarjeta_reliquia.cerrar()
+        self.aviso_lectura.cerrar()
         hilo_pasivo = getattr(self, "hilo_pasivo", None)
         if hilo_pasivo is not None:
             hilo_pasivo.quit()
