@@ -124,21 +124,23 @@ MINIMO_CONFIANZA = 0.5
 # cuesta segun los pixeles: a 1440p eran ~320 ms y a 4K ~800 ms solo en buscar.
 # No se baja de 1080: medido con capturas reales de la wiki (interfaces viejas con
 # letra pequena, la pantalla de artefactos de tektolito), buscar a 810 o 900 perdia
-# mods que a 1080 se leen. Una captura de 1440p se busca a 1080, igual que una de
-# 1080p (la resolucion con la que esta medido todo lo demas); una de 4K, a 1620.
+# mods que a 1080 se leen. Cualquier captura mas alta (1440p, 4K, 21:9) se busca a
+# 1080: el juego escala la interfaz con la resolucion, asi que reducida a 1080 es la
+# misma pantalla que a 1080p (la resolucion con la que esta medido todo lo demas).
 ALTO_DETECCION = 1080
 
 
 def alto_de_deteccion(alto: int) -> int | None:
-    """A que alto se busca el texto: 1080, sin reducir nunca a menos de tres cuartos.
+    """A que alto se busca el texto: 1080 (las mas pequenas no se amplian).
 
-    1440p se busca a 1080 (0,75). A 4K, reducir a la mitad o a dos tercios perdia
-    algun nombre en capturas reales ("Primed Shred", "Primary Acuity"); a 1620
-    (tres cuartos, lo mismo que 1440p a 1080) ya no.
+    Antes una de 4K se buscaba a 1620 (tres cuartos) por miedo a perder nombres; medido
+    de nuevo con todas las capturas reales de 4K del banco (seis, en cinco idiomas), a
+    1080 salen exactamente los mismos mods y el equipo, y el detector tarda menos de la
+    mitad: era lo que hacia pasar de 1 s la lectura a 4K con la CPU cargada.
     """
     if not ALTO_DETECCION:
         return None
-    return max(ALTO_DETECCION, alto * 3 // 4)
+    return ALTO_DETECCION
 
 
 @dataclass

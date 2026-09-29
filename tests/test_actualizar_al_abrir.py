@@ -373,3 +373,42 @@ def test_ajustes_tiene_actualizar_al_abrir(monkeypatch, tmp_path):
     assert guardados and guardados[-1]["actualizar_al_abrir"] is False
     ajustes.auto_actualizar.setChecked(False)
     assert not casilla.isEnabled()
+
+
+def test_dns_colgado_no_pasa_del_plazo(monkeypatch):
+    """Sin comprobador (como en el arranque real): el DNS colgado, donde los plazos de
+    httpx no llegan, ni preparar el cliente, pueden alargar la espera mas alla del plazo."""
+    import socket
+
+    from farmadex.online import http
+
+    def dns_colgado(*a, **k):
+        time.sleep(5)
+        raise OSError("dns colgado (simulado)")
+
+    monkeypatch.setattr(socket, "getaddrinfo", dns_colgado)
+    original = http.Cliente.__init__
+
+    def cliente_lento(self, *a, **k):
+        time.sleep(0.4)  # crear el cliente (certificados) tambien va dentro del plazo
+        original(self, *a, **k)
+
+    monkeypatch.setattr(http.Cliente, "__init__", cliente_lento)
+    t0 = time.perf_counter()
+    assert al_abrir.consultar_ultima(plazo=0.3) is None
+    assert time.perf_counter() - t0 < 0.3 + 0.15
+
+
+def test_sin_comprobador_la_version_nueva_llega(monkeypatch):
+    """El camino del arranque real (sin comprobador) sigue encontrando la version nueva."""
+    from farmadex.online import http
+
+    original = http.Cliente.__init__
+
+    def con_github_simulado(self, *a, **k):
+        k["transporte"] = httpx.MockTransport(lambda p: httpx.Response(200, json=release_json(), request=p))
+        original(self, *a, **k)
+
+    monkeypatch.setattr(http.Cliente, "__init__", con_github_simulado)
+    v = al_abrir.consultar_ultima(plazo=3.0)
+    assert v is not None and v.etiqueta == "v9.9.9"

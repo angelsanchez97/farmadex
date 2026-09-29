@@ -22,6 +22,7 @@ que ya estuviera bajado, sin ventana de progreso, y Farmadex vuelve a la bandeja
 from __future__ import annotations
 
 import threading
+import time
 from pathlib import Path
 
 from PySide6.QtCore import QEventLoop, Qt, Signal
@@ -89,31 +90,67 @@ def instalador_listo(carpeta: Path | str | None = None) -> tuple[str, Path] | No
 def consultar_ultima(plazo: float = PLAZO_CONSULTA_S, comprobador: ComprobadorApp | None = None) -> Version | None:
     """La version nueva publicada, si GitHub contesta dentro del plazo; None si no.
 
-    La consulta va en un hilo y se espera como mucho `plazo`: aunque la red se
-    quede colgada (DNS, proxy), el arranque sigue.
+    Todo va en un hilo, tambien preparar la conexion (crear el cliente con sus
+    certificados costaba ~0,25 s en el hilo del arranque), y el arranque espera como
+    mucho `plazo` contado desde que se llama: aunque la red se quede colgada en el
+    DNS o en el proxy, donde los plazos de httpx no llegan, el arranque sigue a
+    tiempo. El hilo colgado es de fondo (daemon) y no retiene nada al cerrar.
     """
-    propio = comprobador is None
-    if comprobador is None:
-        comprobador = ComprobadorApp()
-        comprobador.cliente.cliente.timeout = _timeout(plazo)
-    if not comprobador.activo:
+    limite = time.monotonic() + max(0.0, plazo)
+    if comprobador is not None and not comprobador.activo:
         return None
     resultado: dict = {}
-    comprobador.nueva_version.connect(lambda v: resultado.__setitem__("version", v), Qt.DirectConnection)
-    comprobador.fallo.connect(lambda m: resultado.__setitem__("fallo", m), Qt.DirectConnection)
-    hilo = threading.Thread(
-        target=comprobador.comprobar_ahora, kwargs={"manual": True}, name="comprobar-al-abrir", daemon=True
-    )
+    terminado = threading.Event()
+
+    def consultar() -> None:
+        try:
+            if comprobador is None:
+                resultado.update(_preguntar_a_github(plazo))
+            else:
+                comprobador.nueva_version.connect(lambda v: resultado.__setitem__("version", v),
+                                                  Qt.DirectConnection)
+                comprobador.fallo.connect(lambda m: resultado.__setitem__("fallo", m), Qt.DirectConnection)
+                comprobador.comprobar_ahora(manual=True)
+        except Exception as e:  # noqa: BLE001 - nunca propaga: el arranque sigue
+            resultado["fallo"] = str(e)
+        finally:
+            terminado.set()
+
+    hilo = threading.Thread(target=consultar, name="comprobar-al-abrir", daemon=True)
     hilo.start()
-    hilo.join(plazo)
-    if hilo.is_alive():
+    if not terminado.wait(max(0.0, limite - time.monotonic())):
         log.info("GitHub no ha contestado en %.1f s: se arranca normal", plazo)
         return None
-    if propio:
-        comprobador.cerrar()
     if "fallo" in resultado:
         log.info("No se pudo mirar si hay version nueva al abrir (%s): se arranca normal", resultado["fallo"])
     return resultado.get("version")
+
+
+def _preguntar_a_github(plazo: float) -> dict:
+    """La consulta de `ComprobadorApp.comprobar_ahora` sin objetos de Qt (va en un hilo
+    suelto): {"version": Version} si hay una mas nueva, {"fallo": motivo} o {}."""
+    from ..online.http import Cliente
+    from .app import PROPIETARIO, REPOSITORIO, analizar_release
+
+    if not (PROPIETARIO and REPOSITORIO):
+        return {}
+    cliente = Cliente(cabeceras={"Accept": "application/vnd.github+json"})
+    cliente.cliente.timeout = _timeout(plazo)
+    try:
+        datos = cliente.json(f"https://api.github.com/repos/{PROPIETARIO}/{REPOSITORIO}/releases/latest",
+                             segundos_cache=0, intentos=1)
+    except Exception as e:  # noqa: BLE001 - 404, sin red, JSON raro
+        return {"fallo": str(e)}
+    finally:
+        cliente.cerrar()
+    try:
+        version = analizar_release(datos if isinstance(datos, dict) else {})
+    except Exception as e:  # noqa: BLE001 - respuesta con otra forma
+        return {"fallo": str(e)}
+    if version and es_mas_nueva(version.etiqueta):
+        log.info("Hay una version nueva: %s", version.etiqueta)
+        return {"version": version}
+    return {}
 
 
 def _timeout(plazo: float):
