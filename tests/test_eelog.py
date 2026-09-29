@@ -69,6 +69,7 @@ def test_el_vigilante_emite_eventos_y_pistas_en_orden():
     vigilante._procesar([EQUIPAR, "x", ABIERTA, RECOMPENSA, GOT])
     assert recibido == [
         ("reliquia", "Lith K5"),
+        ("reliquia_equipada", "Lith K5|Flawless"),  # el refinamiento del dialogo de equipar
         ("evento", "reliquia_abierta"),
         ("recompensa", "/Lotus/Types/Recipes/Weapons/WeaponParts/BurstonPrimeStock"),
         ("evento", "reliquia_recompensas"),

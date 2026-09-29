@@ -82,6 +82,13 @@ class Recompensa:
     valor: float | None = None  # platino equivalente; None = no se pudo valorar
     mejor: bool = False  # la que conviene elegir
     nota: str = ""  # por que falta algo ("Sin precio: ...")
+    # Tambien `comparador.puntuar`: vender o fundir (datos/vender_fundir.py). Vacio si
+    # no hay datos para aconsejar (sin precio, sin ducados).
+    vendedores: int = 0
+    compradores: int | None = None
+    consejo: str = ""  # "falta", "vender", "fundir", "igual" o ""
+    consejo_texto: str = ""
+    consejo_motivo: str = ""
 
 
 def copiar(recompensas: list) -> list:
@@ -971,6 +978,8 @@ def resumir(recompensas: list[Recompensa]) -> str:
             detalles.append(t("En bóveda"))
         if r.objetivo:
             detalles.append(t("Objetivo: {nombre}", nombre=r.objetivo))
+        if r.consejo_texto and r.consejo != "falta":
+            detalles.append(r.consejo_texto)
         if r.nota:
             detalles.append(r.nota)
         nombre = t("MEJOR: {nombre}", nombre=r.nombre) if r.mejor else r.nombre

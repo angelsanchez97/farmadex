@@ -210,6 +210,26 @@ def pista(linea: str) -> tuple[str, str] | None:
     return None
 
 
+# El dialogo de EQUIPAR lleva el refinamiento entre corchetes, en el idioma del juego:
+# "equipar Reliquia Lith K5 [PERFECTA] para esta mision". El de refinar ("Refinar
+# Reliquia Lith S18 a RADIANTE") no lo lleva asi, y no dice que reliquia se usa.
+RE_RELIQUIA_EQUIPADA = re.compile(r"\b(Lith|Meso|Neo|Axi|Requiem) ([A-Z]\d{1,2}) \[([^\]]{3,24})\]")
+
+
+def reliquia_equipada(linea: str) -> str | None:
+    """"Lith K5|Flawless" (o "Lith K5|" si el refinamiento no se reconoce) del dialogo
+    de equipar; None en cualquier otra linea. Para el historial de aperturas."""
+    if SCRIPT_DIALOGO not in linea:
+        return None
+    m = RE_RELIQUIA_EQUIPADA.search(linea)
+    if not m:
+        return None
+    from ..captura.reliquia_hover import REFINAMIENTOS, _sin_tildes
+
+    palabra = re.sub(r"[^A-Z]", "", _sin_tildes(m.group(3)).upper())
+    return f"{m.group(1)} {m.group(2)}|{REFINAMIENTOS.get(palabra, '')}"
+
+
 # Al cargar una mision, Progress.lua dice cuantos jugadores remotos hay (0 = en
 # solitario). Visto en un EE.log real; la linea vecina con el nombre de cada
 # jugador remoto no se lee.
@@ -316,7 +336,9 @@ class VigilanteEELog(QThread):
     """Sigue el final del fichero y avisa de los eventos reconocidos."""
 
     evento = Signal(str)  # nombre del evento
-    pista = Signal(str, str)  # ("reliquia", "Lith K5") o ("recompensa", unique_name)
+    # ("reliquia", "Lith K5"), ("recompensa", unique_name), ("remotos", "3"), ("tarjeta", "1")
+    # o ("reliquia_equipada", "Lith K5|Flawless") justo detras de la de "reliquia".
+    pista = Signal(str, str)
     pantalla = Signal(str, str)  # ("abierta", "perfil"), ("cerrada", ""), ("pausa", "")
     arranque = Signal(object)  # Cabecera: al ver el fichero y cada vez que el juego arranca
 
@@ -427,6 +449,9 @@ class VigilanteEELog(QThread):
             if encontrada:
                 log.info("EE.log: pista %s = %s", *encontrada)
                 self.pista.emit(*encontrada)
+                equipada = reliquia_equipada(linea) if encontrada[0] == "reliquia" else None
+                if equipada:
+                    self.pista.emit("reliquia_equipada", equipada)
                 continue
             cambio = pantalla_de(linea)
             if cambio:

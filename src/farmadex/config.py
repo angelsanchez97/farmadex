@@ -138,6 +138,8 @@ POR_DEFECTO = {
     "actualizar_al_abrir": True,
     "carpeta_actualizaciones": str(DIR_ACTUALIZACIONES),
     "ruta_eelog": str(Path(os.environ.get("LOCALAPPDATA", Path.home())) / "Warframe" / "EE.log"),
+    # Historial de aperturas de reliquias (MIS METAS > Historial, estado/aperturas.py).
+    "historial_aperturas": True,
 }
 
 

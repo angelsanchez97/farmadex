@@ -61,8 +61,11 @@ from .etiquetas import (
     COLOR_SIN_DOMINAR,
     COLOR_TEXTO,
     SEGUNDOS_VISIBLE,
+    color_consejo,
     color_motivo,
+    copiar_consejo,
     emparejar,
+    linea_consejo,
 )
 from .widgets import imagenes
 
@@ -201,6 +204,7 @@ class PanelRecompensas(QWidget):
         for r, nuevo in parejas:
             r.valor, r.mejor, r.nota, r.platino = nuevo.valor, nuevo.mejor, nuevo.nota, nuevo.platino
             r.criterio_platino = nuevo.criterio_platino
+            copiar_consejo(r, nuevo)
         self._seguro = veredicto.seguro
         self.update()
 
@@ -423,6 +427,10 @@ class PanelRecompensas(QWidget):
             lineas.append((r.nota, suave, False))
         # Siempre: si falta el dato se dice, no desaparece la linea.
         lineas.append((t("{n} ducados", n=r.ducados), suave, False) if r.ducados else (t("Sin ducados"), suave, False))
+        # Vender o fundir, justo debajo de sus dos numeros (solo con precio recien llegado).
+        consejo = linea_consejo(r)
+        if consejo:
+            lineas.append((consejo, color_consejo(r.consejo), True))
         if extra.get("tienes") is not None:
             lineas.append((t("Tienes {n}", n=extra["tienes"]), suave, False))
         if extra.get("minutos"):

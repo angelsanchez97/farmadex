@@ -118,6 +118,7 @@ class Puntuacion:
     platino_mediana: int | None = None
     platino_mejor_venta: int | None = None
     vendedores: int = 0
+    compradores: int | None = None  # ordenes de compra vistas; None = no se sabe
     ducados: int | None = None
     rareza: str | None = None
     objetivo: str = ""
@@ -288,6 +289,7 @@ def puntuar(
         r.rareza = p.rareza
         r.valor = p.valor
         r.mejor = i == veredicto.mejor
+        _poner_consejo(r, p)
         if r.platino is None and not p.notas and r.item_id != SIN_IDENTIFICAR:
             p.notas.append(t("Sin precio"))  # que no parezca que vale cero
         r.nota = "; ".join(p.notas)
@@ -297,6 +299,25 @@ def puntuar(
         veredicto.resumen(),
     )
     return veredicto
+
+
+def _poner_consejo(r: Recompensa, p: Puntuacion) -> None:
+    """Vender o fundir (datos/vender_fundir.py). Solo con el precio que acaba de llegar
+    (cache de 10 min o red en este mismo veredicto): aqui no se pide nada mas."""
+    from ..datos import vender_fundir
+
+    r.vendedores, r.compradores = p.vendedores, p.compradores
+    # El precio de venta realista es el del vendedor mas barato, tambien en solitario.
+    platino = p.platino_mejor_venta if p.platino_mejor_venta is not None else p.platino
+    consejo = None
+    if r.item_id != SIN_IDENTIFICAR:
+        consejo = vender_fundir.aconsejar(
+            platino, p.ducados, es_meta=bool(p.objetivo), vendedores=p.vendedores or None,
+            compradores=p.compradores, edad_s=0.0 if platino is not None else None,
+        )
+    r.consejo = consejo.clave if consejo else ""
+    r.consejo_texto = consejo.corto if consejo else ""
+    r.consejo_motivo = consejo.motivo if consejo else ""
 
 
 def _pedir(precios_de: ProveedorPrecios, slug: str):
@@ -321,6 +342,7 @@ def _aplicar_precio(p: Puntuacion, precios, escuadra: bool) -> None:
         p.notas.append(t("Sin precio: nadie lo vende ahora"))
         return
     p.vendedores = len(ventas)
+    p.compradores = len(getattr(precios, "compras", None) or [])
     p.platino_mejor_venta = precios.mejor_venta
     mediana = precios.mediana_venta
     p.platino_mediana = int(round(mediana)) if mediana is not None else None

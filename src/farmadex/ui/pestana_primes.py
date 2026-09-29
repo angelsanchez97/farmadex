@@ -965,6 +965,8 @@ class PestanaPrimes(QWidget):
             "SELECT item_unique_name, completado_en FROM objetivos WHERE completado_en IS NOT NULL",
             "SELECT elegido_unique_name, MAX(leido_en) FROM historial_recompensas "
             "WHERE elegido_unique_name IS NOT NULL GROUP BY elegido_unique_name",
+            # Historial de aperturas (estado/aperturas.py): solo lo confirmado.
+            "SELECT obtenida, MAX(abierta_en) FROM aperturas WHERE obtenida IS NOT NULL GROUP BY obtenida",
         )
         for consulta in consultas:
             try:

@@ -32,6 +32,7 @@ from ..datos import eficiencia, indice
 from ..idiomas import es_castellano, t
 from ..estado import inventario as estado_inventario
 from ..estado import objetivos as estado_objetivos
+from ..estado import aperturas as estado_aperturas
 from ..perfil import desde_ocr
 from ..registro.botin import Botin
 from ..registro.eelog import VigilanteEELog
@@ -99,7 +100,7 @@ SECCIONES = (
     ("ajustes", "Ajustes"),
 )
 SUBSECCIONES = {
-    "metas": (("objetivos", "Objetivos"), ("primes", "Primes"), ("perfil", "Perfil")),
+    "metas": (("objetivos", "Objetivos"), ("primes", "Primes"), ("perfil", "Perfil"), ("historial", "Historial")),
     "herramientas": (("build", "Build"), ("agrietados", "Agrietados"), ("video", "Vídeo"), ("web", "Web")),
 }
 # Ruta -> atributo de la ventana con la pagina (se lee al navegar: una pagina puede
@@ -110,6 +111,7 @@ PAGINAS = {
     "metas/objetivos": "objetivos",
     "metas/primes": "primes",
     "metas/perfil": "perfil",
+    "metas/historial": "historial",
     "mundo": "mundo",
     "herramientas/build": "builds",
     "herramientas/agrietados": "agrietados",
@@ -367,6 +369,10 @@ class VentanaOverlay(QWidget):
         self.ajustes = PestanaAjustes()
         # El perfil comparte la BD del usuario con los objetivos (misma conexion, mismo hilo).
         self.perfil = PestanaPerfil(self.objetivos.usuario)
+        # Historial de aperturas de reliquias (MIS METAS > Historial), misma BD del usuario.
+        from .pestana_historial import PestanaHistorial
+
+        self.historial = PestanaHistorial(self.objetivos.usuario, self.config)
         # Las guias de YouTube se ven dentro de Farmadex, en la pestana Video.
         self.video = PanelVideo()
         self.video.estado.connect(lambda texto: self.estado.setText(texto))
@@ -392,6 +398,7 @@ class VentanaOverlay(QWidget):
         self.agrietados = PestanaAgrietados()
         self.agrietados.pedir_lectura.connect(self.leer_agrietado)
         self.objetivos.cambiados.connect(self.mundo.refrescar_objetivos)
+        self.objetivos.cambiados.connect(self.historial.marcar_sucio)
         self.ajustes.reconstruir.connect(lambda: self.preparar_datos(forzar=True))
         self.ajustes.tema_cambiado.connect(self.cambiar_tema)
         self.ajustes.idioma_cambiado.connect(self.cambiar_idioma)
@@ -593,6 +600,7 @@ class VentanaOverlay(QWidget):
         self.objetivos.conectar_indice(indice.conectar())
         self.primes.conectar_indice(indice.conectar())
         self.perfil.conectar_indice(indice.conectar())
+        self.historial.conectar_indice(indice.conectar())
         self.builds.conectar_indice(indice.conectar())
         self.agrietados.conectar_indice(indice.conectar())
         self.mundo.conectar_objetivos(indice.conectar(), self.objetivos.usuario)
@@ -785,12 +793,21 @@ class VentanaOverlay(QWidget):
         # Botin que EE.log deja claro (reliquia en solitario) va directo a los objetivos.
         self.botin = Botin(self._sumar_botin, bool(self.config.get("botin_eelog_auto", True)))
         self.ajustes.botin_eelog.toggled.connect(lambda activo: setattr(self.botin, "activo", activo))
+        # Historial de aperturas (estado/aperturas.py): escribe al cerrarse la pantalla,
+        # nunca mientras se pintan las recompensas.
+        self.grabador_aperturas = estado_aperturas.Grabador(
+            self.objetivos.usuario, rareza_en=self._rareza_en_reliquia, resolver=self._resolver_ruta,
+            activo=bool(self.config.get("historial_aperturas", True)),
+        )
+        self.historial.activo_cambiado.connect(lambda activo: setattr(self.grabador_aperturas, "activo", activo))
 
         self.vigilante = VigilanteEELog(
             self.config.get("ruta_eelog", ""), ruta_por_defecto=config_modulo.POR_DEFECTO["ruta_eelog"]
         )
         self.vigilante.evento.connect(self._evento_juego)
         self.vigilante.pista.connect(self.botin.pista)
+        self.vigilante.pista.connect(self.grabador_aperturas.pista)
+        self.vigilante.evento.connect(self._evento_aperturas)
         self.vigilante.pista.connect(self.lector_recompensas.pista)
         self.vigilante.evento.connect(self.lector_recompensas.evento)
         self.vigilante.pista.connect(self._pista_juego)
@@ -1592,6 +1609,9 @@ class VentanaOverlay(QWidget):
         finally:
             con.close()
         t_completar = time.perf_counter() - t0
+        if getattr(self, "grabador_aperturas", None) is not None:
+            # Historial de aperturas: en la siguiente vuelta del bucle, despues de pintar.
+            QTimer.singleShot(0, lambda r=recompensas: self._leidas_apertura(r))
         # El resumen en texto vale en cualquier modo de pantalla (y queda en el log).
         resumen = resumir(recompensas)
         log.info("Recompensas: %s", resumen)
@@ -1636,11 +1656,71 @@ class VentanaOverlay(QWidget):
 
     def _veredicto_recompensas(self, recompensas: list, veredicto) -> None:
         """Llega despues, con los precios: solo añade la marca de "mejor" a lo que ya se ve."""
+        grabador = getattr(self, "grabador_aperturas", None)
+        if grabador is not None:
+            # Primero lo que ve el usuario; el historial, en la siguiente vuelta del bucle.
+            QTimer.singleShot(0, lambda r=list(recompensas), v=veredicto: self._apuntar_apertura(r, v))
         if self.modo_pantalla == pantalla.MODO_EXCLUSIVO:
             return
         self.etiquetas.marcar_veredicto(recompensas, veredicto)
         if veredicto.puntuaciones:
             self.estado.setText(veredicto.resumen())
+
+    # -- historial de aperturas ------------------------------------------------
+
+    def _apuntar_apertura(self, recompensas: list, veredicto) -> None:
+        antes = self.grabador_aperturas.cambios
+        self.grabador_aperturas.veredicto(recompensas, veredicto)
+        if self.grabador_aperturas.cambios != antes:
+            self.historial.marcar_sucio()
+
+    def _leidas_apertura(self, recompensas: list) -> None:
+        antes = self.grabador_aperturas.cambios
+        self.grabador_aperturas.leidas(recompensas)
+        if self.grabador_aperturas.cambios != antes:
+            self.historial.marcar_sucio()
+
+    def _evento_aperturas(self, nombre: str) -> None:
+        antes = self.grabador_aperturas.cambios
+        self.grabador_aperturas.evento(nombre)
+        if self.grabador_aperturas.cambios != antes:
+            self.historial.marcar_sucio()
+
+    def _rareza_en_reliquia(self, reliquia: str, unique_name: str) -> str | None:
+        """'Common'/'Uncommon'/'Rare' de esa pieza en esa reliquia; None si no sale de ella."""
+        from ..datos.relaciones import rareza_reliquia
+
+        if not indice.hay_indice():
+            return None
+        con = indice.conectar()
+        try:
+            filas = con.execute(
+                "SELECT rr.refinamiento, rr.probabilidad, rr.rareza FROM reliquia_recompensas rr "
+                "JOIN items r ON r.id = rr.reliquia_id JOIN items i ON i.id = rr.item_id "
+                "WHERE r.unique_name = ? AND i.unique_name = ?",
+                (f"RELIQUIA/{reliquia}", unique_name),
+            ).fetchall()
+        finally:
+            con.close()
+        for refinamiento, probabilidad, rareza in sorted(filas, key=lambda f: f[0] != "Intact"):
+            valor = rareza_reliquia(refinamiento, probabilidad, rareza)
+            if valor in estado_aperturas.RAREZAS:
+                return valor
+        return None
+
+    def _resolver_ruta(self, ruta: str) -> tuple[str, str] | None:
+        """(unique_name del indice, nombre) de una ruta de EE.log; None si no se conoce."""
+        if not indice.hay_indice():
+            return None
+        con = indice.conectar()
+        try:
+            fila = indice.fila_por_ruta(con, ruta, "unique_name, nombre_es, nombre_en")
+        finally:
+            con.close()
+        if not fila:
+            return None
+        nombre = (fila[1] or fila[2]) if es_castellano() else (fila[2] or fila[1])
+        return fila[0], nombre or fila[0]
 
     def cambiar_estilo_recompensas(self, estilo: str) -> None:
         """Ajustes: "etiquetas" o "panel". Lo que este en pantalla se esconde."""
@@ -2215,7 +2295,7 @@ class VentanaOverlay(QWidget):
                 self._seccion_con_sub(clave).subpestanas.poner_texto(sub, t(titulo))
         self.estado.setText("")
         for pestana in (self.tablero, self.buscador, self.objetivos, self.primes, self.mundo, self.perfil, self.ajustes,
-                        self.compacta, self.video, self.web, self.builds, self.agrietados):
+                        self.compacta, self.video, self.web, self.builds, self.agrietados, self.historial):
             pestana.retraducir()
         self._regenerar_avisos()
 
@@ -2434,6 +2514,10 @@ class VentanaOverlay(QWidget):
             self._lanzar_instalacion_pendiente()
         if self.vigilante:
             self.vigilante.parar()
+        grabador = getattr(self, "grabador_aperturas", None)
+        if grabador is not None:
+            grabador.cerrar()  # una apertura a medias se guarda
+        self.historial.parar()
         if self.hover_reliquias is not None:
             self.hover_reliquias.parar()
         self.ayuda_reliquias.quitar()
