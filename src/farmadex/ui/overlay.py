@@ -49,6 +49,7 @@ from ..captura.agrietados import LectorAgrietado
 from ..captura.builds import LectorBuild
 from ..captura.comparador import ServicioComparador
 from ..captura.cursor import LectorCursor, TurnoLecturas
+from .aviso_lectura import AvisoLectura
 from ..captura.lector_pasivo import LectorPasivo
 from ..captura.ocr import modo_de_config
 from ..captura.reliquias import DisparadorAutomatico, LectorRecompensas, Recompensa, completar, resumir
@@ -249,6 +250,10 @@ class VentanaOverlay(QWidget):
     _pedir_recompensas = Signal()
     _pedir_build = Signal()
     _pedir_agrietado = Signal()
+    # Lo mismo por turnos (ver `_leer_por_turno`): numero de la lectura pedida por atajo.
+    _turno_recompensas = Signal(int)
+    _turno_build = Signal(int)
+    _turno_agrietado = Signal(int)
     # Cadencia del mundo (True=visible, False=oculto), en cola hasta el hilo de
     # ServicioMundo: llamar a `cadencia()` a pelo desde este hilo tocaria su
     # QTimer desde fuera de su hilo (ver ServicioMundo.cadencia).
@@ -460,6 +465,8 @@ class VentanaOverlay(QWidget):
         # Tabla de una reliquia al dejar el raton encima: una sola tarjeta para la app
         # (cualquier enlace o texto marcado de una reliquia) y para el juego (OCR).
         self.tarjeta_reliquia = ServicioTarjeta(usuario=lambda: self.objetivos.usuario, parent=self)
+        # Recuadro "Leyendo..." que sale al pulsar un atajo de lectura (ui/aviso_lectura.py).
+        self.aviso_lectura = AvisoLectura(self, activo=bool(self.config.get("aviso_lectura", True)))
         self.ayuda_reliquias = AyudaHoverApp(self.tarjeta_reliquia, parent=self)
         self.ayuda_reliquias.instalar()
         self.hover_reliquias: HoverReliquias | None = None
@@ -700,7 +707,9 @@ class VentanaOverlay(QWidget):
         self.servicio_mundo.actualizado.connect(self.tablero.actualizar_mundo)
         # "Para esto te sirve hoy" de Objetivos cruza el mismo mundo con tus metas.
         self.servicio_mundo.actualizado.connect(self.objetivos.actualizar_mundo)
-        self.servicio_mundo.actualizado.connect(lambda _m: self.compacta.marcar_sucio())
+        # A un metodo, no a una lambda: la lambda corria en el hilo del mundo y tocaba el modo
+        # juego (temporizadores y widgets) desde alli.
+        self.servicio_mundo.actualizado.connect(self._mundo_actualizado_compacta)
         self.servicio_mundo.fallo.connect(self.tablero.marcar_desactualizado)
         self.hilo_mundo.start()
 
@@ -748,6 +757,22 @@ class VentanaOverlay(QWidget):
         self._pedir_build.connect(self.lector_build.leer_ahora)
         self._pedir_agrietado.connect(self.lector_agrietado.leer_ahora)
         self.lector_cursor.terminado.connect(self._lectura_cursor_terminada)
+        # Recompensas, build y agrietado tambien van por turnos: pulsar el atajo veinte
+        # veces seguidas encolaba veinte lecturas enteras en el hilo de captura (medido:
+        # 40 pulsaciones de build = 17 s leyendo sin parar), con la lectura automatica de
+        # reliquias y la de bajo el cursor esperando detras. Ahora hay una en marcha como
+        # mucho, y las pulsaciones de mientras cuentan como una sola, la ultima.
+        self.turnos = {"cursor": self.turno_cursor}
+        # El aviso de "terminada" va a un metodo de la ventana, NO a una lambda: una lambda
+        # conectada a una senal de un objeto de otro hilo se ejecuta en ESE hilo (medido:
+        # los temporizadores del recuadro se tocaban desde el hilo de captura).
+        for tipo, lector, senal, al_acabar in (
+                ("reliquias", self.lector_recompensas, self._turno_recompensas, self._turno_reliquias_terminado),
+                ("build", self.lector_build, self._turno_build, self._turno_build_terminado),
+                ("agrietado", self.lector_agrietado, self._turno_agrietado, self._turno_agrietado_terminado)):
+            senal.connect(lector.leer_turno)
+            self.turnos[tipo] = TurnoLecturas(senal.emit, pausa_s=self.PAUSA_TURNO_S)
+            lector.turno_terminado.connect(al_acabar)
         # Lectura pasiva del perfil, el inventario y la fundicion: mismo hilo, mismo motor.
         self.lector_pasivo = LectorPasivo(
             motor,
@@ -1451,6 +1476,66 @@ class VentanaOverlay(QWidget):
             self.objetivos.refrescar()
         self.buscador.repintar()
 
+    # Pausa minima entre el inicio de una lectura por atajo y el de la siguiente. Ninguna:
+    # las pulsaciones de mientras ya se juntan en una, y una pausa solo retrasaria la lectura
+    # de quien pasa de un agrietado a otro deprisa (medido: 100 -> 300 ms con 0,3 s).
+    PAUSA_TURNO_S = 0.0
+    # Recompensas: el lector vuelve a mirar solo durante unos segundos si la pantalla aun
+    # no estaba pintada; el "no se ha podido leer" espera a que acabe de intentarlo.
+    ESPERA_FALLO_RECOMPENSAS_MS = 3200
+
+    def _leer_por_turno(self, tipo: str, recuadro: bool = True) -> bool:
+        """Pide la lectura `tipo` a su turno y saca el recuadro "Leyendo..." al instante.
+
+        Devuelve False si todavia no se puede leer (datos preparandose)."""
+        if self.hilo_captura is None or tipo not in getattr(self, "turnos", {}):
+            self.estado.setText(t("Los datos todavía se están preparando"))
+            return False
+        try:
+            if recuadro:
+                self.aviso_lectura.leyendo(tipo)
+        except Exception:  # noqa: BLE001 - el recuadro nunca impide leer
+            log.exception("No se pudo ensenar el recuadro de lectura")
+        if self.turnos[tipo].pedir() != "lanzada":
+            log.debug("Lectura %s apuntada para cuando acabe la que esta en marcha", tipo)
+        return True
+
+    def _turno_terminado(self, tipo: str, numero: int) -> None:
+        """Una lectura por atajo ha acabado: se libera el turno y, si no leyo nada, se dice."""
+        turno = self.turnos.get(tipo)
+        if turno is None:
+            return
+        turno.terminada(numero)
+        if turno.ocupado or turno.pendiente:
+            return  # viene otra detras: el recuadro sigue en "Leyendo..."
+        if self.aviso_lectura.tipo != tipo or self.aviso_lectura.estado != "leyendo":
+            return  # ya se ensena el resultado (o otra lectura)
+        if tipo == "reliquias":
+            QTimer.singleShot(self.ESPERA_FALLO_RECOMPENSAS_MS, self._recompensas_sin_leer)
+        elif tipo == "cursor":
+            self.aviso_lectura.fallo(tipo, t("No se reconoció nada bajo el cursor"))
+        else:
+            self.aviso_lectura.fallo(tipo)
+
+    def _mundo_actualizado_compacta(self, _mundo=None) -> None:
+        self.compacta.marcar_sucio()
+
+    def _turno_reliquias_terminado(self, numero: int) -> None:
+        self._turno_terminado("reliquias", numero)
+
+    def _turno_build_terminado(self, numero: int) -> None:
+        self._turno_terminado("build", numero)
+
+    def _turno_agrietado_terminado(self, numero: int) -> None:
+        self._turno_terminado("agrietado", numero)
+
+    def _recompensas_sin_leer(self) -> None:
+        turno = self.turnos.get("reliquias")
+        if turno is not None and (turno.ocupado or turno.pendiente):
+            return
+        if self.aviso_lectura.tipo == "reliquias" and self.aviso_lectura.estado == "leyendo":
+            self.aviso_lectura.fallo("reliquias", t("No se reconoció ninguna recompensa"))
+
     def leer_recompensas(self) -> None:
         """Lee la pantalla de recompensas de reliquia (atajo o aviso de EE.log)."""
         if self.hilo_captura is None:
@@ -1462,19 +1547,21 @@ class VentanaOverlay(QWidget):
             # (lectura por "Relic rewards initialized" y "Got rewards" que llega tarde),
             # esconderlos hasta la relectura solo haria parpadear el panel.
             self.etiquetas.hide()
-        self._pedir_recompensas.emit()
+        # Con el panel de esta pantalla ya a la vista (relectura), sin recuadro: solo haria
+        # parpadear algo encima del panel que ya esta bien.
+        self._leer_por_turno("reliquias", recuadro=not self.etiquetas.isVisible())
 
     def leer_build(self) -> None:
         """Atajo o boton de la pestana Build: lee la pantalla de mejoras del arsenal."""
-        if self.hilo_captura is None:
-            self.estado.setText(t("Los datos todavía se están preparando"))
-            return
-        self._pedir_build.emit()
+        self._leer_por_turno("build")
 
     def _build_leida(self, build) -> None:
         self.builds.mostrar_build(build)
         if build.vacia:
+            self.aviso_lectura.fallo("build", t(build.aviso) if getattr(build, "aviso", "") else
+                                     t("No se reconoció nada en la pantalla de mejoras"))
             return
+        self.aviso_lectura.listo("build")
         self.mostrar()
         if self.modo != "completo":
             self.aplicar_modo("completo")
@@ -1482,15 +1569,17 @@ class VentanaOverlay(QWidget):
 
     def leer_agrietado(self) -> None:
         """Atajo o boton de la pestana Agrietados: lee la tarjeta que hay bajo el cursor."""
-        if self.hilo_captura is None:
-            self.estado.setText(t("Los datos todavía se están preparando"))
-            return
-        self._pedir_agrietado.emit()
+        self._leer_por_turno("agrietado")
 
     def _agrietado_leido(self, tarjeta) -> None:
         self.agrietados.mostrar_tarjeta(tarjeta)
-        if tarjeta.velado or (not tarjeta.estadisticas and not tarjeta.arma_texto):
+        if tarjeta.velado:
+            self.aviso_lectura.fallo("agrietado", t("La tarjeta está velada: no hay nada que evaluar"))
             return
+        if not tarjeta.estadisticas and not tarjeta.arma_texto:
+            self.aviso_lectura.fallo("agrietado", t("No se ve ninguna tarjeta de agrietado bajo el cursor"))
+            return
+        self.aviso_lectura.listo("agrietado")
         self.mostrar()
         if self.modo != "completo":
             self.aplicar_modo("completo")
@@ -1521,13 +1610,20 @@ class VentanaOverlay(QWidget):
         """
         if self.hilo_captura is None:
             return
+        try:
+            self.aviso_lectura.leyendo("cursor")
+        except Exception:  # noqa: BLE001 - el recuadro nunca impide leer
+            log.exception("No se pudo ensenar el recuadro de lectura")
         estado = self.turno_cursor.pedir()
         self.lector_cursor.ultima_pedida = self.turno_cursor.ultima
         if estado != "lanzada":
             log.debug("Lectura bajo el cursor apuntada para cuando acabe la actual")
 
     def _lectura_cursor_terminada(self, numero: int) -> None:
-        self.turno_cursor.terminada(numero)
+        if getattr(self, "turnos", None) and self.turnos.get("cursor") is self.turno_cursor:
+            self._turno_terminado("cursor", numero)
+        else:  # pruebas que cambian el turno por uno suyo
+            self.turno_cursor.terminada(numero)
 
     # -- avisos que tienen que verse y diagnostico -----------------------------------
 
@@ -1623,6 +1719,7 @@ class VentanaOverlay(QWidget):
         self._ultima_lectura = (time.time(), len(recompensas))
         if not recompensas:
             return
+        self.aviso_lectura.listo("reliquias")
         from ..captura.reliquias import copiar
 
         recompensas = copiar(recompensas)  # la misma lista va al comparador, en otro hilo
@@ -1818,6 +1915,7 @@ class VentanaOverlay(QWidget):
         return not (w.isWindow() and w.testAttribute(Qt.WA_TranslucentBackground))
 
     def _abrir_desde_cursor(self, item_id: int, nombre: str) -> None:
+        self.aviso_lectura.listo("cursor")
         self.mostrar()
         if self.modo == "compacto":
             self.compacta.abrir(item_id)
@@ -2552,6 +2650,7 @@ class VentanaOverlay(QWidget):
         self.ayuda_reliquias.quitar()
         self.tarjeta_reliquia.ocultar()
         self.tarjeta_reliquia.cerrar()
+        self.aviso_lectura.cerrar()
         hilo_pasivo = getattr(self, "hilo_pasivo", None)
         if hilo_pasivo is not None:
             hilo_pasivo.quit()

@@ -381,6 +381,9 @@ def ventanas_propias() -> list[Region]:
             user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
             if pid.value != pid_propio:
                 return True
+            afinidad = wintypes.DWORD(0)
+            if user32.GetWindowDisplayAffinity(hwnd, ctypes.byref(afinidad)) and afinidad.value == 0x11:
+                return True  # WDA_EXCLUDEFROMCAPTURE: no sale en las capturas, no tapa nada
             alfa, banderas = ctypes.c_ubyte(255), wintypes.DWORD(0)
             if (user32.GetLayeredWindowAttributes(hwnd, None, ctypes.byref(alfa), ctypes.byref(banderas))
                     and banderas.value & LWA_ALPHA and alfa.value == 0):

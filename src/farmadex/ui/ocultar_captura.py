@@ -69,6 +69,8 @@ def _ventanas_qt() -> list[QWindow]:
                 continue
             if ventana.visibility() in (QWindow.Hidden, QWindow.Minimized):
                 continue
+            if ventana.property("farmadex_sin_ocultar"):
+                continue  # ya fuera de las capturas (recuadro "Leyendo...", ui/aviso_lectura.py)
         except RuntimeError:  # borrada por Qt entre medias
             continue
         visibles.append(ventana)

@@ -86,7 +86,9 @@ class Aplicacion:
 
     def _crear_bandeja(self) -> QSystemTrayIcon:
         bandeja = QSystemTrayIcon(self.icono)
-        bandeja.setToolTip(f"{NOMBRE_APP} ({self.config['hotkey_overlay']})")
+        from .ui.campo_atajo import texto_legible
+
+        bandeja.setToolTip(f"{NOMBRE_APP} ({texto_legible(self.config['hotkey_overlay'])})")
         menu = QMenu()
 
         mostrar = QAction("Mostrar", menu)
@@ -146,6 +148,12 @@ class Aplicacion:
 
     def _hotkey(self, nombre: str) -> None:
         self.log.debug("Atajo pulsado: %s", nombre)
+        try:
+            self._atender_atajo(nombre)
+        except Exception:  # noqa: BLE001 - un atajo nunca tumba el programa ni saca un error
+            self.log.exception("Fallo atendiendo el atajo %s", nombre)
+
+    def _atender_atajo(self, nombre: str) -> None:
         if nombre == "overlay":
             self.ventana.alternar()
         elif nombre == "reliquias":
