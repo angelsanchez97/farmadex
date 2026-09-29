@@ -1,5 +1,7 @@
 {
   "_comentario": "Textos da interface do Farmadex. Chave = texto em espanhol do código; valor = tradução. As {chaves} são variáveis e devem ficar como estão. Apague uma linha para voltar ao espanhol.",
+  "Maximizar": "Maximizar",
+  "Restaurar": "Restaurar",
   "Ahora no hay ninguna fisura abierta de las eras que te sirven ({eras}).": "Agora não há nenhuma fenda aberta das eras que te servem ({eras}).",
   "Las fisuras de tus eras que hay abiertas ({n}) se cierran antes de que te dé tiempo a terminarlas.": "As fendas abertas das suas eras ({n}) fecham antes de dar tempo de terminar.",
   "Hay {n} fisura(s) de tus eras abiertas, pero sus reliquias ni las tienes leídas en el inventario ni se sabe dónde farmearlas.": "Há {n} fenda(s) aberta(s) das suas eras, mas as relíquias nem foram lidas no inventário nem se sabe onde farmá-las.",

@@ -13,6 +13,7 @@ from PySide6.QtGui import (
     QColor, QCursor, QDesktopServices, QFont, QGuiApplication, QIcon, QKeySequence, QPainter, QPixmap, QShortcut,
 )
 from PySide6.QtWidgets import (
+    QApplication,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -183,6 +184,14 @@ CURSOR_POR_BORDE = {
 }
 
 
+def es_doble_clic(anterior: tuple[float, QPoint], actual: tuple[float, QPoint], intervalo_s: float,
+                  distancia: int = 6) -> bool:
+    """Dos clics (momento monotonic, posicion global) forman un doble clic si caen a
+    tiempo y casi en el mismo sitio."""
+    (t0, p0), (t1, p1) = anterior, actual
+    return 0 <= t1 - t0 <= intervalo_s and (p1 - p0).manhattanLength() <= distancia
+
+
 def borde_en_posicion(x: int, y: int, ancho: int, alto: int, margen: int = MARGEN_REDIMENSION) -> str | None:
     """A que borde o esquina cae (x, y) dentro de una ventana de (ancho, alto).
 
@@ -324,6 +333,19 @@ class VentanaOverlay(QWidget):
         self.boton_minimizar.bajar = 4  # a la altura del centro de la x, que es texto
         self.boton_minimizar.clicked.connect(self.minimizar)
         self._pintar_tooltip_minimizar()
+        # Maximizar / restaurar (solo en la vista completa), como en cualquier programa;
+        # tambien con doble clic en un hueco de la cabecera y con Windows + flecha arriba.
+        self.boton_maximizar = BotonGlifo("maximizar", t("Maximizar"), tam=12)
+        self.boton_maximizar.bajar = 4
+        self.boton_maximizar.setToolTip(t("Maximizar"))
+        self.boton_maximizar.clicked.connect(self.alternar_maximizado)
+        # Doble clic "a mano": el primer clic ya arranca el movimiento nativo de Windows y
+        # el evento de doble clic de Qt no siempre llega. (momento, posicion global)
+        self._ultimo_clic: tuple[float, QPoint] | None = None
+        # Arrastrar la ventana maximizada la restaura (como una barra de titulo de verdad).
+        self._arrastre_maximizada: QPoint | None = None
+        # Se abre maximizada si se cerro asi (se aplica al ensenarla por primera vez).
+        self._maximizar_al_mostrar = bool(self.config.get("overlay_maximizada", False))
         self.boton_modo = BotonC(icono="juego", pista=ATAJO_MODO)
         self.boton_modo.clicked.connect(self.alternar_modo)
         # La guia, solo con su icono: el menu necesita el sitio. El texto va en el tooltip.
@@ -360,6 +382,7 @@ class VentanaOverlay(QWidget):
         self._botones_ventana = QHBoxLayout()
         self._botones_ventana.setSpacing(0)
         self._botones_ventana.addWidget(self.boton_minimizar, 0, Qt.AlignVCenter)
+        self._botones_ventana.addWidget(self.boton_maximizar, 0, Qt.AlignVCenter)
         self._botones_ventana.addWidget(boton_cerrar, 0, Qt.AlignVCenter)
         cabecera.addLayout(self._botones_ventana)
         self.filete = Filete()
@@ -1851,7 +1874,11 @@ class VentanaOverlay(QWidget):
             return
         if guardar_config:
             self._guardar_geometria()
+        if modo != "completo" and self.isMaximized():
+            # El modo juego y el video son ventanas pequenas: nunca maximizadas.
+            self.showNormal()
         self.modo = modo
+        self.boton_maximizar.setVisible(modo == "completo")
         compacto = modo == "compacto"
         video = modo == "video"
         self.aplicar_opacidad(self._opacidad)
@@ -1903,6 +1930,9 @@ class VentanaOverlay(QWidget):
         self._pintar_banner()
         self._asegurar_en_pantalla()
         self._aplicar_encima()
+        if modo == "completo" and guardar_config and self.isVisible() and self.config.get("overlay_maximizada"):
+            # Vuelve a la completa como estaba: maximizada.
+            self.showMaximized()
         if guardar_config:
             self.config["overlay_modo"] = modo
             guardar(self.config)
@@ -1975,6 +2005,10 @@ class VentanaOverlay(QWidget):
             # Sin la pista de minimizar, Windows no la esconde al pulsar su boton en la
             # barra (una ventana sin marco no trae ese estilo). No pinta ningun boton.
             banderas |= Qt.Window | Qt.WindowMinimizeButtonHint
+            if self.modo == "completo":
+                # Igual con maximizar: Windows + flecha arriba y "Maximizar" en el menu
+                # del boton de la barra de tareas.
+                banderas |= Qt.WindowMaximizeButtonHint
         else:
             banderas |= Qt.Tool
         return banderas
@@ -2065,6 +2099,25 @@ class VentanaOverlay(QWidget):
         self._reloj_encima.stop()
         self.showMinimized()
 
+    def alternar_maximizado(self) -> None:
+        """Boton de la cabecera o doble clic en ella: maximizar y restaurar la completa."""
+        if self.modo != "completo":
+            return
+        if self.isMaximized():
+            self.showNormal()
+        else:
+            self.showMaximized()
+        self._guardar_geometria()
+
+    def _pintar_boton_maximizar(self) -> None:
+        if not hasattr(self, "boton_maximizar"):
+            return
+        maximizada = self.isMaximized()
+        self.boton_maximizar.poner_glifo("restaurar" if maximizada else "maximizar")
+        texto = t("Restaurar") if maximizada else t("Maximizar")
+        self.boton_maximizar.setText(texto)
+        self.boton_maximizar.setToolTip(texto)
+
     def _restaurar_si_minimizada(self, activar: bool) -> None:
         """Quita el minimizado antes de ensenarla. Sin activar (juego en pantalla completa
         exclusiva) se le pide a Windows que la restaure sin quitarle el foco a nadie."""
@@ -2085,6 +2138,7 @@ class VentanaOverlay(QWidget):
                 self._aplicar_encima()
             if self.servicio_mundo is not None and self.isVisible():
                 self._cadencia_mundo.emit(not minimizada)
+            self._pintar_boton_maximizar()
         super().changeEvent(evento)
 
     def mostrar(self) -> None:
@@ -2115,6 +2169,10 @@ class VentanaOverlay(QWidget):
         self.setAttribute(Qt.WA_ShowWithoutActivating, False)
         self._restaurar_si_minimizada(activar=True)
         self._asegurar_en_pantalla()
+        if self._maximizar_al_mostrar:
+            self._maximizar_al_mostrar = False
+            if self.modo == "completo":
+                self.setWindowState(self.windowState() | Qt.WindowMaximized)
         self.show()
         self.raise_()
         self.activateWindow()
@@ -2133,10 +2191,15 @@ class VentanaOverlay(QWidget):
             self._cadencia_mundo.emit(False)
 
     def _guardar_geometria(self) -> None:
-        g = self.geometry()
+        maximizada = self.isMaximized() or bool(self.windowState() & Qt.WindowMaximized)
+        # Maximizada, el sitio que se guarda es el de antes de maximizar (al que vuelve al
+        # restaurar), y aparte que estaba maximizada. Solo la completa se maximiza.
+        g = self.normalGeometry() if maximizada and self.normalGeometry().isValid() else self.geometry()
         if self.isMinimized() and g.x() <= -30000:
             # Windows aparca las minimizadas en (-32000, -32000): eso no es un sitio.
             return
+        if self.modo == "completo":
+            self.config["overlay_maximizada"] = maximizada
         # Lo que la compacta crecio por el banner no es tamano elegido por el usuario.
         alto = g.height() - (self._alto_banner_compacto if self.modo == "compacto" else 0)
         self.config[self._clave_geometria()] = [g.x(), g.y(), g.width(), alto]
@@ -2313,6 +2376,7 @@ class VentanaOverlay(QWidget):
         self.boton_fijar.setText(t("Fijar"))
         self.boton_cerrar.setToolTip(t("Esconder (Escape)"))
         self.boton_minimizar.setText(t("Minimizar"))
+        self._pintar_boton_maximizar()
         self._pintar_tooltip_minimizar()
         for clave, titulo in SECCIONES:
             self.menu.poner_texto(clave, t(titulo))
@@ -2428,20 +2492,60 @@ class VentanaOverlay(QWidget):
         """
         if evento.button() != Qt.LeftButton:
             return
+        donde = evento.globalPosition().toPoint()
+        ahora = time.monotonic()
+        anterior, self._ultimo_clic = self._ultimo_clic, (ahora, donde)
+        if (anterior is not None and self._en_cabecera(evento.position().toPoint())
+                and es_doble_clic(anterior, (ahora, donde), QApplication.doubleClickInterval() / 1000.0)):
+            # Doble clic en la cabecera, como en la barra de titulo de cualquier programa.
+            self._ultimo_clic = None
+            self.alternar_maximizado()
+            evento.accept()
+            return
+        if self.isMaximized():
+            # Maximizada no se mueve con un clic suelto; si se arrastra, se restaura.
+            self._arrastre_maximizada = donde
+            evento.accept()
+            return
         ventana = self.windowHandle()
         if ventana is not None and ventana.startSystemMove():
             evento.accept()
             return
-        self._arrastre = evento.globalPosition().toPoint() - self.frameGeometry().topLeft()
+        self._arrastre = donde - self.frameGeometry().topLeft()
         evento.accept()
 
+    def _en_cabecera(self, pos: QPoint) -> bool:
+        """Si un punto (coordenadas de la ventana) cae en la franja de la cabecera."""
+        barra = getattr(self, "barra_cabecera", None)
+        if barra is None or not barra.isVisible():
+            return False
+        return pos.y() <= barra.mapTo(self, QPoint(0, barra.height())).y()
+
     def mouseMoveEvent(self, evento):  # noqa: N802
+        if self._arrastre_maximizada is not None and evento.buttons() & Qt.LeftButton:
+            donde = evento.globalPosition().toPoint()
+            if (donde - self._arrastre_maximizada).manhattanLength() < QApplication.startDragDistance():
+                return
+            # Se restaura con el cursor en el mismo sitio relativo de la cabecera y se sigue
+            # arrastrando: lo que hace Windows con una barra de titulo de verdad.
+            marco = self.frameGeometry()
+            proporcion = (self._arrastre_maximizada.x() - marco.left()) / max(1, marco.width())
+            alto_agarre = self._arrastre_maximizada.y() - marco.top()
+            self._arrastre_maximizada = None
+            self.showNormal()
+            self.move(donde.x() - round(self.width() * proporcion), donde.y() - alto_agarre)
+            ventana = self.windowHandle()
+            if ventana is None or not ventana.startSystemMove():
+                self._arrastre = donde - self.frameGeometry().topLeft()
+            evento.accept()
+            return
         if self._arrastre and evento.buttons() & Qt.LeftButton:
             self.move(evento.globalPosition().toPoint() - self._arrastre)
             evento.accept()
 
     def mouseReleaseEvent(self, evento):  # noqa: N802
         self._arrastre = None
+        self._arrastre_maximizada = None
 
     # -- redimensionado por los bordes ---------------------------------------
 
@@ -2469,6 +2573,9 @@ class VentanaOverlay(QWidget):
         return super().eventFilter(objeto, evento)
 
     def _borde_bajo_cursor(self, evento) -> str | None:
+        if self.isMaximized():
+            # Maximizada ocupa toda la pantalla: sin bordes que arrastrar.
+            return None
         pos = evento.position().toPoint()
         return borde_en_posicion(pos.x(), pos.y(), self.width(), self.height())
 
