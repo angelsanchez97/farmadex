@@ -54,6 +54,33 @@ def color_motivo(clave: str) -> QColor:
     return COLORES_MOTIVO.get(clave, COLOR_SIN_DOMINAR)
 
 
+# Vender o fundir (datos/vender_fundir.py): mismo significado de color que los motivos.
+COLORES_CONSEJO = {
+    "falta": COLORES_MOTIVO["falta"],
+    "vender": COLORES_MOTIVO["platino"],
+    "fundir": COLORES_MOTIVO["ducados"],
+    "igual": COLOR_SIN_DOMINAR,
+}
+
+
+def color_consejo(clave: str) -> QColor:
+    return COLORES_CONSEJO.get(clave, COLOR_SIN_DOMINAR)
+
+
+def copiar_consejo(destino, origen) -> None:
+    """Pasa el consejo de vender o fundir del veredicto a lo que ya esta en pantalla."""
+    for campo in ("consejo", "consejo_texto", "consejo_motivo", "vendedores", "compradores"):
+        if hasattr(origen, campo):
+            setattr(destino, campo, getattr(origen, campo))
+
+
+def linea_consejo(r) -> str:
+    """'Mejor fundir' o '' si no hay consejo. "Te hace falta" ya lo dice el objetivo."""
+    if getattr(r, "consejo", "") in ("", "falta"):
+        return ""
+    return getattr(r, "consejo_texto", "") or ""
+
+
 def emparejar(en_pantalla: list, llegadas: list) -> list[tuple] | None:
     """Cada recompensa en pantalla con su version del veredicto, o None si no encajan.
 
@@ -165,6 +192,7 @@ class EtiquetasRecompensas(QWidget):
         for r, nuevo in parejas:
             r.valor, r.mejor, r.nota, r.platino = nuevo.valor, nuevo.mejor, nuevo.nota, nuevo.platino
             r.criterio_platino = nuevo.criterio_platino
+            copiar_consejo(r, nuevo)
         self._seguro = veredicto.seguro
         self.update()
 
@@ -219,6 +247,9 @@ class EtiquetasRecompensas(QWidget):
                 detalle.append(t("{n} ducados", n=r.ducados))
             if detalle:
                 lineas.append((" · ".join(detalle), COLOR_TEXTO, fuente))
+            consejo = linea_consejo(r)
+            if consejo:
+                lineas.append((consejo, color_consejo(r.consejo), fuente))
             if r.vaulted:
                 lineas.append((t("En bóveda"), COLOR_BOVEDA, fuente))
             if r.objetivo:
