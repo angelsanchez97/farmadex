@@ -1920,6 +1920,32 @@ class Autoprueba:
         (self.carpeta / "informe.txt").write_text("\n".join(l) + "\n", encoding="utf-8")
 
 
+def _cerrar_qt() -> None:
+    """Deshace la aplicacion de Qt antes de `os._exit`.
+
+    `os._exit` mata los hilos a medias y luego Windows descarga las DLL: con la
+    QApplication aun viva, al descargar Qt se limpiaban datos de hilos ya muertos y
+    el proceso reventaba (acceso a memoria no valida, salida 139 en bash) en una de
+    cada seis salidas desde el codigo, despues de haber escrito el informe. Cerrada
+    aqui, como la cierra Python al acabar por las buenas: 0 de 40 (antes 8 de 50).
+    """
+    try:
+        from PySide6.QtCore import QEvent
+        from PySide6.QtWidgets import QApplication
+
+        app = QApplication.instance()
+        if app is None:
+            return
+        for ventana in app.topLevelWidgets():
+            ventana.close()
+            ventana.deleteLater()
+        app.processEvents()
+        app.sendPostedEvents(None, QEvent.DeferredDelete)
+        app.shutdown()
+    except Exception:  # noqa: BLE001 - se sale igual
+        pass
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     if ARGUMENTO_CARGA in argv:
@@ -1932,6 +1958,7 @@ def main(argv: list[str] | None = None) -> int:
         print((opciones["carpeta"] / "informe.txt").read_text(encoding="utf-8"))
     # Los hilos del programa (mundo, market, captura) no esperan a nadie: se sale ya.
     sys.stdout.flush()
+    _cerrar_qt()
     os._exit(codigo)
 
 

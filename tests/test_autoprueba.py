@@ -112,3 +112,36 @@ def test_los_criterios_del_visto_bueno_son_los_pedidos():
     assert A.CRITERIOS["recompensas_ms"] == 500
     assert A.CRITERIOS["resultados_ms"] == 150
     assert A.CRITERIOS["ficha_ms"] == 200
+
+
+def test_antes_de_salir_se_deshace_la_aplicacion_qt(monkeypatch):
+    """os._exit con la QApplication viva reventaba al descargar Qt (salida 139): se cierra antes."""
+    from PySide6.QtWidgets import QApplication
+
+    from farmadex import autoprueba
+
+    hechos = []
+
+    class Ventana:
+        def close(self):
+            hechos.append("close")
+
+        def deleteLater(self):
+            hechos.append("deleteLater")
+
+    class App:
+        def topLevelWidgets(self):
+            return [Ventana()]
+
+        def processEvents(self):
+            hechos.append("processEvents")
+
+        def sendPostedEvents(self, *a):
+            hechos.append("sendPostedEvents")
+
+        def shutdown(self):
+            hechos.append("shutdown")
+
+    monkeypatch.setattr(QApplication, "instance", staticmethod(lambda: App()))
+    autoprueba._cerrar_qt()
+    assert hechos[-1] == "shutdown" and "close" in hechos and "sendPostedEvents" in hechos

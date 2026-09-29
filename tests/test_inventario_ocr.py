@@ -201,7 +201,7 @@ def test_lector_pasivo_usa_un_solo_ocr_para_las_dos_lecturas(catalogo_inventario
         _l("INVENTORY", 566, 36, 148, 24, 0.89), _l("120WNED", 287, 165, 82, 21, 0.78),
         _l("NOVAPRIME", 261, 219, 99), _l("NEUROPTICS", 262, 235, 99), _l("BLUEPRINT", 261, 249, 87),
     ]
-    monkeypatch.setattr(MotorOCR, "leer", lambda self, imagen: llamadas.append(1) or list(lineas_inventario))
+    monkeypatch.setattr(MotorOCR, "leer", lambda self, imagen, **kw: llamadas.append(1) or list(lineas_inventario))
     monkeypatch.setattr(MotorOCR, "precalentar", lambda self: None)
 
     lector = LectorPasivo("rapidocr", perfil=True, inventario=True)
@@ -254,3 +254,44 @@ def test_casador_restringido_casa_con_umbral_bajo_y_no_conoce_el_resto(catalogo_
     assert item_id == ids["/w/NovaPrime/Neu"]
     assert cerrado.casar("VASTO PRIME RECEIVER", 70)[0] is None
     assert completo.casar("VASTO PRIME RECEIVER", 80)[0] == ids["/p/VastoPrime/Rec"]
+
+
+def test_lector_pasivo_busca_la_captura_de_4k_reducida(monkeypatch):
+    """A 4K el detector trabaja sobre una copia de 1440 (memoria); 1080p ampliada y 1440p, enteras."""
+    import numpy as np
+
+    from farmadex.captura import lector_pasivo as LP
+
+    pedidos = []
+    monkeypatch.setattr(MotorOCR, "leer", lambda self, imagen, **kw: pedidos.append(
+        (imagen.shape[0], kw.get("alto_deteccion"))) or [])
+    lector = LP.LectorPasivo.__new__(LP.LectorPasivo)
+    lector.motor = MotorOCR("fondo")
+    for alto, escala in ((2160, 1.0), (1440, 1.0), (1080, 1.5)):
+        lector._lineas(np.zeros((alto, alto * 16 // 9, 3), np.uint8), escala)
+    assert pedidos[0] == (2160, LP.ALTO_DETECCION_PASIVA)
+    assert pedidos[1] == (1440, LP.ALTO_DETECCION_PASIVA)  # no pasa del alto: se lee entera
+    assert pedidos[2] == (1620, None)  # la ampliada de 1080p, como siempre
+
+
+def test_leer_con_alto_de_deteccion_reduce_solo_el_detector(monkeypatch):
+    """`leer(alto_deteccion=)` detecta sobre la copia reducida y aplica el corte de confianza normal."""
+    import numpy as np
+
+    from farmadex.captura import ocr
+
+    vistos = {}
+
+    def falso(motor, imagen, alto):
+        vistos["entrada"], vistos["alto"] = imagen.shape[0], alto
+        return [ocr.Leido("BUENA", 10, 10, 50, 20, 0.9), ocr.Leido("MALA", 10, 40, 50, 20, 0.3)]
+
+    class Motor:
+        text_score = 0.5
+
+    motor = MotorOCR("rapidocr")
+    monkeypatch.setattr(motor, "_cargar", lambda: Motor())
+    monkeypatch.setattr(ocr, "_leer_tira_rapidocr", falso)
+    salida = motor.leer(np.full((2160, 3840, 3), 128, np.uint8), alto_deteccion=1440)
+    assert vistos == {"entrada": 2160, "alto": 1440}
+    assert [l.texto for l in salida] == ["BUENA"]

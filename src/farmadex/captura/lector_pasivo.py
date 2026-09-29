@@ -45,6 +45,11 @@ INTERVALO_QUIETO_MS = 3000
 CACHE_VENTANA_S = 2.0
 # Por debajo de esta altura de ventana el OCR se hace a 1,5x (ayuda a 1080p).
 ALTO_PARA_REESCALAR = 1200
+# Por encima de esta altura (4K) el texto se busca en una copia reducida a ella y se lee a
+# tamano real: buscar en la captura de 4K entera pedia de golpe ~1,3 GB de memoria cada vez
+# que se quedaba quieta una pantalla nueva. A 1440 se busca con el mismo detalle que en una
+# ventana de 1440p, que se lee entera.
+ALTO_DETECCION_PASIVA = PE.ALTO_DETECCION_PANTALLA
 # Pantallas que EE.log identifica y en las que no hay nada que leer.
 PANTALLAS_SIN_INTERES = ("arsenal", "pausa", "menu", "carga", "codex")
 
@@ -296,7 +301,9 @@ class LectorPasivo(QObject):
     def _lineas(self, imagen, escala: float):
         if escala != 1.0:
             imagen = PE._reescalar(imagen, escala)
-        lineas = [l for l in unir_filas(self.motor.leer(imagen)) if l.confianza >= 0.4]
+        # La ampliada (1080p a 1,5x) se busca entera, como siempre: solo se reduce la de 4K.
+        alto = ALTO_DETECCION_PASIVA if escala == 1.0 else None
+        lineas = [l for l in unir_filas(self.motor.leer(imagen, alto_deteccion=alto)) if l.confianza >= 0.4]
         if escala != 1.0:
             for l in lineas:
                 l.x, l.y = int(l.x / escala), int(l.y / escala)

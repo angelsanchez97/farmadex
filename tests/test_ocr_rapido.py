@@ -290,4 +290,4 @@ def test_alto_de_deteccion_de_la_pantalla_de_mejoras():
     assert B.alto_de_deteccion(720) == 1080  # no se amplia: leer_tira solo reduce
     assert B.alto_de_deteccion(1080) == 1080
     assert B.alto_de_deteccion(1440) == 1080
-    assert B.alto_de_deteccion(2160) == 1620
+    assert B.alto_de_deteccion(2160) == 1080

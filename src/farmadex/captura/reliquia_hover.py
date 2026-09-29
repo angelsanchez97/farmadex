@@ -276,10 +276,21 @@ def huella(imagen) -> "object":
                       for j in range(16)] for i in range(12)], dtype=np.float32)
 
 
-def misma_huella(a, b, tolerancia: float = 6.0) -> bool:
+def misma_huella(a, b, tolerancia: float = 6.0, tolerancia_celda: float = 24.0) -> bool:
+    """Si dos huellas son de la misma imagen: parecidas de media Y sin ninguna casilla distinta.
+
+    Solo con la media, dos reliquias en la misma casilla de la rejilla ("Meso O2" y "Meso S3",
+    medido con capturas reales) daban 3,6 de diferencia: el nombre ocupa pocos pixeles y la
+    cache devolvia la reliquia de antes (por ejemplo al bajar una fila en el inventario). El
+    nombre cambiado si se ve en alguna casilla (37 o mas entre reliquias distintas; la misma
+    imagen, 0).
+    """
     import numpy as np
 
-    return a is not None and b is not None and a.shape == b.shape and float(np.abs(a - b).mean()) < tolerancia
+    if a is None or b is None or a.shape != b.shape:
+        return False
+    diferencia = np.abs(a - b)
+    return float(diferencia.mean()) < tolerancia and float(diferencia.max()) < tolerancia_celda
 
 
 # Por debajo de esta altura de recorte (juego a menos de ~900 px de alto) la letra es tan

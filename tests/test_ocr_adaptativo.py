@@ -306,19 +306,19 @@ def test_el_motor_de_fondo_es_una_sesion_aparte_con_pocos_hilos(monkeypatch):
         fondo = ocr.MotorOCR("fondo")
         assert fondo._clave_fija() == ocr.CLAVE_FONDO
         assert fondo._cargar() is not ocr.MotorOCR("rapidocr")._cargar()
-        assert creados == [ocr.HILOS_LIGERO, ocr.HILOS_OCR]
+        assert creados == [ocr.HILOS_FONDO, ocr.HILOS_OCR]
     finally:
         ocr.MotorOCR.descargar()
 
 
 def test_si_el_motor_de_fondo_no_carga_se_usa_el_normal(monkeypatch):
     def crear(hilos):
-        if hilos == ocr.HILOS_LIGERO and ocr.HILOS_LIGERO != ocr.HILOS_OCR:
+        if hilos == ocr.HILOS_FONDO and ocr.HILOS_FONDO != 4:
             raise RuntimeError("sin memoria")
         return "normal"
 
     monkeypatch.setattr(ocr, "_crear_rapidocr", crear)
-    monkeypatch.setattr(ocr, "HILOS_LIGERO", 1)
+    monkeypatch.setattr(ocr, "HILOS_FONDO", 1)
     ocr.MotorOCR.descargar()
     try:
         fondo = ocr.MotorOCR("fondo", hilos=4)
@@ -366,3 +366,19 @@ def test_desplegable_de_ajustes_sin_winocr(monkeypatch, tmp_path):
         assert claves == esperado
         assert ajustes.ocr_modo.currentData() == ("windows" if instalado else "auto")
         ajustes.deleteLater()
+
+
+def test_hilos_del_ligero_y_del_fondo_con_pocos_nucleos(monkeypatch):
+    # El ligero (lecturas que pide el usuario) va con 2 hilos aunque haya pocos nucleos; la
+    # lectura pasiva, de fondo, se queda en 1 con menos de 8.
+    monkeypatch.setattr(__import__("os"), "cpu_count", lambda: 4)
+    assert ocr._hilos_ligero() == 2
+    assert ocr._hilos_fondo() == 1
+    monkeypatch.setattr(__import__("os"), "cpu_count", lambda: 16)
+    assert ocr._hilos_fondo() == 2
+
+
+def test_lote_del_reconocedor_segun_hilos():
+    assert ocr.lote_reconocedor(1) == 1
+    assert ocr.lote_reconocedor(2) == 2
+    assert ocr.lote_reconocedor(4) == 6

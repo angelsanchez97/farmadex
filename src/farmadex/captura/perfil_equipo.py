@@ -191,6 +191,11 @@ class _LineaRango:
 
 # --- lectura -------------------------------------------------------------------------
 
+# Una captura mas alta (4K) se busca (detector) reducida a este alto y se lee a tamano real:
+# entera pedia de golpe ~1,3 GB de memoria; a 1440 se busca como una de 1440p (medido con
+# las capturas de perfil llevadas a 4K: mismas tarjetas).
+ALTO_DETECCION_PANTALLA = 1440
+
 
 def leer_pagina(
     imagen,
@@ -210,7 +215,8 @@ def leer_pagina(
         return PaginaLeida()
     if escala != 1.0:
         imagen = _reescalar(imagen, escala)
-    lineas = [l for l in unir_filas(motor.leer(imagen)) if l.confianza >= minimo_confianza]
+    alto = ALTO_DETECCION_PANTALLA if escala == 1.0 else None
+    lineas = [l for l in unir_filas(motor.leer(imagen, alto_deteccion=alto)) if l.confianza >= minimo_confianza]
     if escala != 1.0:
         for l in lineas:
             l.x, l.y = int(l.x / escala), int(l.y / escala)

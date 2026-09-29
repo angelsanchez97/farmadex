@@ -75,6 +75,10 @@ HILOS_OCR = _hilos_por_defecto()
 
 
 def _hilos_ligero() -> int:
+    return 2
+
+
+def _hilos_fondo() -> int:
     import os
 
     return 1 if (os.cpu_count() or 4) < 8 else 2
@@ -85,7 +89,15 @@ def _hilos_ligero() -> int:
 # saturada por otros procesos: con 2 hilos la fila de nombres tarda 118 ms y con 4
 # 161 ms (con 16, 302): cuando no sobra CPU, mas hilos solo se estorban entre si y
 # con el juego. Con la CPU libre, 4 hilos son lo mas rapido (41 ms frente a 51).
+# Antes, con menos de 8 nucleos, el ligero iba con 1 hilo; desde que los hilos no se
+# quedan dando vueltas ("spinning", ver `_crear_rapidocr`) 2 hilos ya no se estorban:
+# medido simulando un PC de 4 nucleos con 3 ocupados al 100 %, la pantalla de mejoras
+# se lee un ~25 % antes con 2 que con 1 (y exactamente igual). Es una rafaga corta que
+# el usuario pide con su atajo.
 HILOS_LIGERO = _hilos_ligero()
+# La lectura pasiva (perfil, inventario) va sola y de fondo: ahi no hay prisa y con pocos
+# nucleos se queda en 1 hilo para no quitarle nada al juego.
+HILOS_FONDO = _hilos_fondo()
 
 # Modos de Ajustes > Datos del juego > Avanzado > "Lectura de pantalla (OCR)".
 MODOS_OCR = ("auto", "rapido", "ligero", "windows")
@@ -178,6 +190,22 @@ class Reconocido:
     caja: tuple[int, int, int, int]
 
 
+def lote_reconocedor(hilos: int) -> int:
+    """Cuantos recortes lee el reconocedor de una vez segun los hilos de su sesion.
+
+    Cada lote se rellena hasta el recorte mas ancho, y ese relleno tambien se calcula.
+    Con muchos hilos compensa (se reparten el lote); con uno o dos, no: medido con las
+    capturas reales de la pantalla de mejoras, con 1 hilo leer de uno en uno es un ~12 %
+    mas rapido que de 6 en 6, con 2 hilos de 2 en 2 algo mas rapido, y con 4 el lote de
+    6 de siempre sigue siendo lo mejor.
+    """
+    if hilos <= 1:
+        return 1
+    if hilos <= 3:
+        return 2
+    return 6
+
+
 def _crear_rapidocr(hilos: int):
     """RapidOCR con el numero de hilos acotado, sin el clasificador de giro y con la
     memoria de ONNX Runtime gestionada para que ninguna lectura pague "primeras veces".
@@ -227,6 +255,7 @@ def _crear_rapidocr(hilos: int):
     finally:
         utiles.SessionOptions = opciones_originales
         utiles.InferenceSession = sesion_original
+    motor.text_recognizer.rec_batch_num = lote_reconocedor(hilos)
     motor.text_detector.infer = _SesionQueSuelta(motor.text_detector.infer)
     motor.text_recognizer.session = _SesionQueSuelta(motor.text_recognizer.session)
     _normalizado_rapido(motor.text_detector)
@@ -460,7 +489,8 @@ class MotorOCR:
                 if clave == "winocr":
                     nuevo = "winocr"
                 else:
-                    nuevo = _crear_rapidocr(HILOS_LIGERO if clave in (CLAVE_LIGERO, CLAVE_FONDO) else self.hilos)
+                    nuevo = _crear_rapidocr(HILOS_FONDO if clave == CLAVE_FONDO
+                                            else HILOS_LIGERO if clave == CLAVE_LIGERO else self.hilos)
             except Exception as e:  # noqa: BLE001 - lo que sea, no puede tumbar la app
                 motivo = f"{type(e).__name__}: {e}"
                 MotorOCR._fallidos[clave] = motivo
@@ -598,13 +628,19 @@ class MotorOCR:
             if isinstance(parte, _Cronometrado):
                 parte.segundos, parte.llamadas = 0.0, 0
 
-    def leer(self, imagen, lado_minimo: int | None = None) -> list[Leido]:
+    def leer(self, imagen, lado_minimo: int | None = None, alto_deteccion: int | None = None) -> list[Leido]:
         """Devuelve los trozos de texto encontrados, con su caja y su confianza.
 
         Lanza `ErrorMotorOCR` si el motor no se puede cargar; un fallo durante la
         lectura se registra y devuelve lista vacia. Lo que tardo cada etapa queda
         en `self.tiempos` (ver `resumen_tiempos`). `lado_minimo` cambia, solo para
         esta lectura, hasta donde amplia RapidOCR la imagen antes de buscar texto.
+
+        Con `alto_deteccion`, una imagen mas alta se busca (detector) reducida a ese
+        alto y se lee (reconocedor) a tamano real, como en `leer_tira`, pero con el
+        mismo filtro de confianza que la lectura normal. El detector sobre una captura
+        de 4K entera pedia de golpe ~1,3 GB de memoria (medido); reducida, lo mismo que
+        a 1440p.
         """
         if imagen is None:
             return []
@@ -618,6 +654,8 @@ class MotorOCR:
         if motor == "winocr":
             return self._leer_windows(imagen, self.leer)
         self._poner_a_cero(motor)
+        if alto_deteccion and imagen.shape[0] > alto_deteccion * 1.05:
+            return self._leer_reducida(motor, imagen, alto_deteccion, inicio, preparado)
         reescalados = []
         if lado_minimo:
             detector = getattr(motor, "text_detector", None)
@@ -653,6 +691,22 @@ class MotorOCR:
                 )
             )
         self._medir(motor, inicio, preparado, imagen)
+        self.tiempos["cajas"] = len(salida)
+        return salida
+
+    def _leer_reducida(self, motor, imagen, alto_deteccion: int, inicio: float, preparado: float) -> list[Leido]:
+        """`leer` con el detector sobre la imagen reducida (ver `leer`)."""
+        try:
+            leidos = _leer_tira_rapidocr(motor, imagen, alto_deteccion)
+        except Exception as e:  # noqa: BLE001 - onnxruntime lanza de todo
+            log.warning("El OCR fallo sobre una captura de %sx%s: %s", imagen.shape[1], imagen.shape[0], e)
+            return []
+        # El mismo corte que aplica RapidOCR en la lectura normal (`text_score`).
+        minimo = float(getattr(motor, "text_score", 0.5) or 0.0)
+        salida = [l for l in leidos if l.confianza >= minimo]
+        escala = alto_deteccion / imagen.shape[0]
+        self._medir(motor, inicio, preparado, imagen,
+                    f"{round(imagen.shape[1] * escala)}x{round(imagen.shape[0] * escala)}")
         self.tiempos["cajas"] = len(salida)
         return salida
 
