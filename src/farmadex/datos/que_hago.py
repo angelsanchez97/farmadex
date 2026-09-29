@@ -95,6 +95,11 @@ class Recomendacion:
     # Sin consejo: la mejor ruta real (ruta_prime.ruta_pieza) para lo que sale de reliquias,
     # o `relaciones.mejor_ruta` de la meta mas rapida si nada sale de reliquias.
     alternativa: dict | None = None
+    # Por que se descarto cada fisura abierta de una era que te sirve (sin consejo, para
+    # explicarlo): "cierra" = se cierra antes de que de tiempo a terminarla; "sin_reliquia"
+    # = ninguna reliquia de esa era se tiene ni se sabe donde farmear.
+    descartes: dict[str, int] = field(default_factory=dict)
+    fisuras_de_tus_eras: int = 0  # abiertas ahora de alguna era que te sirve
     meta_alternativa: str = ""   # nombre de la meta a la que se refiere la alternativa
 
 
@@ -273,7 +278,7 @@ def recomendar(
         salida.estado = SIN_MUNDO
     else:
         salida.consejos = _consejos(con, usables, nombres, fisuras, ahora, refinamiento, escuadra, ritmo,
-                                    cache, maximo, acero)
+                                    cache, maximo, acero, salida)
         salida.estado = OK if salida.consejos else SIN_FISURA
     if not salida.consejos:
         # Sin fisura util (o sin saber cuales hay): donde farmear la reliquia que antes da una pieza.
@@ -286,7 +291,7 @@ def ruta_prime_orden(era: str) -> int:
 
 
 def _consejos(con, usables, nombres, fisuras, ahora, refinamiento, escuadra, ritmo, cache, maximo,
-              acero: bool = False) -> list[Consejo]:
+              acero: bool = False, salida: Recomendacion | None = None) -> list[Consejo]:
     # Lo que cuesta conseguir cada reliquia que no tienes: una vez por reliquia.
     farmeo: dict[int, dict | None] = {}
 
@@ -306,10 +311,14 @@ def _consejos(con, usables, nombres, fisuras, ahora, refinamiento, escuadra, rit
         candidatas = [r for r in usables if era_fisura == ERA_COMODIN or _era(r["nombre_en"]) == era_fisura]
         if not candidatas:
             continue
+        if salida is not None:
+            salida.fisuras_de_tus_eras += 1
         minutos_fisura = minutos_fisura_de(getattr(f, "modo", "") or "", ritmo)
         quedan = _minutos_que_quedan(f, ahora)
         if quedan is not None and quedan < minutos_fisura:
-            continue  # se cierra antes de que te de tiempo a terminarla
+            if salida is not None:  # se cierra antes de que te de tiempo a terminarla
+                salida.descartes["cierra"] = salida.descartes.get("cierra", 0) + 1
+            continue
         mejor: Consejo | None = None
         for r in candidatas:
             por_fisura = ruta_prime.probabilidad_por_fisura(r["probabilidad"], escuadra)
@@ -338,6 +347,8 @@ def _consejos(con, usables, nombres, fisuras, ahora, refinamiento, escuadra, rit
             )
         if mejor is not None:
             consejos.append(mejor)
+        elif salida is not None:
+            salida.descartes["sin_reliquia"] = salida.descartes.get("sin_reliquia", 0) + 1
     consejos.sort(key=lambda c: (
         bool(getattr(c.fisura, "acero", False)) and not acero,
         c.minutos,

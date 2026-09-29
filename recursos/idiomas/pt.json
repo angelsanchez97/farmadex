@@ -1,5 +1,9 @@
 {
   "_comentario": "Textos da interface do Farmadex. Chave = texto em espanhol do código; valor = tradução. As {chaves} são variáveis e devem ficar como estão. Apague uma linha para voltar ao espanhol.",
+  "Ahora no hay ninguna fisura abierta de las eras que te sirven ({eras}).": "Agora não há nenhuma fenda aberta das eras que te servem ({eras}).",
+  "Las fisuras de tus eras que hay abiertas ({n}) se cierran antes de que te dé tiempo a terminarlas.": "As fendas abertas das suas eras ({n}) fecham antes de dar tempo de terminar.",
+  "Hay {n} fisura(s) de tus eras abiertas, pero sus reliquias ni las tienes leídas en el inventario ni se sabe dónde farmearlas.": "Há {n} fenda(s) aberta(s) das suas eras, mas as relíquias nem foram lidas no inventário nem se sabe onde farmá-las.",
+  "Hay {n} fisura(s) de tus eras abiertas, pero unas se cierran antes de que te dé tiempo y de las otras no se sabe dónde farmear la reliquia.": "Há {n} fenda(s) aberta(s) das suas eras, mas algumas fecham antes de dar tempo e das outras não se sabe onde farmar a relíquia.",
   "Abre {reliquia} en la fisura de {lugar}": "Abra {reliquia} na fenda de {lugar}",
   "Da {piezas} de tus metas": "Dá {piezas} das suas metas",
   "{minutos} de media hasta una pieza": "{minutos} em média até uma peça",

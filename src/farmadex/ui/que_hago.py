@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import html
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
@@ -29,7 +29,12 @@ REFRESCO_MS = 30_000    # quitar las fisuras que se cierran
 
 
 def _ahora() -> datetime:
-    return datetime.now(timezone.utc)
+    """El mismo reloj que el resto del Tablero y "Para esto te sirve hoy" de Objetivos: si
+    cada panel mirase la hora por su cuenta, uno podria dar por cerradas fisuras que el
+    otro ensena abiertas."""
+    from . import pestana_tablero
+
+    return pestana_tablero._ahora()
 
 
 def _vaciar(capa) -> None:
@@ -135,8 +140,19 @@ def texto_sin_consejo(r: que_hago.Recomendacion) -> str:
         base = t("Todavía no sé qué fisuras hay abiertas.")
     else:
         eras = ", ".join(r.eras) if r.eras else ""
-        base = (t("Ninguna fisura abierta te sirve ahora (necesitas {eras}).", eras=eras) if eras
-                else t("Ninguna fisura abierta te sirve ahora."))
+        cierran, sin_reliquia = r.descartes.get("cierra", 0), r.descartes.get("sin_reliquia", 0)
+        if not r.fisuras_de_tus_eras:
+            base = (t("Ahora no hay ninguna fisura abierta de las eras que te sirven ({eras}).", eras=eras) if eras
+                    else t("Ninguna fisura abierta te sirve ahora."))
+        elif cierran and not sin_reliquia:
+            base = t("Las fisuras de tus eras que hay abiertas ({n}) se cierran antes de que te dé tiempo a "
+                     "terminarlas.", n=cierran)
+        elif sin_reliquia and not cierran:
+            base = t("Hay {n} fisura(s) de tus eras abiertas, pero sus reliquias ni las tienes leídas en el "
+                     "inventario ni se sabe dónde farmearlas.", n=sin_reliquia)
+        else:
+            base = t("Hay {n} fisura(s) de tus eras abiertas, pero unas se cierran antes de que te dé tiempo y "
+                     "de las otras no se sabe dónde farmear la reliquia.", n=r.fisuras_de_tus_eras)
     mision = alt.get("mision") or {}
     reliquia = alt.get("reliquia") or {}
     if reliquia and mision.get("donde"):
@@ -264,10 +280,11 @@ class PanelQueHago(PanelC):
         refinamiento, escuadra = ruta_prime.preferencias()
         ritmo = eficiencia.ritmo()
         cache = self._cache
+        ahora = _ahora()
 
         def trabajo(con: sqlite3.Connection):
             # La cache de misiones es por conexion: la del hilo no es la de la ventana.
-            return que_hago.recomendar(con, metas, tienes, fisuras, refinamiento=refinamiento,
+            return que_hago.recomendar(con, metas, tienes, fisuras, ahora, refinamiento=refinamiento,
                                        escuadra=escuadra, ritmo=ritmo, cache=cache, acero=acero)
 
         if en_segundo_plano:

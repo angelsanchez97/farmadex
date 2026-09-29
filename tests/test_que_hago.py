@@ -241,7 +241,7 @@ def test_panel_pinta_el_consejo_y_abre_la_ficha(app, datos, tmp_path, monkeypatc
     panel.actualizar_mundo(type("M", (), {"fisuras": []})())
     assert panel._sucio
     panel.recalcular(en_segundo_plano=False)
-    assert "Ninguna fisura abierta te sirve ahora" in panel.texto_plano()
+    assert "no hay ninguna fisura abierta de las eras que te sirven" in panel.texto_plano()
     assert "farmea Lith A5 en Captura" in panel.texto_plano()
 
 
@@ -267,3 +267,72 @@ def test_fuera_del_castellano_la_pieza_va_con_el_nombre_del_indice(datos):
         assert [p.nombre for p in r.consejos[0].piezas] == ["Braton Prime Receiver"]
     finally:
         idiomas.cargar("es")
+
+
+def test_motivo_concreto_cuando_ninguna_fisura_sirve(datos):
+    # De tu era, pero se cierra antes de terminarla.
+    r = _recomendar(datos, _metas(RECEPTOR), [_fisura("Lith", "Hepit", "Capture", minutos=2)])
+    assert r.estado == que_hago.SIN_FISURA
+    assert r.fisuras_de_tus_eras == 1 and r.descartes == {"cierra": 1}
+    # Ninguna de tu era: no hay descartes, y se dice.
+    r = _recomendar(datos, _metas(RECEPTOR), [_fisura("Neo", "Ukko", "Capture")])
+    assert r.fisuras_de_tus_eras == 0 and r.descartes == {}
+
+
+def test_la_reliquia_farmeable_que_no_tienes_si_sirve_y_se_dice_lo_que_cuesta(datos):
+    # Sin nada en el inventario: Lith A5 no esta en boveda y cae en la Captura, asi que la
+    # fisura Lith sirve, con el coste de conseguir la reliquia incluido y dicho.
+    r = _recomendar(datos, _metas(RECEPTOR), [_fisura("Lith", "Hepit", "Capture")], tienes={})
+    assert r.estado == que_hago.OK
+    c = r.consejos[0]
+    assert c.tienes is None and c.minutos_reliquia == pytest.approx(25.0) and c.sitio_reliquia
+
+
+def test_panel_usa_el_mismo_reloj_que_el_tablero_y_objetivos(app, datos, tmp_path, monkeypatch):
+    """Escena del recorrido de integracion: un estado del mundo de hace dias con el reloj del
+    Tablero puesto en su momento. Objetivos ve fisuras abiertas; el panel no podia decir
+    "ninguna te sirve" por mirar la hora real por su cuenta."""
+    from farmadex import idiomas
+    from farmadex.estado import objetivos, usuario_db
+    from farmadex.ui import pestana_tablero
+    from farmadex.ui import que_hago as ui
+
+    idiomas.cargar("es")
+    monkeypatch.setattr(ruta_prime, "preferencias", lambda: ("Radiant", 1))
+    antes = AHORA - timedelta(days=400)  # la hora real va muy por delante del mundo guardado
+    monkeypatch.setattr(pestana_tablero, "_ahora", lambda: antes)
+    usuario = usuario_db.conectar(tmp_path / "u.sqlite")
+    objetivos.anadir(usuario, "/P/BratonPrimeReceiver", "Receptor de Braton Prime", 1)
+    vieja = Fisura("Lith", "Hepit, Vacio", "Capture", "Grineer", antes + timedelta(minutes=40), False, False,
+                   "Capture", "Grineer")
+    mundo = type("M", (), {"fisuras": [vieja], "invasiones": [],
+                           "alertas": [], "baro_detalle": None})()
+    panel = ui.PanelQueHago()
+    panel.conectar(datos["con"], usuario)
+    panel.actualizar_mundo(mundo)
+    panel.recalcular(en_segundo_plano=False)
+    assert panel.resultado.estado == que_hago.OK
+    assert "Abre Lith A5 en la fisura de Hepit, Vacio" in panel.texto_plano()
+    # Y "Para esto te sirve hoy" cuenta esa misma fisura como abierta con el mismo reloj.
+    assert pestana_tablero.fisuras_abiertas(mundo, "Lith") == 1
+
+
+def test_panel_explica_el_motivo(app, datos, tmp_path, monkeypatch):
+    from farmadex import idiomas
+    from farmadex.estado import objetivos, usuario_db
+    from farmadex.ui import pestana_tablero
+    from farmadex.ui import que_hago as ui
+
+    idiomas.cargar("es")
+    monkeypatch.setattr(ruta_prime, "preferencias", lambda: ("Radiant", 1))
+    monkeypatch.setattr(pestana_tablero, "_ahora", lambda: AHORA)
+    usuario = usuario_db.conectar(tmp_path / "u.sqlite")
+    objetivos.anadir(usuario, "/P/BratonPrimeReceiver", "Receptor de Braton Prime", 1)
+    panel = ui.PanelQueHago()
+    panel.conectar(datos["con"], usuario)
+    panel.actualizar_mundo(type("M", (), {"fisuras": [_fisura("Lith", "Hepit", "Capture", minutos=2)]})())
+    panel.recalcular(en_segundo_plano=False)
+    assert "se cierran antes de que te dé tiempo" in panel.texto_plano()
+    panel.actualizar_mundo(type("M", (), {"fisuras": [_fisura("Neo", "Ukko", "Capture")]})())
+    panel.recalcular(en_segundo_plano=False)
+    assert "no hay ninguna fisura abierta de las eras que te sirven (Lith)" in panel.texto_plano()

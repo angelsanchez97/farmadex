@@ -1,5 +1,9 @@
 {
   "_comentario": "Farmadex-Oberflächentexte. Schlüssel = spanischer Text aus dem Code; Wert = Übersetzung. {Klammern} sind Platzhalter und bleiben unverändert. Eine Zeile löschen = zurück zum Spanischen.",
+  "Ahora no hay ninguna fisura abierta de las eras que te sirven ({eras}).": "Gerade ist kein Riss der Epochen offen, die du brauchst ({eras}).",
+  "Las fisuras de tus eras que hay abiertas ({n}) se cierran antes de que te dé tiempo a terminarlas.": "Die offenen Risse deiner Epochen ({n}) schließen, bevor du sie beenden könntest.",
+  "Hay {n} fisura(s) de tus eras abiertas, pero sus reliquias ni las tienes leídas en el inventario ni se sabe dónde farmearlas.": "Es gibt {n} offene(n) Riss(e) deiner Epochen, aber ihre Relikte wurden weder in deinem Inventar gelesen, noch ist bekannt, wo man sie farmt.",
+  "Hay {n} fisura(s) de tus eras abiertas, pero unas se cierran antes de que te dé tiempo y de las otras no se sabe dónde farmear la reliquia.": "Es gibt {n} offene(n) Riss(e) deiner Epochen, aber manche schließen zu früh und bei den anderen ist unbekannt, wo man das Relikt farmt.",
   "Abre {reliquia} en la fisura de {lugar}": "Öffne {reliquia} im Riss auf {lugar}",
   "Da {piezas} de tus metas": "Gibt {piezas} aus deinen Zielen",
   "{minutos} de media hasta una pieza": "{minutos} im Schnitt bis zu einem Teil",

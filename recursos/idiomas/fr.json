@@ -1,5 +1,9 @@
 {
   "_comentario": "Textes de l'interface Farmadex. Clé = texte espagnol du code ; valeur = traduction. Les {accolades} sont des variables à conserver. Supprimez une ligne pour revenir à l'espagnol.",
+  "Ahora no hay ninguna fisura abierta de las eras que te sirven ({eras}).": "Aucune fissure n'est ouverte pour l'instant dans les ères qui te servent ({eras}).",
+  "Las fisuras de tus eras que hay abiertas ({n}) se cierran antes de que te dé tiempo a terminarlas.": "Les fissures ouvertes de tes ères ({n}) se ferment avant que tu aies le temps de les finir.",
+  "Hay {n} fisura(s) de tus eras abiertas, pero sus reliquias ni las tienes leídas en el inventario ni se sabe dónde farmearlas.": "Il y a {n} fissure(s) ouverte(s) de tes ères, mais leurs reliques ne sont ni lues dans ton inventaire ni farmables à un endroit connu.",
+  "Hay {n} fisura(s) de tus eras abiertas, pero unas se cierran antes de que te dé tiempo y de las otras no se sabe dónde farmear la reliquia.": "Il y a {n} fissure(s) ouverte(s) de tes ères, mais certaines se ferment trop tôt et pour les autres on ne sait pas où farmer la relique.",
   "Abre {reliquia} en la fisura de {lugar}": "Ouvre {reliquia} dans la fissure de {lugar}",
   "Da {piezas} de tus metas": "Donne {piezas} de tes objectifs",
   "{minutos} de media hasta una pieza": "{minutos} en moyenne pour une pièce",
