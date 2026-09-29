@@ -189,3 +189,20 @@ def test_dialogo_de_cantidad_con_limites():
     dialogo.meta.setValue(2000)
     dialogo.usar_inventario.click()
     assert dialogo.valores() == (2000, 1200)
+
+
+def test_campana_de_alerta_de_precio_solo_si_se_vende(pestana, indice_poblado):
+    """Las metas que se venden en warframe.market llevan "Avisarme de precio"; las demas, un hueco."""
+    con, _, _ = indice_poblado
+    vendible = con.execute("SELECT unique_name, nombre_es FROM items LIMIT 1").fetchone()
+    con.execute("UPDATE items SET market_slug = 'algo_set' WHERE unique_name = ?", (vendible[0],))
+    pedidas = []
+    pestana.avisar_precio.connect(lambda unico, nombre: pedidas.append((unico, nombre)))
+    objetivos.anadir(pestana.usuario, vendible[0], "Se vende", 1)
+    objetivos.anadir(pestana.usuario, "/NoSeVende", "No se vende", 1)
+    pestana.refrescar()
+    con_campana = _fila_de(pestana, "Se vende")
+    sin_campana = _fila_de(pestana, "No se vende")
+    assert con_campana.alerta is not None and sin_campana.alerta is None
+    con_campana.alerta.click()
+    assert pedidas and pedidas[0][0] == vendible[0]

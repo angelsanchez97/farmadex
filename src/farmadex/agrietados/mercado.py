@@ -22,8 +22,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .. import NOMBRE_APP, URL_CONTACTO, VERSION
-from ..config import DIR_DATOS, PLATAFORMA
+from ..config import DIR_DATOS
 from ..online.http import Cliente
+from ..online.market import plataforma_configurada
 from ..registro_log import obtener
 from . import grados
 
@@ -94,6 +95,51 @@ class ResumenSubastas:
 
 
 @dataclass
+class Horquilla:
+    """Lo que piden por agrietados parecidos al tuyo en las subastas abiertas.
+
+    `n` es cuantas subastas con precio de compra directa se han usado. Con menos de
+    `UMBRAL_HORQUILLA` no hay horquilla (`suficiente` es False): se dice cuantas hay y
+    no se inventa nada. `nivel` dice como de parecidas son: "exacto" (mismas
+    positivas y la misma negativa, o ninguna) o "positivas" (mismas positivas,
+    cualquier negativa), que es lo que se prueba cuando lo exacto no da para mas.
+    """
+
+    arma: str
+    n: int = 0
+    nivel: str = ""
+    minimo: int | None = None
+    bajo: int | None = None  # cuartil de abajo
+    mediana: int | None = None
+    alto: int | None = None  # cuartil de arriba
+    error: str = ""
+
+    @property
+    def suficiente(self) -> bool:
+        return not self.error and self.n >= UMBRAL_HORQUILLA and self.bajo is not None
+
+
+# Subastas parecidas que hacen falta para dar una horquilla. Con menos, una sola
+# subasta de broma (o de alguien que no sabe lo que tiene) mueve todo el rango.
+UMBRAL_HORQUILLA = 5
+CACHE_HORQUILLA = 900
+
+
+def calcular_horquilla(arma: str, precios: list[int], nivel: str) -> Horquilla:
+    """Cuartiles de los precios de compra directa (sin red, para las pruebas)."""
+    validos = sorted(p for p in precios if isinstance(p, int) and p > 0)
+    h = Horquilla(arma=arma, n=len(validos), nivel=nivel)
+    if not validos:
+        return h
+    h.minimo = validos[0]
+    h.mediana = int(round(statistics.median(validos)))
+    if len(validos) >= UMBRAL_HORQUILLA:
+        cuartiles = statistics.quantiles(validos, n=4, method="inclusive")
+        h.bajo, h.alto = int(round(cuartiles[0])), int(round(cuartiles[2]))
+    return h
+
+
+@dataclass
 class MediaDE:
     arma_en: str
     variado: bool
@@ -112,13 +158,14 @@ class MercadoAgrietados:
             cabeceras={
                 "User-Agent": f"{NOMBRE_APP}/{VERSION} (+{contacto})",
                 "Language": idioma,
-                "Platform": PLATAFORMA,
+                "Platform": plataforma_configurada(),
                 "Accept": "application/json",
             },
         )
         self.carpeta = Path(carpeta)
         self._armas: list[Arma] | None = None
         self._medias_cache: tuple[float, dict] | None = None
+        self._horquillas: dict[tuple, tuple[float, Horquilla]] = {}
         self._cerrojo = threading.Lock()
 
     # -- armas y disposiciones ------------------------------------------------------------
@@ -192,6 +239,47 @@ class MercadoAgrietados:
         resumen = analizar_subastas(arma_slug, datos)
         resumen.subastas = resumen.subastas[:limite]
         return resumen
+
+    # -- horquilla de precio de parecidos -------------------------------------------------
+
+    def horquilla(self, arma_slug: str, positivos: list[str], negativo: str | None) -> Horquilla:
+        """Horquilla de precio de agrietados parecidos: misma arma y mismas estadisticas.
+
+        Primero con las mismas positivas y la misma negativa (o sin negativa, si el
+        tuyo no tiene); si no llegan a `UMBRAL_HORQUILLA`, con las mismas positivas y
+        cualquier negativa. Nunca se cae a "cualquier agrietado del arma": eso ya no
+        es un precio de algo parecido. Se guarda un rato en memoria.
+        """
+        positivos = sorted(p for p in positivos if p)
+        clave = (arma_slug, tuple(positivos), negativo or "")
+        with self._cerrojo:
+            guardada = self._horquillas.get(clave)
+        if guardada and time.monotonic() - guardada[0] < CACHE_HORQUILLA:
+            return guardada[1]
+        if not positivos:
+            return Horquilla(arma=arma_slug, error="sin estadísticas positivas")
+        try:
+            h = self._horquilla_nivel(arma_slug, positivos, negativo or "none", "exacto")
+            if h.n < UMBRAL_HORQUILLA:
+                relajada = self._horquilla_nivel(arma_slug, positivos, "", "positivas")
+                if relajada.n > h.n:
+                    h = relajada
+        except Exception as e:  # noqa: BLE001 - sin red no hay horquilla, y se dice
+            log.warning("Sin horquilla de precio para %s: %s", arma_slug, e)
+            return Horquilla(arma=arma_slug, error=str(e) or type(e).__name__)
+        with self._cerrojo:
+            self._horquillas[clave] = (time.monotonic(), h)
+        return h
+
+    def _horquilla_nivel(self, arma_slug: str, positivos: list[str], negativo: str, nivel: str) -> Horquilla:
+        partes = ["type=riven", f"weapon_url_name={arma_slug}", "sort_by=price_asc", "buyout_policy=direct",
+                  "positive_stats=" + ",".join(positivos)]
+        if negativo:
+            partes.append(f"negative_stats={negativo}")
+        datos = self.cliente.json(f"{BASE_V1}/auctions/search?" + "&".join(partes), segundos_cache=CACHE_SUBASTAS)
+        resumen = analizar_subastas(arma_slug, datos)
+        precios = [s.precio for s in resumen.subastas if s.precio]
+        return calcular_horquilla(arma_slug, precios, nivel)
 
     # -- medias de DE ----------------------------------------------------------------------
 

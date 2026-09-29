@@ -98,6 +98,8 @@ ICONO = {
 ICONO.update({"hecho": "", "editar": "", "leer": "", "importar": "", "menos": ""})
 # Minimizar la ventana (ChromeMinimize), junto a la x de la cabecera.
 ICONO["minimizar"] = ""
+# Campana (Ringer): alertas de precio.
+ICONO["campana"] = ""
 
 
 def px(tamano: float, letra: bool = True) -> int:
