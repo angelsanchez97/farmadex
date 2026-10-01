@@ -1,5 +1,29 @@
 # Cambios
 
+## 0.6.10
+
+Una versión para la pestaña Build: que el nombre de tu warframe o de tu arma salga siempre.
+
+**El nombre del equipo, aunque se lea con una letra cambiada**
+- Al leer la pantalla de mejoras, a veces el rótulo de arriba se leía con alguna letra cambiada o
+  con un trazo suelto delante (un Inaros Prime salía como «Y TNAROS PRIME»), y Farmadex lo daba por
+  «sin identificar». Sin equipo, «Builds en Overframe» y «Abrir ficha» no llevaban a ningún sitio y
+  los arcanos se quedaban sin colocar. Ahora limpia esos restos y reconoce el nombre cuando se
+  parece mucho a un único warframe, arma o compañero. Sigue sin inventar: si se parece a dos, o lo
+  leído no dice cuál es, no elige, y un Prime nunca se confunde con el que no lo es.
+- Si aun así no está seguro, te propone los más parecidos con un botón para cada uno («¿Es Inaros
+  Prime?»). Un clic y ya tienes el equipo, sus builds de Overframe, su ficha y la build básica. El
+  buscador para elegirlo a mano sigue donde estaba.
+- Al elegir el equipo, a mano o con esos botones, los mods y los arcanos se recolocan en sus
+  huecos, como en el juego.
+
+**La pestaña Build, más clara**
+- Al leer una build, la pestaña vuelve siempre a «Mi build». Si te habías quedado mirando
+  «Aumentos y sindicatos», la lectura nueva quedaba escondida detrás y parecía que no había leído
+  nada.
+- El resumen de lo leído separa lo que llevas puesto de lo que hay en la colección de abajo; antes
+  lo sumaba todo y el número no cuadraba con lo que se ve en pantalla.
+
 ## 0.6.9
 
 Una versión pequeña de mantenimiento, para que Farmadex se cierre siempre limpio.

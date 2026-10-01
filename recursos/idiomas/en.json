@@ -1,5 +1,10 @@
 {
   "_comentario": "Farmadex UI texts. Key = the Spanish text used in the code; value = the translation. {braces} are placeholders and must stay as they are. Delete a line to fall back to Spanish.",
+  "{n} mods equipados": "{n} mods equipped",
+  "{n} más en la colección": "{n} more in the collection",
+  "¿Es {nombre}?": "Is it {nombre}?",
+  "Pulsa si este es el equipo de la pantalla; si no, búscalo abajo.": "Press if this is the gear on screen; if not, search for it below.",
+  "No se leyó bien el nombre del equipo: elige abajo cuál es, o búscalo a mano.": "The gear's name wasn't read clearly: pick which one it is below, or search for it by hand.",
   "Para el nivel S hace falta además que se vendan {s} o más al día, y para el A, {a} o más: si no llega, se queda en el nivel de debajo que sí cumpla.": "For tier S it must also sell {s} or more per day, and for tier A, {a} or more: if it does not, it stays in the next tier down that it does meet.",
   "· Niveles S y A: además de los puntos, tiene que venderse rápido ({s} y {a} ventas al día como mínimo). Si no llega, baja de nivel.": "· Tiers S and A: besides the points, it has to sell fast (at least {s} and {a} sales per day). If it does not, it drops a tier.",
   "warframe.market · precios del {fecha} UTC": "warframe.market · prices from {fecha} UTC",

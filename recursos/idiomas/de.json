@@ -1,5 +1,10 @@
 {
   "_comentario": "Farmadex-Oberflächentexte. Schlüssel = spanischer Text aus dem Code; Wert = Übersetzung. {Klammern} sind Platzhalter und bleiben unverändert. Eine Zeile löschen = zurück zum Spanischen.",
+  "{n} mods equipados": "{n} Mods ausgerüstet",
+  "{n} más en la colección": "{n} weitere in der Sammlung",
+  "¿Es {nombre}?": "Ist es {nombre}?",
+  "Pulsa si este es el equipo de la pantalla; si no, búscalo abajo.": "Drücke hier, wenn das die Ausrüstung auf dem Bildschirm ist; sonst suche sie unten.",
+  "No se leyó bien el nombre del equipo: elige abajo cuál es, o búscalo a mano.": "Der Name der Ausrüstung wurde nicht sauber gelesen: wähle unten aus, welche es ist, oder suche sie von Hand.",
   "Para el nivel S hace falta además que se vendan {s} o más al día, y para el A, {a} o más: si no llega, se queda en el nivel de debajo que sí cumpla.": "Für Stufe S müssen außerdem {s} oder mehr pro Tag verkauft werden, für Stufe A {a} oder mehr: Wenn nicht, bleibt es in der nächsttieferen Stufe, die es erfüllt.",
   "· Niveles S y A: además de los puntos, tiene que venderse rápido ({s} y {a} ventas al día como mínimo). Si no llega, baja de nivel.": "· Stufen S und A: Neben den Punkten muss es sich schnell verkaufen (mindestens {s} bzw. {a} Verkäufe pro Tag). Wenn nicht, rutscht es eine Stufe tiefer.",
   "warframe.market · precios del {fecha} UTC": "warframe.market · Preise vom {fecha} UTC",

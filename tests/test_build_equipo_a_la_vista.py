@@ -167,3 +167,138 @@ def test_sin_equipo_se_dice_y_overframe_sigue_ahi(app, ventana):
     p.elegir_equipo(equipo)
     _bombear(app)
     assert _a_la_vista(ventana, p.nombre_equipo) and p.url_overframe()
+
+
+# -- el nombre del equipo con ruido del OCR (caso real: Inaros Prime leido "Y TNAROS PRIME") --
+
+EQUIPOS = [
+    ("/w/Inaros", "Inaros", "Inaros", "Warframes"),
+    ("/w/InarosPrime", "Inaros Prime", "Inaros Prime", "Warframes"),
+    ("/w/NekrosPrime", "Nekros Prime", "Nekros Prime", "Warframes"),
+    ("/w/Nekros", "Nekros", "Nekros", "Warframes"),
+    ("/w/IvaraPrime", "Ivara Prime", "Ivara Prime", "Warframes"),
+    ("/w/ValkyrPrime", "Valkyr Prime", "Valkyr Prime", "Warframes"),
+    ("/w/NyxPrime", "Nyx Prime", "Nyx Prime", "Warframes"),
+    ("/w/GyrePrime", "Gyre Prime", "Gyre Prime", "Warframes"),
+    ("/w/Loki", "Loki", "Loki", "Warframes"),
+    ("/w/Limbo", "Limbo", "Limbo", "Warframes"),
+    ("/p/Boltor", "Boltor", "Boltor", "Primary"),
+    ("/p/TelosBoltor", "Telos Boltor", "Telos Boltor", "Primary"),
+    ("/p/WarPrime", "War Prime", "War Prime", "Melee"),
+    ("/m/Reach", "Reach", "Alcance", "Mods"),
+    ("/a/Grace", "Arcane Grace", "Gracia Arcana", "Arcanes"),
+]
+
+
+@pytest.fixture()
+def casador_equipos(con):
+    _insertar(con, [(u, en, es, cat, None, None) for u, en, es, cat in EQUIPOS])
+    return B.crear_casador(con), dict(con.execute("SELECT id, categoria FROM items"))
+
+
+def _equipo_de(cabecera: str, casador, categorias):
+    nombre, linea = B.cabecera([Leido(cabecera, 40, 30, 700, 40, 0.9)])
+    equipo = B._casar_equipo(nombre, linea, casador, categorias)
+    return equipo.nombre if equipo is not None else None
+
+
+@pytest.mark.parametrize("cabecera, esperado", [
+    ("MEJORAS Y TNAROS PRIME [30]", "Inaros Prime"),   # captura del usuario: la barra sale "Y" y la I, "T"
+    ("MEJORAS Y TNAROS PRIME 30]", "Inaros Prime"),    # segunda captura: el rango sin su corchete
+    ("MEJORAS / lNAROS PRIME [30]", "Inaros Prime"),
+    ("MEJORAS / 1NAROS PRIME [30]", "Inaros Prime"),
+    ("MEJORAS / INAROS PRlME [30]", "Inaros Prime"),
+    ("MEJORAS / | INAROS PRIME [30]", "Inaros Prime"),
+    ("MEJORAS / INAROS PRIME RANGO 30", "Inaros Prime"),
+    ("UPGRADES Y TNAROS PRIME RANK 30", "Inaros Prime"),
+    ("MEJORAS Y TNAROS [30]", "Inaros"),               # sin "prime" leido, nunca el Prime
+    ("MEJORAS / INAROS [30]", "Inaros"),
+    ("MEJORAS / lVARA PRIME [30]", "Ivara Prime"),
+    ("MEJORAS / NYX PRlME [30]", "Nyx Prime"),
+    ("MEJORAS Y LIMBO [30]", "Limbo"),
+])
+def test_equipo_con_ruido_del_ocr(casador_equipos, cabecera, esperado):
+    assert _equipo_de(cabecera, *casador_equipos) == esperado
+
+
+@pytest.mark.parametrize("cabecera", [
+    "MEJORAS / REGULAR BOLTOR [30]",   # nombre puesto por el jugador: no es "Boltor" ni "Telos Boltor"
+    "MEJORAS / R PRIME [30]",          # el nombre tapado: "prime" solo no dice cual
+    "MEJORAS Y PRIME [30]",
+    "MEJORAS / Rhinnio Coleman",       # un nombre de jugador
+    "MEJORAS / Alcance [30]",          # un mod no es un equipo
+    "MEJORAS / Gracia Arcana",
+    "MEJORAS / INEROS [30]",           # igual de cerca de Inaros que de Nekros: no se elige
+    "MEJORAS / XY",
+])
+def test_equipo_dudoso_no_se_inventa(casador_equipos, cabecera):
+    assert _equipo_de(cabecera, *casador_equipos) is None
+
+
+def test_limpieza_del_nombre_de_la_cabecera():
+    assert "TNAROS PRIME" in B._nombres_de_equipo("Y TNAROS PRIME 30]")
+    assert "TNAROS PRIME" in B._nombres_de_equipo("Y TNAROS PRIME")
+    assert B._nombres_de_equipo("MK1-BO")[0] == "MK1-BO"
+    # Lo corto no se pela hasta quedarse sin nombre.
+    assert B._sin_fichas_sueltas("R PRIME") == "PRIME" and B._sin_fichas_sueltas("I LEX") == "I LEX"
+
+
+# -- sin identificar: sugerencias de un clic, resumen claro y arcanos a su sitio --------------
+
+MAS_ITEMS = [
+    ("/w/Rhino", "Rhino", "Rhino", "Warframes"),
+    ("/w/RevenantPrime", "Revenant Prime", "Revenant Prime", "Warframes"),
+    ("/m/PrimedRedirection", "Primed Redirection", "Redirección Prime", "Mods"),
+    ("/m/BlindRage", "Blind Rage", "Rabia ciega", "Mods"),
+    ("/m/TransientFortitude", "Transient Fortitude", "Fortaleza transitoria", "Mods"),
+    ("/m/Equilibrium", "Equilibrium", "Equilibrio", "Mods"),
+    ("/m/IronShrapnel", "Ironclad Charge", "Embestida férrea", "Mods"),
+    ("/m/ReinforcingStomp", "Reinforcing Stomp", "Pisotón reforzante", "Mods"),
+    ("/m/VitalidadUmbral", "Umbral Vitality", "Vitalidad Umbral", "Mods"),
+    ("/a/Pericia", "Arcane Pericia", "Pericia Arcana", "Arcanes"),
+    ("/a/Muda", "Molt Augmented", "Muda aumentada", "Arcanes"),
+]
+
+
+def test_sin_identificar_ofrece_sugerencias_y_al_elegir_todo_va_a_su_sitio(app, ventana):
+    con = ventana.con_prueba
+    _insertar(con, [(u, en, es, cat, None, None) for u, en, es, cat in MAS_ITEMS])
+    p = ventana.builds
+    p.conectar_indice(con)
+    ventana.show()
+    caso = "es_1080_rhino"
+    motor = MotorFalso(caso)
+    motor.cabecera = [Leido("MEJORAS/RHXNQ PRIME [30]", 0, 0, 960, 91, 0.8)]  # ilegible de verdad
+    build = _leer(ventana, caso, motor)
+    assert build.equipo is None and build.equipo_texto == "RHXNQ PRIME"
+    assert len(build.arcanos) == 2 and build.coleccion
+    ventana._build_leida(build)
+    _bombear(app)
+    # No se elige por el jugador: se dice que no se sabe y se proponen los parecidos.
+    assert "RHXNQ PRIME" in p.nombre_equipo.texto_completo().upper() and p.equipo_actual() is None
+    propuestos = [p.nombres_en[b.item_id] for b in p.botones_sugerencia]
+    assert propuestos and propuestos[0] == "Rhino Prime" and len(propuestos) <= 3
+    assert all(_a_la_vista(ventana, b) and b.text().strip() for b in p.botones_sugerencia)
+    assert _a_la_vista(ventana, p.boton_overframe) and not p.url_overframe()
+    estado = p.estado.texto_completo()
+    assert f"{len(build.equipados)} mods equipados" in estado
+    assert f"{len(build.coleccion)} más en la colección" in estado
+    assert "elige abajo" in estado
+    assert p.colocacion.sueltos_arcanos == [0, 1]  # sin equipo no se sabe que huecos hay
+    p.botones_sugerencia[0].click()
+    _bombear(app)
+    assert p.nombres_en[p.equipo_actual()] == "Rhino Prime" and p.url_overframe()
+    assert not p.botones_sugerencia
+    assert p.colocacion.clase == "warframe" and p.colocacion.segura
+    assert sorted(p.colocacion.arcanos.values()) == [0, 1] and not p.colocacion.sueltos_arcanos
+    assert p.nombre_equipo.texto_completo().upper() == "RHINO PRIME"
+
+
+def test_resumen_separa_equipados_de_la_coleccion(app, ventana):
+    p = ventana.builds
+    build = _leer(ventana, "es_1080_rhino")
+    ventana._build_leida(build)
+    estado = p.estado.texto_completo()
+    assert estado.startswith("Leído: Rhino Prime, ")
+    assert f"{len(build.equipados)} mods equipados" in estado and "No se" not in estado
+    assert not p.botones_sugerencia

@@ -31,6 +31,7 @@ from .ocr import (
     Reconocido,
     agrupar_bloques,
     casar_lineas,
+    normalizar,
     unir_filas,
 )
 from .reliquias import LectorBase
@@ -83,7 +84,7 @@ _RANGO_FINAL = (rf"(?:[\[［(（]\s*(?:(?:{_PALABRA_RANGO})\s*)?{_CIFRAS_RANGO}\
 # "+UPGRADES/EXCALIBUR [3O] 美美". La interfaz anterior a 2025 ponia dos puntos
 # ("UPGRADES: UNRANKED HYDROID") y en frances e italiano no lleva separador.
 RE_CABECERA = re.compile(
-    rf"(?i)^\W*(?:{_PALABRA_CABECERA})\s*(?:[/:]\s*)?([^\W_].+?)"
+    rf"(?i)^\W*(?:{_PALABRA_CABECERA})\s*(?:[/:]\s*)?(?:[|!]\s*)?([^\W_].+?)"
     rf"\s*(?:{_RANGO_FINAL})?(?:\s*[^\x00-ɏ]+)*\s*$"
 )
 # La caja de busqueda separa lo equipado (arriba) de la coleccion (abajo). Con la caja
@@ -310,11 +311,57 @@ RE_SIN_RANGO = re.compile(
     rf"(?i)^(?:UNRANKED|SIN\s*RANGO)\s*|\s*(?:{_PALABRA_RANGO})\s*(?:\d[\dOIl|]*|Z[EÉ]RO)?\s*$")
 
 
+# El rango sin su corchete de abrir: "INAROS PRIME 30]", "INAROS PRIME 3O)".
+RE_RANGO_SIN_ABRIR = re.compile(r"\s*(?:\d[\dOIl|]?|[OIl|]\d)\s*[\]\)】）］]\s*$")
+# Lo menos que tiene que quedar de un nombre al quitarle fichas sueltas de delante.
+MINIMO_NOMBRE_SIN_FICHAS = 5
+
+
+def _sin_fichas_sueltas(nombre: str) -> str:
+    """"Y TNAROS PRIME" -> "TNAROS PRIME": la barra de la cabecera ("MEJORAS / INAROS
+    PRIME") sale a veces leida como una letra suelta ("Y", "I", "|", "7") pegada delante
+    del nombre. Se quitan hasta dos fichas de una o dos letras del principio, si lo que
+    queda sigue pareciendo un nombre; si no, devuelve el nombre tal cual."""
+    palabras = nombre.split()
+    quitadas = 0
+    while len(palabras) > 1 and quitadas < 2 and len(palabras[0]) <= 2:
+        palabras = palabras[1:]
+        quitadas += 1
+    resto = " ".join(palabras)
+    return resto if quitadas and len(resto.replace(" ", "")) >= MINIMO_NOMBRE_SIN_FICHAS else nombre
+
+
 def _nombres_de_equipo(nombre: str) -> list[str]:
     """Lo leido en la cabecera y, detras, lo mismo sin los restos del rango que el OCR
     pega al nombre: "HAALVU I[22]" (una letra suelta), "HAALVU[3O]3" o "HAALV U [2 2 ]"
-    (el corchete), "HAALVU3O" (sin corchete). Se prueban en orden."""
+    (el corchete), "HAALVU3O" (sin corchete), "INAROS PRIME 30]" (sin el corchete de
+    abrir). Al final, lo mismo sin las fichas sueltas de delante (`_sin_fichas_sueltas`).
+    Se prueban en orden."""
+    return _con_fichas_quitadas(_nombres_de_equipo_base(nombre))
+
+
+RE_PRIME_MAL_LEIDO = re.compile(r"(?i)\bPR[Il1|!]ME\b")
+
+
+def _con_fichas_quitadas(intentos: list[str]) -> list[str]:
+    for base in list(intentos):
+        # "NYX PRlME", "MAG PR1ME": la I de "PRIME" leida como ele, uno o barra.
+        arreglado = RE_PRIME_MAL_LEIDO.sub("PRIME", base)
+        if arreglado not in intentos:
+            intentos.append(arreglado)
+    for base in list(intentos):
+        limpio = _sin_fichas_sueltas(base)
+        if limpio not in intentos:
+            intentos.append(limpio)
+    return intentos
+
+
+def _nombres_de_equipo_base(nombre: str) -> list[str]:
     intentos = [nombre]
+    sin_cola = RE_RANGO_SIN_ABRIR.sub("", nombre).strip()
+    if sin_cola and sin_cola != nombre and not re.search(r"[\[\(【（［]", nombre):
+        intentos.append(sin_cola)
+        nombre = sin_cola
     limpio = RE_SIN_RANGO.sub("", nombre).strip()
     if limpio and limpio != nombre:
         intentos.append(limpio)
@@ -885,7 +932,67 @@ def _casar_equipo(nombre_equipo: str, linea: Leido | None, casador: Casador,
         if item_id and categorias.get(item_id) not in ("Mods", "Arcanes", None):
             caja = (linea.x, linea.y, linea.ancho, linea.alto) if linea is not None else (0, 0, 0, 0)
             return Reconocido(nombre, item_id, etiqueta, puntos, caja)
-    return None
+    return _casar_equipo_parecido(nombre_equipo, linea, casador, categorias) if nombre_equipo else None
+
+
+# Casado del equipo con alguna letra mal leida ("TNAROS" por "INAROS"): solo contra
+# warframes, armas y companeros, con un parecido alto y claro margen sobre el siguiente.
+UMBRAL_EQUIPO_PARECIDO = 80
+MARGEN_EQUIPO_PARECIDO = 10
+MINIMO_LETRAS_EQUIPO = 5
+
+
+def candidatos_equipo(texto: str, casador: Casador, categorias: dict[int, str]) -> list[tuple[float, int, str]]:
+    """Los equipos del catalogo que mas se parecen a `texto`, de mas a menos:
+    (parecido, id, nombre), uno por objeto. Lo leido con "prime" solo se compara con
+    equipos Prime, y lo leido sin "prime" solo con los que no lo son."""
+    mejores: dict[int, tuple[float, int, str]] = {}
+    for intento in _nombres_de_equipo(texto):
+        es_prime, propio = _sin_prime(normalizar(intento))
+        # Se compara el nombre propio, sin "prime": con "R PRIME" (el nombre tapado) la
+        # palabra "prime" sola hacia parecidos a todos los Prime de nombre corto.
+        if len(propio.replace(" ", "")) < MINIMO_LETRAS_EQUIPO:
+            continue
+        for prime_clave, propio_clave, item_id, etiqueta in _claves_de_equipo(casador, categorias):
+            if prime_clave != es_prime or abs(len(propio_clave) - len(propio)) > 2:
+                continue
+            puntos = fuzz.ratio(propio, propio_clave)
+            if puntos >= 50 and puntos > mejores.get(item_id, (0.0,))[0]:
+                mejores[item_id] = (puntos, item_id, etiqueta)
+    return sorted(mejores.values(), key=lambda c: -c[0])
+
+
+def _sin_prime(clave: str) -> tuple[bool, str]:
+    palabras = clave.split()
+    return "prime" in palabras, " ".join(p for p in palabras if p != "prime")
+
+
+def _claves_de_equipo(casador: Casador, categorias: dict[int, str]) -> list[tuple[bool, str, int, str]]:
+    """(es Prime, nombre propio, id, etiqueta) de las claves del casador que son un equipo
+    (se calculan una vez por casador)."""
+    hechas = casador.__dict__.get("_claves_equipo")
+    if hechas is None:
+        hechas = []
+        for clave, (item_id, etiqueta) in casador.candidatos.items():
+            if categorias.get(item_id) in ("Mods", "Arcanes", None):
+                continue
+            es_prime, propio = _sin_prime(clave)
+            if propio:
+                hechas.append((es_prime, propio, item_id, etiqueta))
+        casador._claves_equipo = hechas
+    return hechas
+
+
+def _casar_equipo_parecido(nombre_equipo: str, linea: Leido | None, casador: Casador,
+                           categorias: dict[int, str]) -> Reconocido | None:
+    candidatos = candidatos_equipo(nombre_equipo, casador, categorias)
+    if not candidatos or candidatos[0][0] < UMBRAL_EQUIPO_PARECIDO:
+        return None
+    if len(candidatos) > 1 and candidatos[0][0] - candidatos[1][0] < MARGEN_EQUIPO_PARECIDO:
+        return None  # dos equipos igual de parecidos: no se elige
+    puntos, item_id, etiqueta = candidatos[0]
+    caja = (linea.x, linea.y, linea.ancho, linea.alto) if linea is not None else (0, 0, 0, 0)
+    return Reconocido(nombre_equipo, item_id, etiqueta, puntos, caja)
 
 
 # Lo que va entre la barra y el rango en la cabecera: "...RAS/RHINO PRIME [30]" (la

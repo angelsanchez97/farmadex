@@ -38,9 +38,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ..captura import builds as lector_builds
 from ..captura.builds import Build
+from ..captura.ocr import normalizar
 from ..config import cargar
 from ..datos import aumentos, disposicion_build, evaluar_build, nombres_juego
+from ..datos.difuso import fuzz
 from ..idiomas import es_castellano, t
 from .campo_atajo import texto_legible, texto_tecla
 from ..registro_log import obtener
@@ -166,6 +169,10 @@ class PestanaBuilds(QWidget):
         self.panel_equipo.capa.addLayout(fila(None, self.pedestal, None))
         self.panel_equipo.capa.addWidget(self.nombre_equipo)
         self.panel_equipo.capa.addWidget(self.estado)
+        # Equipo leido a medias: los que mas se parecen, para elegirlo de un clic.
+        self.capa_sugerencias = columna(espacio=px(4, False))
+        self.botones_sugerencia: list[BotonC] = []
+        self.panel_equipo.capa.addLayout(self.capa_sugerencias)
         self.panel_equipo.capa.addWidget(self.selector)
         self.panel_equipo.capa.addLayout(fila(None, self.boton_overframe, self.boton_ficha, None, espacio=px(8, False)))
         self.panel_equipo.capa.addLayout(fila(None, self.boton_basica, None))
@@ -485,7 +492,12 @@ class PestanaBuilds(QWidget):
         self.basica = None
         self.panel_evaluacion.hide()
         self.panel_basica.hide()
-        self._poner_equipo_visible()
+        if self.build is not None and not self.build.vacia:
+            # Con el equipo ya se sabe que huecos tiene: mods y arcanos van a su sitio.
+            self._mostrar_build(self.build)
+        else:
+            self._poner_equipo_visible()
+            self._poner_sugerencias()
         if self.equipo_manual:
             self.estado.setText(t("Elegido a mano: {nombre}. Ya puedes abrir sus builds en Overframe o pedir "
                                   "una build básica.", nombre=self.nombre_de(self.equipo_manual)))
@@ -500,6 +512,51 @@ class PestanaBuilds(QWidget):
         if item_id is None:
             return
         self.elegir_equipo(item_id)
+
+    # Sugerencias cuando la cabecera se leyo a medias y no casa con seguridad.
+    MAXIMO_SUGERENCIAS = 3
+    MINIMO_PARECIDO_SUGERENCIA = 60
+
+    def sugerencias_equipo(self, texto: str) -> list[int]:
+        """Los ids de los equipos del buscador que mas se parecen a lo leido en la
+        cabecera, de mas a menos. Solo se proponen: elige el jugador."""
+        if not texto or not self._elegibles:
+            return []
+        leidos = []
+        for intento in lector_builds._nombres_de_equipo(texto):
+            entero = normalizar(intento)
+            es_prime, propio = lector_builds._sin_prime(entero)
+            if len(propio.replace(" ", "")) >= 3:
+                leidos.append((es_prime, propio, entero))
+        mejores: dict[int, float] = {}
+        for item_id in set(self._elegibles.values()):
+            for nombre in {self.nombre_de(item_id), self.nombres_en.get(item_id) or ""}:
+                entero = normalizar(nombre)
+                es_prime, propio = lector_builds._sin_prime(entero)
+                if not propio:
+                    continue
+                for leido_prime, leido, leido_entero in leidos:
+                    # El nombre propio sin "prime" y, por si "prime" salio mal leido, todo junto.
+                    puntos = max(fuzz.ratio(leido, propio) - (0 if leido_prime == es_prime else 15),
+                                 fuzz.ratio(leido_entero, entero) - 5)
+                    if puntos > mejores.get(item_id, 0.0):
+                        mejores[item_id] = puntos
+        orden = sorted(mejores.items(), key=lambda par: -par[1])
+        return [i for i, puntos in orden if puntos >= self.MINIMO_PARECIDO_SUGERENCIA][: self.MAXIMO_SUGERENCIAS]
+
+    def _poner_sugerencias(self) -> None:
+        _vaciar_capa(self.capa_sugerencias)
+        self.botones_sugerencia = []
+        build = self.build
+        if build is None or build.equipo is not None or self.equipo_manual or not build.equipo_texto:
+            return
+        for item_id in self.sugerencias_equipo(build.equipo_texto):
+            boton = BotonC(t("¿Es {nombre}?", nombre=self.nombre_de(item_id)), tam=11)
+            boton.setToolTip(t("Pulsa si este es el equipo de la pantalla; si no, búscalo abajo."))
+            boton.clicked.connect(lambda _=False, i=item_id: self.elegir_equipo(i))
+            boton.item_id = item_id
+            self.botones_sugerencia.append(boton)
+            self.capa_sugerencias.addLayout(fila(None, boton, None))
 
     def _poner_equipo_visible(self) -> None:
         """Nombre, imagen y botones segun el equipo actual (leido o elegido)."""
@@ -618,6 +675,7 @@ class PestanaBuilds(QWidget):
             self.nombre_equipo.setText("")
         self.nombre_equipo.setVisible(bool(self.nombre_equipo.texto_completo()))
         self._poner_equipo_visible()
+        self._poner_sugerencias()
 
         if build.vacia:
             self.estado.setText(t(
@@ -628,12 +686,20 @@ class PestanaBuilds(QWidget):
         partes = []
         if build.equipo is not None:
             partes.append(self.nombre_de(build.equipo.item_id, build.equipo.nombre))
-        partes.append(t("{n} mods", n=len(build.equipados) + len(build.coleccion)))
+        # Los puestos y los de la coleccion de abajo, por separado: sumados ("24 mods")
+        # no cuadraban con los que se ven puestos en la pantalla.
+        partes.append(t("{n} mods equipados", n=len(build.equipados)))
         if build.arcanos:
             partes.append(t("{n} arcanos", n=len(build.arcanos)))
-        texto = t("Leído: {resumen}. Pulsa cualquiera para ver de dónde sale.", resumen=", ".join(partes))
+        resumen = ", ".join(partes)
+        if build.coleccion:
+            resumen += "; " + t("{n} más en la colección", n=len(build.coleccion))
+        texto = t("Leído: {resumen}. Pulsa cualquiera para ver de dónde sale.", resumen=resumen)
         if build.equipo is None and not self.equipo_manual:
-            texto += " " + t("No se reconoció el equipo: elígelo a mano en el buscador.")
+            if self.botones_sugerencia:
+                texto += " " + t("No se leyó bien el nombre del equipo: elige abajo cuál es, o búscalo a mano.")
+            else:
+                texto += " " + t("No se reconoció el equipo: elígelo a mano en el buscador.")
         self.estado.setText(texto)
 
         self._pintar_rejilla(build)

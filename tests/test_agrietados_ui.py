@@ -198,7 +198,8 @@ def test_build_se_lista_y_se_pulsa(builds):
     )
     p.mostrar_build(build)
     assert p.ids_listados() == [ids["/w/Excalibur"], ids["/m/Vitality"], ids["/a/Energize"], ids["/m/Flow"]]
-    assert "Excalibur" in p.estado.text() and "2 mods" in p.estado.text()
+    assert "Excalibur" in p.estado.text() and "1 mods equipados" in p.estado.text()
+    assert "1 más en la colección" in p.estado.text()
     textos = p.textos_listados()
     assert any("Absorci" in t for t in textos)
     assert any("(Mod)" in t for t in textos) and any("(Arcano)" in t for t in textos)
