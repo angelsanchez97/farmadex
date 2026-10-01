@@ -865,11 +865,20 @@ class ServicioMundo(QObject):
         elif mundo.momento is None:
             self.fallo.emit(t("la API no dice de cuando son sus datos"))
 
+    @Slot()
+    def parar(self) -> None:
+        """Para el temporizador. Solo desde su propio hilo: la ventana lo pide con
+        `tareas.parar_en_su_hilo(servicio_mundo)` antes de cerrar `hilo_mundo`. Si se
+        destruye con el temporizador sonando desde otro hilo, Qt avisa ("QObject::~QObject:
+        Timers cannot be stopped from another thread")."""
+        temporizador = getattr(self, "temporizador", None)
+        if temporizador is not None:
+            temporizador.stop()
+
     def cerrar(self) -> None:
         """Cierra el cliente HTTP. Se llama desde el hilo de la interfaz, justo antes de
         parar `hilo_mundo` (`VentanaOverlay.cerrar_de_verdad`): no toca `self.temporizador`
         (vive en ese hilo) porque pararlo aqui seria el mismo cruce de hilos de
-        `cadencia()` (ver su docstring); al parar el hilo justo despues, el temporizador
-        deja de sonar igualmente sin necesidad de detenerlo a mano.
+        `cadencia()` (ver su docstring); eso lo hace `parar()`, pedido en su hilo.
         """
         self.cliente.cerrar()

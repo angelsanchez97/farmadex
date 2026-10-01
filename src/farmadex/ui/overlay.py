@@ -39,7 +39,7 @@ from ..perfil import desde_ocr
 from ..registro.botin import Botin
 from ..registro.eelog import VigilanteEELog
 from ..registro_log import obtener
-from ..tareas import TareaDatos
+from ..tareas import TareaDatos, parar_en_su_hilo
 from ..actualizador import descarga, instalacion
 from ..actualizador.app import ComprobadorApp
 from ..actualizador.datos import ComprobadorDatos
@@ -2877,6 +2877,13 @@ class VentanaOverlay(QWidget):
         self.aviso_lectura.cerrar()
         if getattr(self, "vistas", None) is not None:
             self.vistas.cerrar()
+        # Los temporizadores de los objetos que viven en hilos de trabajo se paran EN SU
+        # HILO antes de cerrarlo. Si no, al recoger Python esos objetos (ya con el hilo
+        # muerto) Qt destruye el QTimer desde el hilo de la ventana y avisa dos veces por
+        # cada uno ("QObject::killTimer" y "QObject::~QObject: Timers cannot be stopped
+        # from another thread"): cuatro parejas en cada cierre desde la 0.6.4.
+        for trabajador in ("vigia_vistas", "lector_pasivo", "lector_fin_mision", "servicio_mundo"):
+            parar_en_su_hilo(getattr(self, trabajador, None))
         hilo_vista = getattr(self, "hilo_vista", None)
         if hilo_vista is not None:
             hilo_vista.quit()

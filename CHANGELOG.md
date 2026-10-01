@@ -1,5 +1,22 @@
 # Cambios
 
+## 0.6.9
+
+Una versión pequeña de mantenimiento, para que Farmadex se cierre siempre limpio.
+
+**Cierre más ordenado**
+- Al salir de Farmadex, las partes que miran la pantalla en segundo plano (el precio al pasar el
+  ratón, la lectura del perfil, los datos del mundo) se apagan ahora de forma ordenada antes de
+  cerrar la ventana. Hasta ahora se quedaban a medias y, al final, el programa protestaba por
+  dentro; en algún equipo eso podía acabar en un cierre brusco.
+- Si alguna vez una parte del programa toca algo desde donde no debe, el registro de Farmadex
+  apunta ahora exactamente de dónde vino, para poder arreglarlo a la primera.
+
+**Pruebas**
+- La prueba automática que recorre todas las lecturas tenía un fallo propio: de vez en cuando se
+  cerraba de golpe en mitad de la lectura de precios y agrietados. Era cosa de la prueba, no del
+  programa que usas, pero ya está corregido y ahora además avisa si algo se cruza de hilo.
+
 ## 0.6.8
 
 Una versión pequeña para que la lectura de pantalla acierte más.

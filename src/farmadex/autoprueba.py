@@ -46,6 +46,7 @@ peticiones las contesta la red simulada) ni el EE.log del juego. Sale con 0 si t
 
 from __future__ import annotations
 
+import functools
 import json
 import os
 import shutil
@@ -588,9 +589,17 @@ class Sondas:
             sondas.llamadas.setdefault(clave, []).append((time.perf_counter(), a))
             return resultado
 
+        # `functools.update_wrapper` y no solo `__name__`: si el metodo era un @Slot, la
+        # envoltura tiene que parecerselo del todo (`__qualname__`, `__module__` y `_slots`).
+        # Medido con PySide6 6.11: una senal de un objeto de otro hilo conectada a un metodo
+        # que FUE @Slot pero que Qt ya no reconoce (porque esta sonda lo sustituyo por una
+        # funcion normal con el mismo nombre) se entrega EN EL HILO DEL EMISOR, no en el de la
+        # ventana. Asi `mostrar_precio` y `leyendo_precio` tocaban widgets y temporizadores
+        # desde el hilo del vigia de vistas ("QObject::startTimer: Timers cannot be started
+        # from another thread", unas 60 veces por pasada) y de vez en cuando tumbaban el
+        # proceso (access violation). Bien disfrazada, Qt la encola al hilo del receptor.
+        functools.update_wrapper(envoltura, original)
         envoltura._sonda = True  # type: ignore[attr-defined]
-        envoltura.__name__ = nombre
-        envoltura.__doc__ = original.__doc__
         setattr(clase, nombre, envoltura)
         return True
 

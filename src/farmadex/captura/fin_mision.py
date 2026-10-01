@@ -616,6 +616,11 @@ class LectorFinMision(QObject):
         if not activo:
             self._terminar(emitir=False)
 
+    @Slot()
+    def parar(self) -> None:
+        """Al cerrar: para el temporizador en su hilo (ver `tareas.parar_en_su_hilo`)."""
+        self._terminar(emitir=False)
+
     @Slot(str)
     def cambiar_motor(self, motor_ocr: str) -> None:
         MotorOCR.olvidar_fallo(motor_ocr)

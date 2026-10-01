@@ -279,6 +279,16 @@ def _activar_faulthandler(ruta: Path | None = None) -> bool:
     return True
 
 
+def _nombre_hilo() -> str:
+    return threading.current_thread().name
+
+
+def _pila_compacta(maximo: int = 12) -> str:
+    """La pila de Python del hilo actual, una linea por marco, sin los marcos de este modulo."""
+    marcos = [f for f in traceback.extract_stack()[:-2] if "registro_log" not in f.filename][-maximo:]
+    return "\n".join(f"    {os.path.basename(f.filename)}:{f.lineno} {f.name}" for f in marcos)
+
+
 def instalar_mensajes_qt() -> bool:
     """Los qWarning/qCritical/qFatal de Qt van al registro (en el .exe se perdian)."""
     try:
@@ -297,6 +307,11 @@ def instalar_mensajes_qt() -> bool:
         if nivel is None:  # depuracion e informacion de Qt: demasiado ruido
             return
         try:
+            if "another thread" in mensaje and not sys.is_finalizing():
+                # Un temporizador o widget tocado desde un hilo que no es el suyo: Qt avisa
+                # pero no dice quien. Aqui va el hilo y la pila de Python de quien lo hizo,
+                # que es lo unico que permite arreglarlo (y lo que precede a un cierre brusco).
+                mensaje = f"{mensaje} [hilo {_nombre_hilo()}]\n{_pila_compacta()}"
             log.log(nivel, "%s", mensaje)
         except Exception:  # noqa: BLE001 - un manejador de Qt nunca puede lanzar
             pass
