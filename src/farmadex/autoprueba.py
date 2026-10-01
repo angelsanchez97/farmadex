@@ -1017,6 +1017,7 @@ class Autoprueba:
         datos: dict = {}
         try:
             foto = pd.PreciosDiarios()
+            foto.cargar_local()  # como al abrir la app: primero lo que haya en disco (nada)
             descargador = pd.Descargador(foto, base=self.op.get("precios_base") or None)
             datos["url"] = descargador.base
             t0 = time.perf_counter()
