@@ -622,3 +622,115 @@ def eras_necesarias(indice: sqlite3.Connection, usuario: sqlite3.Connection) -> 
         if era:
             salida.setdefault(era, []).append(objetivo.nombre)
     return salida
+
+
+# -- recursos como meta (5.000 de Plastidos, 10 Neurodos) ---------------------------
+
+# Origen de lo que suma la lectura de la pantalla de fin de mision (captura/fin_mision.py).
+ORIGEN_FIN_MISION = "fin_mision"
+
+
+def _plano(texto: str | None) -> str:
+    """Minusculas y sin tildes, para buscar "plastidos" y encontrar "Plástidos"."""
+    import unicodedata
+
+    descompuesto = unicodedata.normalize("NFKD", texto or "")
+    return "".join(c for c in descompuesto.lower() if not unicodedata.combining(c))
+
+
+def buscar_recursos(
+    indice: sqlite3.Connection | None, texto: str = "", castellano: bool = True, limite: int = 60
+) -> list[tuple[str, str]]:
+    """[(unique_name, nombre)] de los recursos del juego que casan con `texto`.
+
+    El nombre sale en el idioma del usuario, pero se busca en los dos (quien juega en
+    ingles con Farmadex en castellano escribe "plastids"). Primero los que empiezan
+    por lo escrito; sin texto, todos por orden alfabetico.
+    """
+    if indice is None:
+        return []
+    try:
+        filas = indice.execute(
+            "SELECT unique_name, nombre_en, nombre_es FROM items WHERE categoria = 'Resources'"
+        ).fetchall()
+    except sqlite3.Error:
+        return []
+    buscado = _plano(texto).strip()
+    salida: list[tuple[int, str, str, str]] = []
+    for unico, en, es in filas:
+        nombre = ((es or en) if castellano else (en or es)) or ""
+        if not nombre:
+            continue
+        claves = [_plano(en), _plano(es)]
+        if not buscado:
+            orden = 0
+        elif any(c.startswith(buscado) for c in claves if c):
+            orden = 0
+        elif any(f" {buscado}" in c for c in claves if c):
+            orden = 1
+        elif any(buscado in c for c in claves if c):
+            orden = 2
+        else:
+            continue
+        salida.append((orden, _plano(nombre), unico, nombre))
+    salida.sort()
+    return [(unico, nombre) for _, _, unico, nombre in salida[:limite]]
+
+
+def recursos_pendientes(usuario: sqlite3.Connection) -> list[str]:
+    """unique_name de los recursos que son meta y aun no estan completos."""
+    filas = usuario.execute(
+        "SELECT item_unique_name FROM objetivos WHERE categoria = ? AND completado_en IS NULL",
+        (RECURSOS,),
+    ).fetchall()
+    return [f[0] for f in filas]
+
+
+def ya_contada(usuario: sqlite3.Connection, objetivo_id: int, mision: str) -> bool:
+    fila = usuario.execute(
+        "SELECT 1 FROM progreso_eventos WHERE objetivo_id = ? AND origen = ? AND detalle = ? LIMIT 1",
+        (objetivo_id, ORIGEN_FIN_MISION, mision),
+    ).fetchone()
+    return fila is not None
+
+
+def sumar_de_mision(
+    usuario: sqlite3.Connection, unique_name: str, cantidad: int, mision: str
+) -> Objetivo | None:
+    """Suma lo recogido en una mision a la meta de ese recurso, una sola vez por mision.
+
+    `mision` es la clave de esa mision (el momento en que EE.log dijo que acabo). Si esa
+    mision ya se sumo a este objetivo, no se toca nada y se devuelve None: asi una
+    segunda lectura de la misma pantalla no cuenta doble. Tampoco pasa de la meta.
+    """
+    if not mision or int(cantidad) <= 0:
+        return None
+    fila = usuario.execute(
+        "SELECT id, completado_en FROM objetivos WHERE item_unique_name = ?", (unique_name,)
+    ).fetchone()
+    if not fila or fila[1]:
+        return None
+    if ya_contada(usuario, fila[0], mision):
+        log.info("La mision %s ya estaba sumada a %s: no se cuenta otra vez", mision, unique_name)
+        return None
+    return sumar(usuario, fila[0], int(cantidad), origen=ORIGEN_FIN_MISION, detalle=mision)
+
+
+def reiniciar(usuario: sqlite3.Connection, objetivo_id: int) -> Objetivo | None:
+    """Vuelve a cero lo conseguido (la meta se queda como esta)."""
+    return fijar(usuario, objetivo_id, actual=0)
+
+
+def donde_recurso(indice: sqlite3.Connection | None, unique_name: str) -> dict | None:
+    """Donde se farmea un recurso: planetas donde cae, misiones cortas y jefes que lo dan.
+
+    Es `relaciones.recurso_de_planeta` (los mismos datos que la ficha del buscador);
+    None si el recurso no es de los que caen por todo un planeta.
+    """
+    if indice is None:
+        return None
+    try:
+        fila = indice.execute("SELECT id FROM items WHERE unique_name = ?", (unique_name,)).fetchone()
+        return relaciones.recurso_de_planeta(indice, fila[0]) if fila else None
+    except sqlite3.Error:
+        return None

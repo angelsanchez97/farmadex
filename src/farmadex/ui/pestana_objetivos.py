@@ -24,6 +24,9 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QMessageBox,
     QScrollArea,
     QSizePolicy,
@@ -51,6 +54,7 @@ from .estilo_c import (
     DesplegableC,
     EtiquetaC,
     Insignia,
+    InterruptorTexto,
     PanelC,
     PiezaC,
     Rombo,
@@ -143,6 +147,8 @@ class _Contexto:
         self.ruta = lambda _unico: None
         # Alerta de precio en warframe.market (unique_name, nombre); None = sin boton.
         self.avisar_precio = None
+        # Donde se farmea un recurso (planetas, mision corta, jefe), con la cache de la pestana.
+        self.donde_recurso = lambda _unico: None
 
 
 # -- piezas pequenas -------------------------------------------------------------------
@@ -319,6 +325,11 @@ class DialogoCantidad(QDialog):
             )
             linea.addWidget(self.usar_inventario)
             caja.addLayout(linea)
+        # Empezar de cero sin borrar el objetivo (p. ej. tras gastar lo que habias reunido).
+        self.reiniciar = BotonC(t("Empezar de cero"))
+        self.reiniciar.setToolTip(t("Pone a 0 lo que llevas. La meta se queda como está."))
+        self.reiniciar.clicked.connect(lambda: self.actual.setValue(0))
+        caja.addLayout(fila(self.reiniciar, None))
         botones = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         botones.button(QDialogButtonBox.Ok).setText(t("Guardar"))
         botones.button(QDialogButtonBox.Cancel).setText(t("Cancelar"))
@@ -332,6 +343,82 @@ class DialogoCantidad(QDialog):
 
     def valores(self) -> tuple[int, int]:
         return self.meta.value(), min(self.actual.value(), self.meta.value())
+
+
+class DialogoRecurso(QDialog):
+    """Elegir un recurso del juego y cuanto quieres reunir: buscador con los nombres en tu
+    idioma, lista de resultados y la meta."""
+
+    def __init__(self, indice, parent=None):
+        super().__init__(parent)
+        self.indice = indice
+        self.setWindowTitle(t("Añadir un recurso como meta"))
+        self.setMinimumWidth(px(380, False))
+        self.buscador = QLineEdit()
+        self.buscador.setPlaceholderText(t("Escribe el nombre del recurso (Plástidos, Neurodos…)"))
+        self.buscador.setClearButtonEnabled(True)
+        self.lista = QListWidget()
+        self.lista.setMinimumHeight(px(220, False))
+        self.lista.setUniformItemSizes(True)
+        self.sin_resultados = EtiquetaC("", "pequeno", tinta="suave", envolver=True)
+        self.meta = QSpinBox()
+        self.meta.setRange(1, MAX_CANTIDAD)
+        self.meta.setValue(1000)
+        self.meta.setGroupSeparatorShown(True)
+        self.meta.setMinimumWidth(110)
+        _proteger_rueda(self.meta)
+        form = QFormLayout()
+        form.addRow(t("Quiero conseguir"), self.meta)
+        nota = EtiquetaC(
+            t("Verás cuánto te falta y dónde cae. Lo que consigas lo sumas con el botón +."),
+            "pequeno", envolver=True)
+        self.botones = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        self.botones.button(QDialogButtonBox.Ok).setText(t("Añadir a mis metas"))
+        self.botones.button(QDialogButtonBox.Cancel).setText(t("Cancelar"))
+        self.botones.accepted.connect(self.accept)
+        self.botones.rejected.connect(self.reject)
+
+        caja = QVBoxLayout(self)
+        caja.addWidget(EtiquetaC(t("¿Qué recurso quieres farmear?"), "seccion"))
+        caja.addWidget(self.buscador)
+        caja.addWidget(self.lista, 1)
+        caja.addWidget(self.sin_resultados)
+        caja.addLayout(form)
+        caja.addWidget(nota)
+        caja.addWidget(self.botones)
+
+        self.buscador.textChanged.connect(self._filtrar)
+        self.lista.currentItemChanged.connect(lambda *_: self._pintar_aceptar())
+        self.lista.itemDoubleClicked.connect(lambda _item: self.accept())
+        self._filtrar("")
+        self.buscador.setFocus()
+
+    def _filtrar(self, texto: str) -> None:
+        resultados = estado_objetivos.buscar_recursos(self.indice, texto, es_castellano())
+        self.lista.clear()
+        for unico, nombre in resultados:
+            item = QListWidgetItem(nombre)
+            item.setData(Qt.UserRole, unico)
+            self.lista.addItem(item)
+        if resultados:
+            self.lista.setCurrentRow(0)
+            self.sin_resultados.hide()
+        else:
+            self.sin_resultados.setText(
+                t("No hay ningún recurso con ese nombre. Prueba con menos letras.") if self.indice is not None
+                else t("Los datos del juego todavía se están preparando. Prueba en un momento."))
+            self.sin_resultados.show()
+        self._pintar_aceptar()
+
+    def _pintar_aceptar(self) -> None:
+        self.botones.button(QDialogButtonBox.Ok).setEnabled(self.lista.currentItem() is not None)
+
+    def elegido(self) -> tuple[str, str, int] | None:
+        """(unique_name, nombre, meta) de lo elegido, o None si no hay nada marcado."""
+        item = self.lista.currentItem()
+        if item is None:
+            return None
+        return item.data(Qt.UserRole), item.text(), self.meta.value()
 
 
 # -- filas -------------------------------------------------------------------------------
@@ -433,7 +520,12 @@ class FilaObjetivo(QWidget):
         self.contexto = contexto or _Contexto()
         self.clave = f"o:{objetivo.id}"
         self._clave_recursos = f"rec:{objetivo.id}"
-        con_recursos = estado_objetivos.tiene_recursos(indice, objetivo.unique_name)
+        # Un recurso que cae por los planetas (Neurodos, Plastidos) se farmea, no se fabrica:
+        # sin panel de "recursos de fabricacion" aunque el indice le conozca una receta. Los
+        # que si se fabrican (Fieldron, Masa mutagena) lo conservan.
+        es_recurso = objetivo.categoria == estado_objetivos.RECURSOS and not dentro_de_set
+        texto_donde = self._texto_recurso() if es_recurso else ""
+        con_recursos = not texto_donde and estado_objetivos.tiene_recursos(indice, objetivo.unique_name)
         abierto = con_recursos and self._clave_recursos in self.contexto.abiertos
 
         self.panel = _panel_fila(clicable=con_recursos, dentro=dentro_de_set)
@@ -488,7 +580,7 @@ class FilaObjetivo(QWidget):
             cabeza.append(Insignia(t("Completado"), "ok", tam=10))
         cabeza.append(None)
 
-        self.donde = EtiquetaC(self._texto_ruta(ruta), "pequeno", envolver=True)
+        self.donde = EtiquetaC(texto_donde or self._texto_ruta(ruta), "pequeno", envolver=True)
         self.donde.setTextFormat(Qt.RichText)
         marcar(self.donde, reliquia_de_ruta(ruta))  # su tabla al dejar el raton encima
         # El tipo de mision y la rotacion explican el modo al pasar el raton.
@@ -508,6 +600,20 @@ class FilaObjetivo(QWidget):
             self.enlace_recursos.setToolTip(t("Abrir para marcar cada recurso por separado"))
             self.enlace_recursos.linkActivated.connect(lambda _url: self._alternar_recursos())
             textos.addWidget(self.enlace_recursos)
+        # Un recurso con meta: barra de progreso y cuanto falta, a la vista.
+        self.barra = None
+        self.falta = None
+        if es_recurso:
+            self.barra = BarraFina(objetivo.actual / max(1, objetivo.objetivo),
+                                   "ok" if objetivo.completado else "acento")
+            self.barra.setMinimumWidth(px(120, False))
+            queda = max(0, objetivo.objetivo - objetivo.actual)
+            self.falta = EtiquetaC(
+                t("¡Meta conseguida!") if queda == 0
+                else t("Te faltan {n} · llevas el {p}%", n=_miles(queda), p=objetivo.porcentaje),
+                "pequeno", tinta="ok" if queda == 0 else "secundario")
+            textos.addWidget(self.barra)
+            textos.addWidget(self.falta)
         hoy = self.contexto.hoy.get(objetivo.unique_name)
         self.hoy = None
         if hoy and not objetivo.completado:
@@ -584,6 +690,25 @@ class FilaObjetivo(QWidget):
         self.cambiada.emit()  # se repinta con el panel abierto o cerrado
 
     # -- ruta --
+
+    def _texto_recurso(self) -> str:
+        """Donde farmear un recurso: planetas donde cae, una mision corta y el jefe que lo da.
+        Vacio si no es un recurso de planeta (entonces vale la ruta normal)."""
+        donde = self.contexto.donde_recurso(self.objetivo.unique_name)
+        if not donde or not donde.get("planetas"):
+            return ""
+        p = PALETA
+        planetas = ", ".join(html.escape(nombre_idioma(x, "planeta")) for x in donde["planetas"])
+        trozos = [f"{t('Cae en')} <b>{planetas}</b>"]
+        nodos = donde.get("nodos") or []
+        if nodos:
+            n = nodos[0]
+            trozos.append(f"{t('misión corta')}: {html.escape(n['donde'])} ({html.escape(n['mision'])})")
+        jefes = donde.get("jefes") or []
+        if jefes:
+            j = jefes[0]
+            trozos.append(f"{t('jefe')}: {html.escape(j.get('donde') or j.get('origen_texto') or '')}")
+        return f"<span style='color:{p['texto']}'>{' &middot; '.join(trozos)}</span>"
 
     def _texto_ruta(self, ruta) -> str:
         p = PALETA
@@ -964,6 +1089,8 @@ class PestanaObjetivos(QWidget):
     cambiados = Signal()
     # "Avisarme de precio" de una meta: unique_name y nombre (Herramientas > Alertas).
     avisar_precio = Signal(str, str)
+    # El usuario enciende o apaga el conteo de recursos al acabar la mision (experimental).
+    recursos_auto_cambiado = Signal(bool)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -975,6 +1102,8 @@ class PestanaObjetivos(QWidget):
         self.contexto.pedir_imagen = self._pedir_imagen
         self.contexto.ruta = self._ruta
         self.contexto.avisar_precio = self.avisar_precio.emit
+        self.contexto.donde_recurso = self._donde_recurso
+        self._donde_recursos: dict = {}
         self.estado = SIN_EMPEZAR
         self.categoria: str | None = None
         self.pagina = 0
@@ -1026,6 +1155,16 @@ class PestanaObjetivos(QWidget):
         self.boton_anadir = BotonC("", principal=True, icono="mas")
         self.boton_anadir.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.boton_anadir.clicked.connect(self._ir_a_buscar)
+        # Recurso con meta (5.000 de Plastidos): se elige aqui mismo, sin pasar por el buscador.
+        self.boton_recurso = BotonC("", icono="mas")
+        self.boton_recurso.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.boton_recurso.clicked.connect(self._anadir_recurso)
+        self.auto_recursos = InterruptorTexto("")
+        self.auto_recursos.toggled.connect(self._cambiar_auto_recursos)
+        self.nota_auto = EtiquetaC("", "pequeno", tinta="suave", envolver=True)
+        self.panel_recursos_auto = PanelC("", remate=False)
+        self.panel_recursos_auto.capa.addWidget(self.auto_recursos)
+        self.panel_recursos_auto.capa.addWidget(self.nota_auto)
         self.panel_hoy = PanelC("")
         self.capa_hoy = QVBoxLayout()
         self.capa_hoy.setSpacing(px(6, False))
@@ -1045,7 +1184,9 @@ class PestanaObjetivos(QWidget):
         capa_lateral.setContentsMargins(0, 0, 0, 0)
         capa_lateral.setSpacing(px(12, False))
         capa_lateral.addWidget(self.boton_anadir)
+        capa_lateral.addWidget(self.boton_recurso)
         capa_lateral.addWidget(self.panel_hoy)
+        capa_lateral.addWidget(self.panel_recursos_auto)
         capa_lateral.addWidget(self.panel_ayuda)
         capa_lateral.addStretch(1)
 
@@ -1080,6 +1221,7 @@ class PestanaObjetivos(QWidget):
         self._reloj_hoy.setInterval(60_000)
         self._reloj_hoy.timeout.connect(self._pintar_hoy)
         self._leer_inventario_config()
+        self._leer_auto_recursos_config()
         self._traducir_fijos()
 
     def _traducir_fijos(self) -> None:
@@ -1107,6 +1249,18 @@ class PestanaObjetivos(QWidget):
             "Fundición en el juego y las apunta en tus objetivos. Es lo mismo que la opción de Ajustes."))
         self.boton_anadir.setText(t("Añadir un objetivo"))
         self.boton_anadir.setToolTip(t("Busca algo y pulsa '+ Objetivo' en su ficha."))
+        self.boton_recurso.setText(t("Añadir un recurso con meta"))
+        self.boton_recurso.setToolTip(t(
+            "Elige un recurso (Plástidos, Neurodos…) y cuánto quieres reunir. Verás cuánto te falta y dónde cae."))
+        self.panel_recursos_auto.poner_titulo(t("Recursos: contar solo"))
+        self.auto_recursos.setText(t("Contar al acabar la misión (en pruebas)"))
+        self.auto_recursos.setToolTip(t(
+            "Al terminar una misión, Farmadex mira una vez la pantalla de resultados y suma lo que hayas "
+            "recogido de los recursos que tienes como meta. Solo suma lo que lee con total seguridad; "
+            "si no, te lo dice y lo sumas tú."))
+        self.nota_auto.setText(t(
+            "En pruebas: todavía no está comprobado dentro del juego. Si una cantidad no se lee con "
+            "seguridad, no se suma y te aviso. Siempre puedes corregir con el lápiz."))
         self.panel_hoy.poner_titulo(t("Para esto te sirve hoy"))
         self.boton_mundo.setText(t("Ver el mundo"))
         self.boton_que_hago.setText(t("¿Qué hago ahora?"))
@@ -1115,12 +1269,14 @@ class PestanaObjetivos(QWidget):
         self.ayuda.setText("<br>".join(html.escape(x) for x in (
             t("+ y - suman o restan; ×1 elige cuánto suma cada clic."),
             t("Al abrir reliquias en solitario, Farmadex lo suma solo."),
+            t("Con un recurso como meta ves cuánto te falta y dónde cae."),
             t("La marca lo da por hecho, el lápiz sirve para editar y la X para quitar."),
             t("La flecha abre las piezas del set o los recursos para fabricarlo."),
         )))
 
     def conectar_indice(self, con: sqlite3.Connection) -> None:
         self.indice = con
+        self._donde_recursos.clear()
         self._rutas.clear()
         self._imagenes.clear()
         self.refrescar()
@@ -1199,6 +1355,85 @@ class PestanaObjetivos(QWidget):
         )
         self.aviso.show()
         QTimer.singleShot(12_000, self.aviso.hide)
+
+    # -- recursos con meta -------------------------------------------------------
+
+    def _donde_recurso(self, unique_name: str):
+        """Donde se farmea un recurso, con cache (se vacia al cambiar el indice)."""
+        if unique_name not in self._donde_recursos:
+            self._donde_recursos[unique_name] = estado_objetivos.donde_recurso(
+                self._indice_vivo(), unique_name)
+        return self._donde_recursos[unique_name]
+
+    def _anadir_recurso(self) -> None:
+        dialogo = DialogoRecurso(self._indice_vivo(), self)
+        if dialogo.exec() != QDialog.Accepted:
+            return
+        elegido = dialogo.elegido()
+        if elegido:
+            self.anadir_recurso(*elegido)
+
+    def anadir_recurso(self, unique_name: str, nombre: str, meta: int) -> int:
+        """Crea (o amplia) la meta de un recurso y la deja a la vista. Devuelve su id."""
+        objetivo_id = estado_objetivos.anadir(
+            self.usuario, unique_name, nombre, meta, categoria=estado_objetivos.RECURSOS)
+        self._mostrar_objetivo(objetivo_id)
+        self.refrescar()
+        return objetivo_id
+
+    def _leer_auto_recursos_config(self) -> None:
+        self.auto_recursos.blockSignals(True)
+        self.auto_recursos.setChecked(bool(config_farmadex.cargar().get("recursos_fin_mision_auto", False)))
+        self.auto_recursos.blockSignals(False)
+
+    def _cambiar_auto_recursos(self, activo: bool) -> None:
+        cfg = config_farmadex.cargar()
+        cfg["recursos_fin_mision_auto"] = bool(activo)
+        config_farmadex.guardar(cfg)
+        self.recursos_auto_cambiado.emit(bool(activo))
+        self._avisar(
+            t("Listo: al acabar cada misión miraré la pantalla de resultados y sumaré tus recursos.")
+            if activo else t("Ya no cuento los recursos solo. Puedes seguir sumando a mano."))
+
+    def _avisar(self, texto: str, segundos: int = 12) -> None:
+        self.aviso.setText(texto)
+        self.aviso.show()
+        QTimer.singleShot(segundos * 1000, self.aviso.hide)
+
+    def recursos_pendientes(self) -> list[str]:
+        return estado_objetivos.recursos_pendientes(self.usuario)
+
+    def resultado_fin_mision(self, resultado) -> str:
+        """Aplica lo leido en la pantalla de fin de mision (captura.fin_mision.Resultado).
+
+        Suma lo seguro (una vez por mision) y dice lo que no se pudo leer. Devuelve el
+        texto del aviso, que tambien se ensena en la pestana.
+        """
+        nombres = {o.unique_name: o.nombre for o in estado_objetivos.listar(self.usuario)}
+        sumados, sin_leer, no_vistos = [], [], []
+        for unico, cantidad in resultado.cantidades.items():
+            objetivo = estado_objetivos.sumar_de_mision(self.usuario, unico, cantidad, resultado.mision)
+            if objetivo is not None:
+                sumados.append(f"+{_miles(cantidad)} {objetivo.nombre}")
+        for unico, motivo in resultado.no_leidos.items():
+            if unico not in nombres:
+                continue
+            (no_vistos if motivo == "no_visto" else sin_leer).append(nombres[unico])
+        trozos = []
+        if sumados:
+            trozos.append(t("Sumado de la misión: {lista}.", lista=", ".join(sumados)))
+        if sin_leer:
+            trozos.append(t("No he podido leer bien {lista}: si has recogido, súmalo tú con el +.",
+                            lista=", ".join(sin_leer)))
+        if no_vistos:
+            trozos.append(t("No he visto {lista} en la pantalla de resultados: si has recogido, súmalo tú con el +.",
+                            lista=", ".join(no_vistos)))
+        texto = " ".join(trozos)
+        if texto:
+            self._avisar(texto, 45)
+        if sumados:
+            self.refrescar()
+        return texto
 
     # -- alta desde la ficha --------------------------------------------------
 

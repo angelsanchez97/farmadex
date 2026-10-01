@@ -156,6 +156,9 @@ POR_DEFECTO = {
     # leida, que se apunta en "idioma_juego_visto") y, si aun no se sabe, el de la interfaz.
     "idioma_juego": "auto",
     "idioma_juego_visto": "",
+    # MIS METAS > Objetivos: contar solo los recursos que son meta leyendo la pantalla de
+    # fin de mision (captura/fin_mision.py). Experimental y apagado: sin probar en el juego.
+    "recursos_fin_mision_auto": False,
 }
 
 
