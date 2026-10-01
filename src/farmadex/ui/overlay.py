@@ -63,6 +63,7 @@ from ..online.servicio_market import ServicioMarket
 from ..online.worldstate import ServicioMundo
 from .pestana_agrietados import PestanaAgrietados
 from .pestana_alertas import PestanaAlertas
+from .pestana_mercado import PestanaMercado
 from .pestana_ajustes import PestanaAjustes
 from .pestana_builds import PestanaBuilds
 from .pestana_buscador import PestanaBuscador
@@ -108,7 +109,8 @@ SECCIONES = (
 )
 SUBSECCIONES = {
     "metas": (("objetivos", "Objetivos"), ("primes", "Primes"), ("perfil", "Perfil"), ("historial", "Historial")),
-    "herramientas": (("build", "Build"), ("agrietados", "Agrietados"), ("alertas", "Alertas"), ("video", "Vídeo"),
+    "herramientas": (("build", "Build"), ("agrietados", "Agrietados"), ("alertas", "Alertas"), ("mercado", "Mercado"),
+                     ("video", "Vídeo"),
                      ("web", "Web")),
 }
 # Ruta -> atributo de la ventana con la pagina (se lee al navegar: una pagina puede
@@ -124,6 +126,7 @@ PAGINAS = {
     "herramientas/build": "builds",
     "herramientas/agrietados": "agrietados",
     "herramientas/alertas": "alertas",
+    "herramientas/mercado": "mercado",
     "herramientas/video": "video",
     "herramientas/web": "web",
     "ajustes": "ajustes",
@@ -438,6 +441,10 @@ class VentanaOverlay(QWidget):
         # Alertas de precio (warframe.market): se crean desde la ficha o desde una meta.
         self.alertas = PestanaAlertas()
         self.alertas.aviso.connect(self.aviso_alerta_precio.emit)
+        # Mercado: que merece la pena vender, con la foto diaria de precios (sin red).
+        self.mercado = PestanaMercado()
+        self.mercado.abrir_item.connect(lambda item_id: self._abrir_desde_cursor(item_id, ""))
+        self.mercado.buscar_texto.connect(self._buscar_desde_mundo)
         self.buscador.avisar_precio.connect(self.preparar_alerta_precio)
         self.objetivos.avisar_precio.connect(self._alerta_desde_meta)
         self.objetivos.cambiados.connect(self.mundo.refrescar_objetivos)
@@ -2585,7 +2592,7 @@ class VentanaOverlay(QWidget):
         self.estado.setText("")
         for pestana in (self.tablero, self.buscador, self.objetivos, self.primes, self.mundo, self.perfil, self.ajustes,
                         self.compacta, self.video, self.web, self.builds, self.agrietados, self.alertas,
-                        self.historial):
+                        self.historial, self.mercado):
             pestana.retraducir()
         self._regenerar_avisos()
 
@@ -2658,6 +2665,7 @@ class VentanaOverlay(QWidget):
             (self.perfil, "repintar"), (self.compacta, "repintar"), (self.ajustes, "repintar"),
             (self.video, "repintar"), (self.web, "repintar"), (self.builds, "repintar"),
             (self.agrietados, "repintar"), (self.tablero, "repintar"), (self.alertas, "repintar"),
+            (self.mercado, "repintar"),
         ):
             self._repintar_al_ver(pagina, metodo)
         # Las piezas del estilo C se vuelven a medir con la escala nueva y se repintan.

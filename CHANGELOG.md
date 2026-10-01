@@ -1,5 +1,33 @@
 # Cambios
 
+## 0.6.7
+
+Esta versión trae una herramienta nueva: una lista de lo que más merece la pena vender en
+warframe.market, pensada para saber de un vistazo qué se vende bien y rápido.
+
+**Mercado: qué merece la pena vender**
+- Nueva pestaña Herramientas > Mercado. Una lista por niveles (S, A, B, C, D) de lo que mejor se
+  vende en warframe.market: cuánto se vende al día, a qué precio se cierra de verdad y qué hueco hay
+  entre quien compra y quien vende. Sale al instante, sin esperar a internet, porque usa los precios
+  que Farmadex guarda cada día.
+- Arriba, lo que se vende rápido. Los niveles más altos son solo para lo que, además de valer la
+  pena, se vende deprisa: algo caro que casi nadie compra no llega a S ni a A, por mucho que valga.
+- La cuenta está a la vista. El nivel sale de multiplicar el precio habitual por lo rápido que se
+  vende, y la propia pantalla lo explica. Lo que casi no se vende no recibe nivel: aparece marcado
+  como «pocos datos», y lo que no tiene ninguna venta directamente no sale. Nada inventado.
+- A qué rango vender. En los arcanos se compara venderlo subido con vender sueltas las copias que
+  cuesta subirlo, y te dice qué sale mejor. En los mods se comparan los precios y se indica el endo
+  que cuesta subirlo (el endo no tiene precio en platino, y así se dice).
+- Filtros y orden. Por tipo (mods, arcanos, sets prime, piezas prime, reliquias y otros), por bóveda
+  y por nombre en tu idioma; se ordena pulsando cualquier columna y, al pulsar un objeto, se abre su
+  ficha.
+- Siempre sabes de cuándo son los precios. Arriba pone la fecha del dato y cuánto falta para la
+  siguiente actualización (medianoche, hora UTC). Hay un botón para actualizarlos a mano, que se
+  apaga solo mientras hay una descarga en marcha y alrededor de la medianoche, cuando los precios
+  nuevos todavía se están preparando. La lista se repinta sola cuando llegan.
+- En las reliquias no se enseña el margen: lo que piden los vendedores conectados no se parece a lo
+  que de verdad se paga por ellas, y un margen ahí engañaría.
+
 ## 0.6.6
 
 Esta versión va de precios al instante. Farmadex guarda cada día los precios de warframe.market en
