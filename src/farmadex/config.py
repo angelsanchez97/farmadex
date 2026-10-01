@@ -144,6 +144,13 @@ POR_DEFECTO = {
     "aviso_lectura": True,
     # La vista completa se cerro maximizada: vuelve a abrirse asi (ui/overlay.py).
     "overlay_maximizada": False,
+    # Precio al pasar el raton por un enlace del chat del juego (chat/enlace.py).
+    "precio_enlaces_chat": True,
+    # Analizar lo que se copia y, si es una lista de venta, ensenar sus precios. Apagado
+    # por defecto: mira el portapapeles (solo en este PC, no guarda ni envia nada).
+    "portapapeles_ventas": False,
+    # Historial de lo mirado en el chat. Apagado por defecto: guarda nombres de jugadores.
+    "historial_chat": False,
 }
 
 
