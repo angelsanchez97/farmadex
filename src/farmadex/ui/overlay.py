@@ -54,6 +54,8 @@ from ..captura.cursor import LectorCursor, TurnoLecturas
 from .aviso_lectura import AvisoLectura
 from ..captura.fin_mision import LectorFinMision
 from ..captura.lector_pasivo import LectorPasivo
+from ..captura.vista import VigiaVistas
+from .vista_objeto import ControladorVistas
 from ..captura.ocr import modo_de_config
 from ..captura.reliquias import DisparadorAutomatico, LectorRecompensas, Recompensa, completar, resumir
 from ..captura.reliquia_hover import HoverReliquias, LectorHoverReliquia
@@ -851,8 +853,31 @@ class VentanaOverlay(QWidget):
         # Antes de cada captura, Farmadex se esconde un instante si tapa lo que se va a leer.
         self.ocultador = OcultadorVentanas(self)
         pantalla.registrar_ocultador(self.ocultador)
+        # Lo que sale solo sin atajo (captura/vista.py): precio al ver un objeto comerciable,
+        # panel al abrir un agrietado y build al abrir mejoras. Su propio hilo y su motor.
+        self.vigia_vistas = VigiaVistas(
+            motor, precio=bool(self.config.get("vista_precio_auto", True)),
+            rivens=bool(self.config.get("vista_rivens_auto", True)),
+            builds=bool(self.config.get("vista_builds_auto", True)))
+        self.hilo_vista = QThread(self)
+        self.vigia_vistas.moveToThread(self.hilo_vista)
+        self.hilo_vista.started.connect(self.vigia_vistas.iniciar)
+        self.vistas = ControladorVistas(self.aviso_lectura, zona_juego=self._zona_juego_qt, parent=self)
+        self.vigia_vistas.leyendo_precio.connect(self.vistas.leyendo_precio)
+        self.vigia_vistas.objeto_visto.connect(self.vistas.mostrar_precio)
+        self.vigia_vistas.sin_objeto.connect(self.vistas.sin_precio)
+        self.vigia_vistas.objeto_fuera.connect(self.vistas.esconder_precio)
+        self.vigia_vistas.riven_visto.connect(self.vistas.mostrar_riven)
+        self.vigia_vistas.riven_fuera.connect(self.vistas.esconder_riven)
+        self.vigia_vistas.build_vista.connect(self._build_vista_sola)
+        self.ajustes.vista_precio.toggled.connect(self.vigia_vistas.activar_precio)
+        self.ajustes.vista_rivens.toggled.connect(self.vigia_vistas.activar_rivens)
+        self.ajustes.vista_builds.toggled.connect(self.vigia_vistas.activar_builds)
+        self.ajustes.vista_precio.toggled.connect(lambda v: None if v else self.vistas.esconder_precio())
+        self.ajustes.vista_rivens.toggled.connect(lambda v: None if v else self.vistas.esconder_riven())
         self.hilo_captura.start()
         self.hilo_pasivo.start(QThread.LowPriority)
+        self.hilo_vista.start()
         self.hover_reliquias.iniciar()
         # Precios al pasar el raton por un enlace del chat y de las listas de venta copiadas
         # (ui/precios_chat.py): su propio hilo, para no esperar detras de otras lecturas.
@@ -877,7 +902,7 @@ class VentanaOverlay(QWidget):
         self.ajustes.prioridad_recompensas_cambiada.connect(self.cambiar_prioridad_recompensas)
         # Cambio de modo de OCR en Ajustes: cada lector rehace su motor en el hilo de captura.
         for lector in (self.lector_recompensas, self.lector_cursor, self.lector_build,
-                       self.lector_agrietado, self.lector_pasivo, self.lector_hover):
+                       self.lector_agrietado, self.lector_pasivo, self.lector_hover, self.vigia_vistas):
             self.ajustes.ocr_modo_cambiado.connect(lector.cambiar_motor)
 
         # Botin que EE.log deja claro (reliquia en solitario) va directo a los objetivos.
@@ -917,6 +942,7 @@ class VentanaOverlay(QWidget):
         self.vigilante.pantalla.connect(self.lector_pasivo.pantalla_juego)
         self.vigilante.evento.connect(self.lector_pasivo.evento)
         self.vigilante.pantalla.connect(self.hover_reliquias.pantalla_juego)
+        self.vigilante.pantalla.connect(self.vigia_vistas.pantalla_juego)
         self.vigilante.arranque.connect(self._arranque_juego)
         self.vigilante.start()
 
@@ -1619,6 +1645,19 @@ class VentanaOverlay(QWidget):
     def leer_build(self) -> None:
         """Atajo o boton de la pestana Build: lee la pantalla de mejoras del arsenal."""
         self._leer_por_turno("build")
+
+    def _build_vista_sola(self, _t_visto: float = 0.0) -> None:
+        """La pantalla de mejoras esta delante (captura/vista.py): como pulsar el atajo."""
+        self._t_build_sola = _t_visto
+        self._leer_por_turno("build")
+
+    def _zona_juego_qt(self):
+        """El rectangulo del juego en pantalla (para colocar los recuadros), o None."""
+        try:
+            r = pantalla.region_juego()
+        except Exception:  # noqa: BLE001 - sin juego: la pantalla principal
+            r = None
+        return QRect(r.x, r.y, r.ancho, r.alto) if r is not None else None
 
     def _build_leida(self, build) -> None:
         self.builds.mostrar_build(build)
@@ -2805,6 +2844,12 @@ class VentanaOverlay(QWidget):
         self.tarjeta_reliquia.ocultar()
         self.tarjeta_reliquia.cerrar()
         self.aviso_lectura.cerrar()
+        if getattr(self, "vistas", None) is not None:
+            self.vistas.cerrar()
+        hilo_vista = getattr(self, "hilo_vista", None)
+        if hilo_vista is not None:
+            hilo_vista.quit()
+            hilo_vista.wait(3000)
         hilo_pasivo = getattr(self, "hilo_pasivo", None)
         if hilo_pasivo is not None:
             hilo_pasivo.quit()

@@ -22,6 +22,8 @@ Opciones:
     --capturas CARPETA     (se puede repetir) capturas reales con su verdad.json; el tipo
                            (recompensas, build o agrietado) sale del formato de cada entrada
     --hover CARPETA        (se puede repetir) capturas con reliquias a la vista (inventario)
+    --vista CARPETA        banco de lo que sale solo sin atajo: positivos/tooltip_inventario (con
+                           verdad.json) y negativos/ (pantallas donde no tiene que salir nada)
     --red-fixtures CARPETA respuestas guardadas (worldstate, market...) de la red simulada
     --nucleos N            limita el proceso a N nucleos (simula un PC normal)
     --carga N              N procesos que se comen un nucleo cada uno mientras se prueba
@@ -56,7 +58,7 @@ ARGUMENTO_CARGA = "--autoprueba-carga"
 
 FLUJOS = (
     "instancia", "actualizar_al_abrir", "arranque", "recompensas", "cursor", "build", "agrietado",
-    "hover", "tarjeta_app", "rafagas", "buscar", "fichas", "secciones", "modo_juego", "refrescos", "minimizar",
+    "hover", "vista_precio", "vista_riven", "vista_build", "vista_reposo", "tarjeta_app", "rafagas", "buscar", "fichas", "secciones", "modo_juego", "refrescos", "minimizar",
     "bienvenida", "guia", "cierre",
 )
 
@@ -64,6 +66,8 @@ FLUJOS = (
 # pulsacion; "resultados", desde la ultima tecla hasta ver la lista.
 CRITERIOS = {
     "build_ms": 1000,
+    # Lo que sale solo (precio, agrietado, build): de aparecer en pantalla a verse el dato.
+    "vista_ms": 1000,
     "recompensas_ms": 500,
     # Una tecla "al instante": la ventana no puede quedarse sin atender el teclado mas de
     # 0,1 s (el umbral clasico de respuesta instantanea) y en 9 de cada 10 busquedas, ni 50 ms.
@@ -102,7 +106,7 @@ CONSULTAS = (
 def _leer_argumentos(argv: list[str]) -> dict:
     opciones: dict = {"capturas": [], "hover": [], "solo": None, "nucleos": 0, "carga": 0,
                       "indice": None, "datos": None, "red_fixtures": None, "etiqueta": "", "perfil": None,
-                      "vigia_ms": 120, "sin_red": False}
+                      "vigia_ms": 120, "sin_red": False, "vista": None}
     resto = [a for a in argv if a != ARGUMENTO]
     i = 0
     carpeta = None
@@ -112,7 +116,7 @@ def _leer_argumentos(argv: list[str]) -> dict:
         if a in ("--capturas", "--hover"):
             opciones[a[2:]].append(valor)
             i += 2
-        elif a in ("--indice", "--datos", "--red-fixtures", "--etiqueta", "--perfil"):
+        elif a in ("--indice", "--datos", "--red-fixtures", "--etiqueta", "--perfil", "--vista"):
             opciones[a[2:].replace("-", "_")] = valor
             i += 2
         elif a in ("--nucleos", "--carga", "--vigia-ms"):
@@ -1060,6 +1064,14 @@ class Autoprueba:
             self.sondas.poner(clase, nombre)
         if not hasattr(pestana_buscador.PestanaBuscador, "_aplicar_busqueda"):
             self.sondas.poner(pestana_buscador.PestanaBuscador, "_buscar")
+        try:  # lo que sale solo sin atajo (versiones que lo tienen)
+            from .ui import vista_objeto
+
+            for nombre in ("mostrar_precio", "mostrar_riven", "sin_precio", "leyendo_precio"):
+                self.sondas.poner(vista_objeto.ControladorVistas, nombre)
+            self.sondas.poner(V, "_build_vista_sola")
+        except ImportError:
+            pass
 
         datos: dict = {}
         t0 = time.perf_counter()
@@ -1092,6 +1104,9 @@ class Autoprueba:
         gc.collect()
         datos["recolector_ms"] = _ms(time.perf_counter() - t_gc)
         datos["ok"] = listo is not None and preparado is not None
+        # El vigia de lo que sale solo se apaga fuera de sus flujos: los demas miden las
+        # lecturas por atajo, y una lectura sola a la vez cambiaria sus tiempos.
+        self._vigia_vistas(False, False, False)
         self.png("arranque")
         self.flujo("arranque", datos)
 
@@ -1439,6 +1454,358 @@ class Autoprueba:
             "inventados": sum(f["inventada"] for f in filas),
             "nota": "el tiempo incluye los 0,3 s de raton quieto que espera antes de leer",
         })
+
+    # lo que sale solo sin atajo ---------------------------------------------------------------
+
+    def _vigia_vistas(self, precio: bool, rivens: bool, builds: bool):
+        vigia = getattr(self.ventana, "vigia_vistas", None)
+        if vigia is not None:
+            from .captura import vista
+
+            # El cursor de verdad es el del PC donde corre la prueba: aqui manda el simulado.
+            vista.cursor_visible = lambda: not getattr(self, "_cursor_escondido", False)
+            vigia.activo_precio, vigia.activo_rivens, vigia.activo_builds = precio, rivens, builds
+            vigia.franja_build.olvidar()
+            vigia.franja_centro.olvidar()
+            vigia._build_a_la_vista = False
+        return vigia
+
+    def _fondo_neutro(self, alto: int = 1080, ancho: int = 1920):
+        import numpy as np
+
+        return np.full((alto, ancho, 3), 22, np.uint8)
+
+    def _fotos_vista(self, sub: str) -> list[Path]:
+        if not self.op.get("vista"):
+            return []
+        carpeta = Path(self.op["vista"]) / sub
+        if not carpeta.exists():
+            return []
+        return sorted(p for p in carpeta.iterdir() if p.suffix.lower() in EXTENSIONES and not p.name.startswith("_"))
+
+    def _precios_de_prueba(self) -> None:
+        """Sin el fichero diario de precios (lo trae otra zona), uno falso: el recuadro se
+        pinta entero y se mide lo mismo que con el de verdad (una busqueda en memoria)."""
+        from .ui import vista_objeto
+
+        if vista_objeto._precios() is not None:
+            return
+        from datetime import datetime, timezone
+        from types import SimpleNamespace
+
+        fecha = datetime.now(timezone.utc)
+
+        class Falso:
+            def __init__(self):
+                self.fecha = fecha
+
+            def rangos(self, slug):
+                return []
+
+            def buscar(self, slug, rango=None):
+                n = sum(slug.encode()) % 90 + 5
+                return SimpleNamespace(slug=slug, rango=rango, venta_min=n, venta_mediana=n + 2, compra_max=n - 3,
+                                       min_30d=n - 4, max_30d=n + 9, media_30d=n + 1, volumen_30d=120, fecha=fecha)
+
+        falso = Falso()
+        vista_objeto._precios = lambda: falso
+
+    def flujo_vista_precio(self) -> None:
+        import random
+
+        v = self.ventana
+        vigia = self._vigia_vistas(True, False, False)
+        positivos = self._fotos_vista("positivos/tooltip_inventario")
+        if vigia is None or not positivos:
+            self.flujo("vista_precio", {"nota": "sin vigia de vistas o sin banco (--vista)"})
+            return
+        self._precios_de_prueba()
+        verdad = json.loads((Path(self.op["vista"]) / "positivos/tooltip_inventario/verdad.json").read_text("utf-8"))
+        v.ocultar()
+        random.seed(11)
+        filas = []
+        clave = "ControladorVistas.mostrar_precio"
+        for ruta in positivos:
+            info = verdad.get(ruta.name)
+            imagen = self.imagen(ruta)
+            if info is None or imagen is None:
+                continue
+            h, w = imagen.shape[:2]
+            ix, iy = info["icono"]
+            destino = (max(5, ix - int(0.45 * h)), min(h - 5, iy + int(0.12 * h)))
+            # El raton llega y se para sobre el objeto, y en ese momento el juego saca su
+            # recuadro: hasta entonces, una pantalla sin nada.
+            self.sim.poner(self._fondo_neutro(h, w), cursor=(min(w - 5, destino[0] + 300), max(5, destino[1] - 200)))
+            self.bombear(0.3)
+            t0 = time.perf_counter()
+            self.sim.poner(imagen, cursor=destino)
+            tiempo = self.esperar(lambda: self.sondas.desde(clave, t0), 2.0)
+            mostradas = self.sondas.desde(clave, t0)
+            slug = mostradas[-1][1][0].slug if mostradas else None
+            filas.append({"fichero": ruta.name, "resolucion": f"{w}x{h}", "verdad": info.get("slug"), "leido": slug,
+                          "ms": _ms(tiempo) if tiempo is not None else None,
+                          "acierto": bool(slug and slug == info.get("slug")),
+                          "inventado": bool(slug and slug != info.get("slug")),
+                          "opcional": bool(info.get("opcional"))})
+            if mostradas:
+                self.png(f"vista_precio_{ruta.stem}", v.vistas.caja_precio)
+            self.sim.cursor = (5, 5)
+            self.bombear(0.15)
+        # Negativos: pantallas sin recuadro de objeto, el raton parado en sitios al azar.
+        negativas = []
+        fondos = self._fotos_vista("negativos") + [r for r, _i in self.casos()["build"]][:12]
+        for ruta in fondos:
+            imagen = self.imagen(ruta)
+            if imagen is None or imagen.shape[0] < 600 or ruta.name == "es_1440_reguladoras.png":
+                continue
+            h, w = imagen.shape[:2]
+            self.sim.poner(imagen, cursor=(5, 5))
+            for _ in range(2):
+                self.bombear(0.12)
+                t0 = time.perf_counter()
+                self.sim.cursor = (random.randrange(20, w - 20), random.randrange(20, h - 20))
+                self.bombear(0.6)
+                mostradas = self.sondas.desde(clave, t0)
+                negativas.append({"fichero": ruta.name, "inventado": bool(mostradas),
+                                  "leido": mostradas[-1][1][0].slug if mostradas else None})
+        self.sim.poner(None)
+        self.bombear(0.2)
+        v.vistas.esconder_precio()
+        v.mostrar()
+        self._vigia_vistas(False, False, False)
+        obligadas = [f for f in filas if not f["opcional"]]
+        tiempos = _resumen_tiempos([f["ms"] for f in filas if f["ms"] is not None and f["acierto"]])
+        self.flujo("vista_precio", {
+            "casos": filas, "negativos": len(negativas),
+            "tiempos": tiempos,
+            "aciertos": sum(f["acierto"] for f in obligadas), "total": len(obligadas),
+            "inventados": sum(f["inventado"] for f in filas) + sum(f["inventado"] for f in negativas),
+            "inventados_detalle": [f for f in filas + negativas if f["inventado"]],
+            "ok": tiempos.get("max", 0) <= CRITERIOS["vista_ms"],
+            "nota": "de parar el raton sobre el objeto a ver el recuadro de precio; incluye la espera de raton quieto",
+        })
+
+    def flujo_vista_riven(self) -> None:
+        import numpy as np
+
+        from .captura import agrietados as modulo
+
+        v = self.ventana
+        vigia = self._vigia_vistas(False, True, False)
+        casos = self.casos()["agrietado"]
+        if vigia is None or not casos:
+            self.flujo("vista_riven", {"nota": "sin vigia de vistas o sin capturas de agrietados"})
+            return
+        v.ocultar()
+        clave = "ControladorVistas.mostrar_riven"
+        ancho_t, alto_t = modulo.ANCHO_TARJETA, modulo.ALTO_TARJETA
+        filas = []
+        for n, (ruta, info) in enumerate(casos):
+            imagen = self.imagen(ruta)
+            if imagen is None:
+                continue
+            h, w = imagen.shape[:2]
+            # La tarjeta abierta en medio de la pantalla, a 1080p, 1440p y 4K por turnos.
+            alto = (1080, 1440, 2160)[n % 3]
+            if h < 700:  # un recorte de tarjeta: al tamano que tiene abierta (~0,42 del alto)
+                import cv2
+
+                factor = 0.42 * alto / h
+                imagen = cv2.resize(imagen, (max(1, int(w * factor)), max(1, int(h * factor))),
+                                    interpolation=cv2.INTER_CUBIC if factor > 1 else cv2.INTER_AREA)
+                h, w = imagen.shape[:2]
+                ancho = alto * 16 // 9
+                lienzo = np.full((alto, ancho, 3), 18, np.uint8)
+                y0, x0 = (alto - h) // 2, (ancho - w) // 2
+                lienzo[y0:y0 + h, x0:x0 + w] = imagen[:alto, :ancho]
+            else:
+                lienzo = imagen
+            self.sim.poner(self._fondo_neutro(lienzo.shape[0], lienzo.shape[1]), cursor=(5, 5))
+            self.bombear(0.5)
+            t0 = time.perf_counter()
+            self.sim.poner(lienzo, cursor=(5, 5))
+            tiempo = self.esperar(lambda: self.sondas.desde(clave, t0), 2.5)
+            llamadas = self.sondas.desde(clave, t0)
+            fila = {"fichero": ruta.name, "resolucion": f"{lienzo.shape[1]}x{lienzo.shape[0]}",
+                    "ms": _ms(tiempo) if tiempo is not None else None, "visto": bool(llamadas)}
+            if llamadas:
+                tarjeta = llamadas[-1][1][0]
+                leidas = [[e.slug, e.valor, e.negativo] for e in tarjeta.estadisticas]
+                if info.get("velado"):
+                    fila["ok"] = bool(tarjeta.velado)
+                    fila["inventado"] = False
+                else:
+                    arma_ok = tarjeta.arma_slug == info.get("arma")
+                    stats_ok = len(leidas) == len(info.get("stats", [])) and all(
+                        any(l[0] == s[0] and abs((l[1] or 0) - s[1]) < 0.05 and l[2] == s[2] for l in leidas)
+                        for s in info.get("stats", []))
+                    fila["ok"] = arma_ok and stats_ok
+                    fila["fiable"] = bool(tarjeta.fiable)
+                    # Solo se evalua (nota, precio) lo que el lector da por fiable.
+                    fila["inventado"] = bool(tarjeta.fiable and not fila["ok"])
+                if len(filas) < 6:
+                    self.bombear(0.4)  # que llegue la red simulada y se pinte el panel entero
+                    self.png(f"vista_riven_{ruta.stem}", v.vistas.caja_riven)
+            filas.append(fila)
+        # Negativos: pantallas sin agrietado abierto.
+        negativas = []
+        fondos = self._fotos_vista("negativos") + [r for r, _i in self.casos()["build"]]
+        for ruta in fondos:
+            imagen = self.imagen(ruta)
+            if imagen is None or imagen.shape[0] < 600:
+                continue
+            self.sim.poner(self._fondo_neutro(imagen.shape[0], imagen.shape[1]), cursor=(5, 5))
+            self.bombear(0.45)
+            t0 = time.perf_counter()
+            self.sim.poner(imagen, cursor=(5, 5))
+            self.bombear(1.0)
+            negativas.append({"fichero": ruta.name, "inventado": bool(self.sondas.desde(clave, t0))})
+        self.sim.poner(None)
+        self.bombear(0.3)
+        v.vistas.esconder_riven()
+        v.mostrar()
+        self._vigia_vistas(False, False, False)
+        vistos = [f for f in filas if f["visto"]]
+        tiempos = _resumen_tiempos([f["ms"] for f in vistos if f["ms"] is not None])
+        por_res = {}
+        for f in vistos:
+            por_res.setdefault(f["resolucion"].split("x")[1], []).append(f["ms"])
+        self.flujo("vista_riven", {
+            "casos": filas, "negativos": len(negativas),
+            "tiempos": tiempos,
+            "por_alto": {k: _resumen_tiempos(val) for k, val in por_res.items()},
+            "vistos": len(vistos), "total": len(filas),
+            "aciertos": sum(1 for f in vistos if f.get("ok")),
+            "inventados": sum(1 for f in filas if f.get("inventado")) + sum(f["inventado"] for f in negativas),
+            "inventados_detalle": [f for f in filas + negativas if f.get("inventado")],
+            "ok": tiempos.get("max", 0) <= CRITERIOS["vista_ms"],
+            "nota": "de aparecer la tarjeta en pantalla a verse el panel con la nota (el precio llega despues, por red)",
+        })
+
+    def flujo_vista_build(self) -> None:
+        v = self.ventana
+        vigia = self._vigia_vistas(False, False, True)
+        casos = self.casos()["build"]
+        if vigia is None or not casos:
+            self.flujo("vista_build", {"nota": "sin vigia de vistas o sin capturas de builds"})
+            return
+        filas = []
+        for ruta, info in casos:
+            imagen = self.imagen(ruta)
+            if imagen is None:
+                continue
+            v.ir_a("tablero")
+            v.ocultar()
+            self.sim.poner(self._fondo_neutro(imagen.shape[0], imagen.shape[1]), cursor=(5, 5))
+            self.bombear(0.5)
+            t0 = time.perf_counter()
+            self.sim.poner(imagen, cursor=(5, 5))
+            detectada = self.esperar(lambda: self.sondas.desde("VentanaOverlay._build_vista_sola", t0), 1.5)
+            fila = {"fichero": ruta.name, "resolucion": f"{imagen.shape[1]}x{imagen.shape[0]}",
+                    "detectada_ms": _ms(detectada) if detectada is not None else None, "ms": None,
+                    "no_legible": bool(info.get("no_legible"))}
+            if detectada is not None:
+                self.esperar(lambda: self.sondas.desde("VentanaOverlay._build_leida", t0), 10.0)
+                llamadas = self.sondas.desde("VentanaOverlay._build_leida", t0)
+                if llamadas:
+                    fila["ms"] = _ms(llamadas[0][0] - t0)
+                    fila.update(self._evaluar_build(info, llamadas[0][1][0]))
+            filas.append(fila)
+        negativas = []
+        fondos = self._fotos_vista("negativos") + self._fotos_vista("positivos/tooltip_inventario")
+        for ruta in fondos:
+            imagen = self.imagen(ruta)
+            if imagen is None or imagen.shape[0] < 600 or ruta.name.endswith("es_arsenal.png"):
+                continue
+            v.ocultar()
+            self.sim.poner(self._fondo_neutro(imagen.shape[0], imagen.shape[1]), cursor=(5, 5))
+            self.bombear(0.45)
+            t0 = time.perf_counter()
+            self.sim.poner(imagen, cursor=(5, 5))
+            self.bombear(0.9)
+            negativas.append({"fichero": ruta.name, "inventado": bool(self.sondas.desde("VentanaOverlay._build_vista_sola", t0))})
+        self.sim.poner(None)
+        self.bombear(0.3)
+        v.mostrar()
+        self._vigia_vistas(False, False, False)
+        leidas = [f for f in filas if f["ms"] is not None]
+        legibles = [f for f in leidas if not f["no_legible"] and "aciertos" in f]
+        tiempos = _resumen_tiempos([f["ms"] for f in leidas])
+        self.flujo("vista_build", {
+            "casos": filas, "negativos": len(negativas),
+            "tiempos": tiempos,
+            "deteccion": _resumen_tiempos([f["detectada_ms"] for f in filas if f["detectada_ms"] is not None]),
+            "detectadas": len(leidas), "total": len(filas),
+            "aciertos": sum(f["aciertos"] for f in legibles), "total_mods": sum(f["total"] for f in legibles),
+            "inventados": sum(len(f.get("inventados", [])) for f in filas) + sum(f["inventado"] for f in negativas),
+            "falsas_detecciones": [f["fichero"] for f in negativas if f["inventado"]],
+            "ok": tiempos.get("max", 0) <= CRITERIOS["vista_ms"],
+            "nota": "de aparecer la pantalla de mejoras a tener la build leida, sin atajo",
+        })
+
+    def flujo_vista_reposo(self) -> None:
+        """Lo que cuesta tener el vigia encendido: con una pantalla quieta y jugando (imagen que no para)."""
+        import numpy as np
+
+        v = self.ventana
+        vigia = getattr(v, "vigia_vistas", None)
+        if vigia is None:
+            self.flujo("vista_reposo", {"nota": "esta version no tiene vigia de vistas"})
+            return
+        v.ocultar()
+        import cv2
+
+        # Una pantalla de menu de verdad a 4K, quieta; y "jugando": la misma imagen
+        # desplazandose sin parar, como la camara en una partida.
+        casos = self.casos()["build"]
+        base = self.imagen(casos[0][0]) if casos else None
+        if base is None:
+            base = self._fondo_neutro(2160, 3840)
+        quieta = cv2.resize(base, (3840, 2160), interpolation=cv2.INTER_LINEAR)
+        fotogramas = [np.ascontiguousarray(np.roll(quieta, (k * 277, k * 431), axis=(0, 1))) for k in range(1, 7)]
+        menu = False
+        nucleos = max(1, self.resultado.get("nucleos") or 1)
+
+        def medir(encendido: bool, jugando: bool, segundos: float = 10.0, menu: bool = False) -> dict:
+            self._vigia_vistas(encendido, encendido, encendido)
+            self.sim.poner(quieta, cursor=(900, 700))
+            self.bombear(2.5)  # lo que se lea al aparecer la pantalla no es reposo
+            lecturas0 = dict(vigia.lecturas)
+            sondeos0 = vigia.sondeos
+            cpu0, t0 = time.process_time(), time.perf_counter()
+            k = 0
+            while time.perf_counter() - t0 < segundos:
+                self._cursor_escondido = jugando and not menu
+                if jugando:
+                    k += 1
+                    self.sim.poner(fotogramas[k % len(fotogramas)], cursor=(900 + (k * 37) % 400, 700))
+                self.bombear(0.03 if jugando else 0.1)  # ~30 imagenes por segundo
+            pared = time.perf_counter() - t0
+            cpu = time.process_time() - cpu0
+            return {"cpu_pct_de_un_nucleo": round(100 * cpu / pared, 2),
+                    "lecturas_ocr": sum(vigia.lecturas.values()) - sum(lecturas0.values()),
+                    "sondeos": vigia.sondeos - sondeos0}
+
+        with self.sin_vigia():
+            datos = {
+                "apagado_quieto": medir(False, False), "encendido_quieto": medir(True, False),
+                "apagado_jugando": medir(False, True), "encendido_jugando": medir(True, True),
+                # Un menu que no para quieto (fondo animado), con el cursor a la vista: el peor caso.
+                "encendido_menu_animado": medir(True, True, menu=True),
+            }
+        self._cursor_escondido = False
+        self._vigia_vistas(False, False, False)
+        self.sim.poner(None)
+        v.mostrar()
+        datos["coste_quieto_pct"] = round(datos["encendido_quieto"]["cpu_pct_de_un_nucleo"]
+                                          - datos["apagado_quieto"]["cpu_pct_de_un_nucleo"], 2)
+        datos["coste_jugando_pct"] = round(datos["encendido_jugando"]["cpu_pct_de_un_nucleo"]
+                                           - datos["apagado_jugando"]["cpu_pct_de_un_nucleo"], 2)
+        datos["nucleos"] = nucleos
+        datos["nota"] = ("% de un nucleo que gasta de mas el proceso con el vigia encendido, a 4K; la captura "
+                         "simulada es una copia en memoria (mas cara en CPU que la real de Windows)")
+        datos["ok"] = datos["encendido_jugando"]["lecturas_ocr"] == 0
+        self.flujo("vista_reposo", datos)
 
     def flujo_tarjeta_app(self) -> None:
         """La tabla de una reliquia dentro de Farmadex (enlace o texto de una reliquia)."""
@@ -2014,6 +2381,23 @@ class Autoprueba:
             extra = f" equipo {d['equipo'][0]}/{d['equipo'][1]}" if nombre == "build" and d.get("equipo") else ""
             l.append(f"{nombre}: {d.get('aciertos')}/{d.get('total')}{extra}, inventados {d.get('inventados')}; "
                      f"{tiempos(d.get('tiempos'))}{'  ' + d['nota'] if d.get('nota') and not d.get('total') else ''}")
+        d = f.get("vista_precio", {})
+        if d.get("total"):
+            l.append(f"precio solo (objeto a la vista): {d.get('aciertos')}/{d.get('total')}, inventados "
+                     f"{d.get('inventados')} ({d.get('negativos')} paradas sin objeto); {tiempos(d.get('tiempos'))}")
+        d = f.get("vista_riven", {})
+        if d.get("total"):
+            l.append(f"agrietado solo: vistos {d.get('vistos')}/{d.get('total')}, bien {d.get('aciertos')}, inventados "
+                     f"{d.get('inventados')} ({d.get('negativos')} pantallas sin agrietado); {tiempos(d.get('tiempos'))}")
+        d = f.get("vista_build", {})
+        if d.get("total"):
+            l.append(f"build sola: detectadas {d.get('detectadas')}/{d.get('total')}, mods {d.get('aciertos')}/"
+                     f"{d.get('total_mods')}, inventados {d.get('inventados')} ({d.get('negativos')} pantallas que no son); "
+                     f"deteccion {tiempos(d.get('deteccion'))}; hasta la build leida {tiempos(d.get('tiempos'))}")
+        d = f.get("vista_reposo", {})
+        if "coste_quieto_pct" in d:
+            l.append(f"vigia de vistas en reposo: +{d['coste_quieto_pct']} % de un nucleo con la pantalla quieta, "
+                     f"+{d['coste_jugando_pct']} % jugando; lecturas OCR jugando {d['encendido_jugando']['lecturas_ocr']}")
         t = f.get("tarjeta_app", {})
         l.append(f"tarjeta de reliquia en la app: {t.get('mostradas')}/{t.get('total')}; {tiempos(t.get('tiempos'))}")
         for nombre in ("buscar", "modo_juego"):

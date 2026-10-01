@@ -44,6 +44,7 @@ TITULOS = {
     "build": "Pantalla de mejoras",
     "agrietado": "Agrietado",
     "cursor": "Bajo el cursor",
+    "precio": "Precio del objeto",
 }
 SEGUNDOS_FALLO = 3.0  # lo que se queda "No se ha podido leer" en pantalla
 LIMITE_S = 20.0  # si la lectura no contesta nunca, el recuadro no se queda para siempre

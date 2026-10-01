@@ -159,6 +159,11 @@ POR_DEFECTO = {
     # MIS METAS > Objetivos: contar solo los recursos que son meta leyendo la pantalla de
     # fin de mision (captura/fin_mision.py). Experimental y apagado: sin probar en el juego.
     "recursos_fin_mision_auto": False,
+    # Lo que sale solo en el juego sin atajo (captura/vista.py): precio al ver un objeto
+    # comerciable, panel al abrir un agrietado y lectura de la build al abrir mejoras.
+    "vista_precio_auto": True,
+    "vista_rivens_auto": True,
+    "vista_builds_auto": True,
 }
 
 

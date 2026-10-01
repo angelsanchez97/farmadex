@@ -1091,6 +1091,19 @@ class PestanaAjustes(QWidget):
         self.hover_reliquia_modo.currentIndexChanged.connect(
             lambda _i: self.hover_reliquia_tecla.setEnabled(self.hover_reliquia_modo.currentData() == "tecla"))
         self.hover_reliquia_tecla.setEnabled(self.hover_reliquia_modo.currentData() == "tecla")
+        # Lo que sale solo en el juego sin atajo (captura/vista.py).
+        self.vista_precio = QCheckBox()
+        self._fijo(self.vista_precio.setText, "Enseñar el precio al ver un objeto comerciable en el juego")
+        self.vista_precio.setChecked(bool(self.config.get("vista_precio_auto", True)))
+        self.vista_precio.toggled.connect(lambda v: self._guardar("vista_precio_auto", v))
+        self.vista_rivens = QCheckBox()
+        self._fijo(self.vista_rivens.setText, "Evaluar solo un agrietado al abrirlo")
+        self.vista_rivens.setChecked(bool(self.config.get("vista_rivens_auto", True)))
+        self.vista_rivens.toggled.connect(lambda v: self._guardar("vista_rivens_auto", v))
+        self.vista_builds = QCheckBox()
+        self._fijo(self.vista_builds.setText, "Leer sola la build al abrir la pantalla de mejoras")
+        self.vista_builds.setChecked(bool(self.config.get("vista_builds_auto", True)))
+        self.vista_builds.toggled.connect(lambda v: self._guardar("vista_builds_auto", v))
 
         lectura = self._formulario()
         self._fila(lectura, "Recompensas de reliquia", self.estilo_recompensas)
@@ -1122,6 +1135,19 @@ class PestanaAjustes(QWidget):
             "fisura o en una tienda) y sale una tabla con lo que puede dar. Dentro de Farmadex sale "
             "igual al pasar por encima del nombre de una reliquia."
         ))
+        lectura.addRow(self.vista_precio)
+        lectura.addRow(self._nota(
+            "Deja el ratón encima de un mod, arcano o pieza prime (en el inventario, los mods o el "
+            "mercado) y sale al lado lo que piden y ofrecen ahora y lo más barato y lo más caro del "
+            "último mes, por rango si lo tiene."
+        ))
+        lectura.addRow(self.vista_rivens)
+        lectura.addRow(self._nota(
+            "Al abrir un agrietado sale a la izquierda su nota, lo que piden por otros parecidos y "
+            "si el tuyo tira mejor o peor que ellos."
+        ))
+        lectura.addRow(self.vista_builds)
+        lectura.addRow(self._nota("Al entrar en Mejoras del arsenal, la build se lee sola, sin atajo."))
         lectura.addRow(self._nota(
             "Las lecturas solas solo miran la pantalla cuando Warframe está delante y se ha "
             "quedado quieta; F9 en la herramienta de escaneo sigue valiendo."

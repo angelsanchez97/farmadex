@@ -250,36 +250,45 @@ class MercadoAgrietados:
         cualquier negativa. Nunca se cae a "cualquier agrietado del arma": eso ya no
         es un precio de algo parecido. Se guarda un rato en memoria.
         """
+        return self.parecidos(arma_slug, positivos, negativo)[0]
+
+    def parecidos(self, arma_slug: str, positivos: list[str], negativo: str | None) -> tuple[Horquilla, list[Subasta]]:
+        """La horquilla y las subastas de compra directa con las que se ha hecho.
+
+        Misma peticion que la horquilla (y la misma cache): el panel de agrietados que
+        sale solo en el juego ensena las dos cosas sin pedir nada de mas a la red.
+        """
         positivos = sorted(p for p in positivos if p)
         clave = (arma_slug, tuple(positivos), negativo or "")
         with self._cerrojo:
             guardada = self._horquillas.get(clave)
         if guardada and time.monotonic() - guardada[0] < CACHE_HORQUILLA:
-            return guardada[1]
+            return guardada[1], list(guardada[2])
         if not positivos:
-            return Horquilla(arma=arma_slug, error="sin estadísticas positivas")
+            return Horquilla(arma=arma_slug, error="sin estadísticas positivas"), []
         try:
-            h = self._horquilla_nivel(arma_slug, positivos, negativo or "none", "exacto")
+            h, lista = self._horquilla_nivel(arma_slug, positivos, negativo or "none", "exacto")
             if h.n < UMBRAL_HORQUILLA:
-                relajada = self._horquilla_nivel(arma_slug, positivos, "", "positivas")
+                relajada, lista_r = self._horquilla_nivel(arma_slug, positivos, "", "positivas")
                 if relajada.n > h.n:
-                    h = relajada
+                    h, lista = relajada, lista_r
         except Exception as e:  # noqa: BLE001 - sin red no hay horquilla, y se dice
             log.warning("Sin horquilla de precio para %s: %s", arma_slug, e)
-            return Horquilla(arma=arma_slug, error=str(e) or type(e).__name__)
+            return Horquilla(arma=arma_slug, error=str(e) or type(e).__name__), []
         with self._cerrojo:
-            self._horquillas[clave] = (time.monotonic(), h)
-        return h
+            self._horquillas[clave] = (time.monotonic(), h, tuple(lista))
+        return h, lista
 
-    def _horquilla_nivel(self, arma_slug: str, positivos: list[str], negativo: str, nivel: str) -> Horquilla:
+    def _horquilla_nivel(self, arma_slug: str, positivos: list[str], negativo: str,
+                         nivel: str) -> tuple[Horquilla, list[Subasta]]:
         partes = ["type=riven", f"weapon_url_name={arma_slug}", "sort_by=price_asc", "buyout_policy=direct",
                   "positive_stats=" + ",".join(positivos)]
         if negativo:
             partes.append(f"negative_stats={negativo}")
         datos = self.cliente.json(f"{BASE_V1}/auctions/search?" + "&".join(partes), segundos_cache=CACHE_SUBASTAS)
         resumen = analizar_subastas(arma_slug, datos)
-        precios = [s.precio for s in resumen.subastas if s.precio]
-        return calcular_horquilla(arma_slug, precios, nivel)
+        con_precio = [s for s in resumen.subastas if s.precio]
+        return calcular_horquilla(arma_slug, [s.precio for s in con_precio], nivel), con_precio
 
     # -- medias de DE ----------------------------------------------------------------------
 
