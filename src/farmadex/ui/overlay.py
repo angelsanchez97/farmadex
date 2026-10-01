@@ -52,6 +52,7 @@ from ..captura.builds import LectorBuild
 from ..captura.comparador import ServicioComparador
 from ..captura.cursor import LectorCursor, TurnoLecturas
 from .aviso_lectura import AvisoLectura
+from ..captura.fin_mision import LectorFinMision
 from ..captura.lector_pasivo import LectorPasivo
 from ..captura.ocr import modo_de_config
 from ..captura.reliquias import DisparadorAutomatico, LectorRecompensas, Recompensa, completar, resumir
@@ -261,6 +262,7 @@ class VentanaOverlay(QWidget):
     _pedir_build = Signal()
     _pedir_agrietado = Signal()
     # Lo mismo por turnos (ver `_leer_por_turno`): numero de la lectura pedida por atajo.
+    _fin_mision = Signal(object)  # recursos pendientes, al lector de la pantalla de fin de mision
     _turno_recompensas = Signal(int)
     _turno_build = Signal(int)
     _turno_agrietado = Signal(int)
@@ -813,6 +815,15 @@ class VentanaOverlay(QWidget):
         self.lector_pasivo.pagina_inventario.connect(self._pagina_inventario_leida)
         self.ajustes.perfil_pasivo.toggled.connect(self.lector_pasivo.activar_perfil)
         self.ajustes.inventario_pasivo.toggled.connect(self.lector_pasivo.activar_inventario)
+        # Recursos como meta: al acabar una mision se lee su pantalla de resultados (en
+        # pruebas y apagado por defecto; se enciende en MIS METAS > Objetivos). Mismo hilo.
+        self.lector_fin_mision = LectorFinMision(
+            motor, activo=bool(self.config.get("recursos_fin_mision_auto", False)))
+        self.lector_fin_mision.moveToThread(self.hilo_pasivo)
+        self._fin_mision.connect(self.lector_fin_mision.leer_mision)
+        self.lector_fin_mision.resultado.connect(self._recursos_de_mision)
+        self.objetivos.recursos_auto_cambiado.connect(self.lector_fin_mision.activar)
+        self.ajustes.ocr_modo_cambiado.connect(self.lector_fin_mision.cambiar_motor)
         # Tabla de la reliquia bajo el raton en el juego (Ajustes > Reliquias): mismo hilo y motor.
         self.lector_hover = LectorHoverReliquia(motor)
         self.lector_hover.moveToThread(self.hilo_captura)
@@ -1402,6 +1413,10 @@ class VentanaOverlay(QWidget):
             self._t_pintadas = None
             self._temporizador_conocidas.stop()
             self.etiquetas.hide()
+        elif nombre == "mision_completada" and self.config.get("recursos_fin_mision_auto", False):
+            pendientes = self.objetivos.recursos_pendientes()
+            if pendientes:  # sin recursos como meta no se mira nada
+                self._fin_mision.emit(pendientes)
         if self.botin.evento(nombre):
             self.objetivos.refrescar()
 
@@ -1455,6 +1470,12 @@ class VentanaOverlay(QWidget):
         self.estado.setText(t("Por EE.log: {resumen}", resumen=resumir(recompensas)))
         self.servicio_comparador.comparar(recompensas) if self.hilo_comparador is None else \
             self.recompensas_conocidas.emit(recompensas)
+
+    def _recursos_de_mision(self, resultado) -> None:
+        """Lo leido en la pantalla de fin de mision: se suma lo seguro y se dice lo demas."""
+        texto = self.objetivos.resultado_fin_mision(resultado)
+        if texto:
+            self.estado.setText(texto)
 
     def _sumar_botin(self, unique_name: str, cantidad: int, origen: str) -> None:
         objetivo = estado_objetivos.sumar_por_item(self.objetivos.usuario, unique_name, cantidad, origen=origen)

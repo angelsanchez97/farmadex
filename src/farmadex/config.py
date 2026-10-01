@@ -144,6 +144,9 @@ POR_DEFECTO = {
     "aviso_lectura": True,
     # La vista completa se cerro maximizada: vuelve a abrirse asi (ui/overlay.py).
     "overlay_maximizada": False,
+    # MIS METAS > Objetivos: contar solo los recursos que son meta leyendo la pantalla de
+    # fin de mision (captura/fin_mision.py). Experimental y apagado: sin probar en el juego.
+    "recursos_fin_mision_auto": False,
 }
 
 
