@@ -19,6 +19,11 @@ Una versión pequeña para que la lectura de pantalla acierte más.
 - En las rejillas apretadas el nombre de la reliquia sale pegado a la palabra «Relic» (o
   «Relique» en francés) y no se reconocía. Ya se entiende.
 
+**Nunca una ficha equivocada**
+- Si bajo el cursor solo se ve la cola de un nombre («...Prime Handle», con la pieza cortada por
+  el borde), Farmadex ya no la confunde con otro objeto parecido que no sea Prime: prefiere no
+  abrir nada a abrir la ficha de otra cosa.
+
 ## 0.6.7
 
 Esta versión trae una herramienta nueva: una lista de lo que más merece la pena vender en

@@ -64,3 +64,25 @@ def test_plano_pegado_y_articulo_falso_delante(indice_poblado):
     casador = Casador(con)
     assert "Chas" in casador.casar("Ash Prime ChassisBlueprint")[1]
     assert "Chas" in casador.casar("Plano DeChasis De Ash Prime")[1]
+
+
+def test_lo_leido_con_prime_no_casa_con_un_objeto_sin_prime(indice_poblado):
+    """Captura real a 607p: "PrimeHandle" (la cola de "Masseter Prime Handle", cortada por
+    el borde del recuadro) estaba a una letra de un objeto sin Prime y abria su ficha."""
+    from farmadex.captura.ocr import Casador
+
+    con, _, _ = indice_poblado
+    columnas = [c[1] for c in con.execute("PRAGMA table_info(items)") if c[1] != "id"]
+    valores = {c: ("?" if c in ("nombre_en", "nombre_es", "unique_name") else ("NULL" if c == "padre_id" else c))
+               for c in columnas}
+    con.execute(
+        f"INSERT INTO items ({', '.join(columnas)}) SELECT {', '.join(valores.values())} "
+        "FROM items WHERE unique_name LIKE '%AshPrimeChassisComponent'",
+        tuple(v for c in columnas if valores[c] == "?" for v in
+              [{"nombre_en": "Pride Handle", "nombre_es": "Pride Handle",
+                "unique_name": "/Lotus/Weapons/Tenno/Melee/Zaw/PrideHandle"}[c]]),
+    )
+    casador = Casador(con)
+    assert casador.casar("Pride Handle")[1] == "Pride Handle"
+    assert casador.casar("PrimeHandle")[0] is None
+    assert casador.casar("Prime Handle")[0] is None

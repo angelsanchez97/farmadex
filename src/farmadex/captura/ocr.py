@@ -1445,6 +1445,12 @@ class Casador:
             # Empunadura" solo por las palabras genericas: sin rastro de "nikana"
             # en lo leido, no es ese objeto. Mejor nada que una etiqueta segura y falsa.
             return nada
+        if "prime" in compacta and "prime" not in mejor_clave.replace(" ", ""):
+            # Lo leido dice "prime" y el candidato no lo lleva: "PrimeHandle" (la cola de
+            # "Masseter Prime Handle" cortada por el borde del recuadro, captura real a 607p)
+            # estaba a una letra de "Pride Handle" y lo abria. Ningun objeto sin "Prime" en
+            # el nombre se escribe con "prime" en pantalla.
+            return nada
         for puntos, otra in puntuadas[1:]:
             if objeto(otra)[0] == mejor_id:
                 continue
