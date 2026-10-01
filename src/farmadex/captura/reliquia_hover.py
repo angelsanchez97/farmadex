@@ -144,6 +144,20 @@ def _codigo(texto: str, era: str) -> str | None:
     return letra + cifras
 
 
+def _codigo_con_cola(trozo: str, era: str) -> str | None:
+    """El codigo solo ("G10") o con la palabra reliquia pegada detras ("G10RELIC", "N3REL":
+    el OCR junta el nombre y "Relic" en las rejillas apretadas, capturas reales a 607p)."""
+    codigo = _codigo(trozo, era)
+    if codigo or era == "Requiem":
+        return codigo
+    for largo in (3, 2):
+        if len(trozo) > largo and trozo[largo:].startswith("REL"):
+            codigo = _codigo(trozo[:largo], era)
+            if codigo:
+                return codigo
+    return None
+
+
 RE_TROZOS = re.compile(r"[A-Z0-9|]+")
 
 
@@ -162,16 +176,22 @@ def reliquias_en_texto(texto: str) -> list[tuple[str, str | None]]:
         encontrado = None
         era = _era(trozo)
         if era and i + 1 < len(trozos):
-            codigo = _codigo(trozos[i + 1], era)
+            codigo = _codigo_con_cola(trozos[i + 1], era)
             if codigo:
                 encontrado = f"{era} {codigo}"
         if encontrado is None:
-            # Palabras pegadas: "RELIGUEMESOD4", "LITHS19".
+            # Palabras pegadas: "RELIGUEMESOD4", "LITHS19", "RELIQUEMESO N3" (la era pegada a
+            # la palabra de delante y el codigo aparte: capturas reales en frances a 768p).
             for era_m, era in _ERAS_MAYUS.items():
                 pos = trozo.find(era_m)
                 if pos < 0:
                     continue
                 resto = trozo[pos + len(era_m):]
+                if not resto and i + 1 < len(trozos):
+                    codigo = _codigo_con_cola(trozos[i + 1], era)
+                    if codigo:
+                        encontrado = f"{era} {codigo}"
+                        break
                 # El codigo, y detras nada o la palabra reliquia pegada ("NEOA13RELIC").
                 for largo in ((3, 2) if era != "Requiem" else (3, 2, 1)):
                     cola = resto[largo:]

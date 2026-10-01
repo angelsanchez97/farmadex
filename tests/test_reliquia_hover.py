@@ -40,6 +40,9 @@ def qapp():
     ("L1th 519 Relic", [("Lith S19", None)]),  # cifras por letras y al reves
     ("MES0 O1", [("Meso O1", None)]),
     ("Requiem ll", [("Requiem II", None)]),
+    ("ReliqueMeso N3", [("Meso N3", None)]),  # la era pegada a "Relique" y el codigo aparte (frances, 768p)
+    ("Lith G10Relic", [("Lith G10", None)]),  # "Relic" pegado al codigo (rejilla apretada a 607p)
+    ("Axi H8Relic", [("Axi H8", None)]),
     ("Axi", []),
     ("with A1 friends", []),
     ("x31", []),

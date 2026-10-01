@@ -139,6 +139,33 @@ def test_cabecera_de_mejoras():
     assert not vista.es_cabecera_mejoras([Leido("7.113.215 10.984", 0, 0, 10, 10, 0.8)])
 
 
+def test_cabecera_tapada_vale_la_barra_de_capacidad():
+    """Una grabacion o un aviso tapan "MEJORAS": debajo sigue "CAPACIDAD 2/74" (capturas
+    reales en castellano a 1080p/1440p/4K, en ingles a 4K con la cabecera cortada, en ruso)."""
+    assert vista.es_cabecera_mejoras([Leido("Fecha de grabacion:", 1, 8, 364, 40, 0.9),
+                                      Leido("CAPACIDAD", 156, 95, 116, 22, 0.85), Leido("2/74", 512, 93, 58, 27, 0.8)])
+    assert vista.es_cabecera_mejoras([Leido("CAPACITY", 359, 52, 92, 23, 0.83), Leido("11/60", 670, 50, 64, 28, 0.83)])
+    assert vista.es_cabecera_mejoras([Leido("BMECTWMOCTb", 118, 107, 157, 29, 0.84), Leido("0/60", 382, 114, 54, 24, 0.8)])
+    assert vista.es_cabecera_mejoras([Leido("POIEMNOSC", 100, 120, 110, 20, 0.85), Leido("67/74", 400, 121, 50, 20, 0.8)])
+    # La palabra sola, o los numeros en otra fila, no bastan.
+    assert not vista.es_cabecera_mejoras([Leido("CAPACIDAD", 156, 95, 116, 22, 0.85)])
+    assert not vista.es_cabecera_mejoras([Leido("CAPACIDAD", 156, 95, 116, 22, 0.85), Leido("2/74", 512, 160, 58, 27, 0.8)])
+    assert not vista.es_cabecera_mejoras([Leido("CALIDAD", 156, 95, 116, 22, 0.85), Leido("2/74", 512, 93, 58, 27, 0.8)])
+
+
+def test_cabecera_cortada_con_la_cola_del_rango():
+    """La tarjeta ampliada tapa media cabecera: "POTENZIA" + "...YR PRIME GRADO 30" (italiano
+    con mando), "ULEPSZ" + "14-RIMERANGA30" (polaco), y en ruso leido con letras latinas."""
+    assert vista.es_cabecera_mejoras([Leido("POTENZIA", 561, 66, 187, 32, 0.85),
+                                      Leido("18/RPRIMEGRADO30", 923, 63, 436, 34, 0.87)])
+    assert vista.es_cabecera_mejoras([Leido("ULEPSZ", 669, 93, 131, 38, 0.85), Leido("14-RIMERANGA30", 961, 87, 347, 40, 0.84)])
+    assert vista.es_cabecera_mejoras([Leido("yIYWEHMA: PEBEHAHT NPAИM PAHI 3O ()", 615, 71, 814, 49, 0.8)])
+    assert vista.es_cabecera_mejoras([Leido("yNyYWEHMA: HOKTYA PAHF 30 (", 664, 70, 621, 44, 0.71)])
+    # Sin la cola del rango en la fila, la palabra cortada no basta ("MEJORAR" de un boton).
+    assert not vista.es_cabecera_mejoras([Leido("ULEPSZ", 669, 93, 131, 38, 0.85)])
+    assert not vista.es_cabecera_mejoras([Leido("MEJORAR", 669, 93, 131, 38, 0.85), Leido("TODOS", 961, 87, 100, 40, 0.84)])
+
+
 # -- agrietados: disparador ---------------------------------------------------------------
 
 

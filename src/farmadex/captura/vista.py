@@ -340,11 +340,47 @@ def parece_agrietado(imagen) -> bool:
 # CPU medible ni a 4K; los trozos grandes solo se capturan cuando estos cambian y se paran.
 TESTIGO_FRANJA_REL = (0.030, 0.075)
 TESTIGO_CENTRO_REL = 0.16
-FRANJA_ALTO_REL = 0.13  # la cabecera va en la franja de arriba (mas abajo en la interfaz antigua)
+# La franja de arriba lleva la cabecera y, debajo, la barra de capacidad ("CAPACIDAD 5/74").
+# Con 0,13 la barra se quedaba fuera cuando el jugador tiene la interfaz grande o en la
+# interfaz antigua (capturas reales en polaco y ruso), y sin ella no habia segundo
+# disparador cuando la cabecera esta tapada.
+FRANJA_ALTO_REL = 0.16
+# La franja se busca (detector) reducida a este alto y se lee a tamano real: medido con las
+# capturas reales, reducir tambien la lectura a 4K perdia la cabecera entera.
+FRANJA_ALTO_DETECCION = 173
+# La barra de capacidad en cada idioma, y como lee el OCR (modelo latino) la rusa
+# "ВМЕСТИМОСТЬ" ("BMECTWMOCTb", "BMECTMMOCTb") y la cabecera "УЛУЧШЕНИЯ" ("yJY4WEHMA",
+# "yIYWEHMA", "yNyYWEHMA"): parecidos de letras, no una traduccion.
+PALABRAS_CAPACIDAD = ("CAPACITY", "CAPACIDAD", "CAPACITE", "CAPACITA", "KAPAZITAT", "CAPACIDADE", "POJEMNOSC",
+                      "BMECTWMOCTB", "BMECTMMOCTB")
+_CABECERA_RUSA = ("YJYYWEHMA", "YIYWEHMA", "YNYYWEHMA")
+RE_CAPACIDAD_NUMEROS = re.compile(r"^\W*-?\d{1,3}\s*/\s*\d{2,3}\W*$")
+# La cola de la cabecera con el rango ("RANGO 30", "GRADO 3O", "RANGA 30", "[30]"), sola o
+# pegada al final de otra cosa ("14-RIMERANGA30", "18/RPRIMEGRADO30", "PAHI 3O" en ruso).
+RE_COLA_RANGO = re.compile(r"(?:RANK|RANGA|RANGO|RANG|NIVEAU|NIVEL|GRADO|STUFE|PAH[A-Z]?)\s*[\dO]{1,2}\W*$|\[\s*[\dO]{1,2}\s*\]")
+
+
+def _misma_fila(a, b) -> bool:
+    return min(a.y + a.alto, b.y + b.alto) - max(a.y, b.y) >= 0.5 * min(a.alto, b.alto)
+
+
+def _a_la_derecha(linea, lineas):
+    """Las lineas que siguen a `linea` en su misma fila, de izquierda a derecha."""
+    derecha = [l for l in lineas if l is not linea and l.x >= linea.x + linea.ancho * 0.5 and _misma_fila(linea, l)]
+    return sorted(derecha, key=lambda l: l.x)
 
 
 def es_cabecera_mejoras(lineas) -> bool:
-    """Si alguna linea de la franja es la cabecera de mejoras ("UPGRADES / EXCALIBUR [30]")."""
+    """Si la franja de arriba es la pantalla de mejoras.
+
+    Tres disparadores, cualquiera vale:
+    - la cabecera entera ("UPGRADES / EXCALIBUR [30]") en cualquier idioma, con erratas;
+    - la palabra de la cabecera cortada (una ayuda, la camara del streamer o la imagen del
+      companero la tapa: "POTENZIA", "ULEPSZ") seguida en su fila por la cola del rango
+      ("...PRIME GRADO 30"), tambien en ruso leido con letras latinas;
+    - la barra de capacidad ("CAPACIDAD" y "5/74" en la misma fila), que esta debajo de la
+      cabecera y se ve aunque una grabacion o un aviso tapen la cabecera entera.
+    """
     from ..datos.difuso import fuzz
     from .builds import PALABRAS_CABECERA, es_cabecera
 
@@ -358,6 +394,35 @@ def es_cabecera_mejoras(lineas) -> bool:
             trozo = compacta[: len(palabra)]
             if len(compacta) > len(palabra) + 2 and len(trozo) == len(palabra) and fuzz.ratio(trozo, palabra) >= 75:
                 return True
+    for linea in lineas:
+        compacta = re.sub(r"[^A-Z]", "", _llano(linea.texto))
+        if len(compacta) < 6:
+            continue
+        derecha = _a_la_derecha(linea, lineas)
+        if _es_capacidad(compacta) and any(RE_CAPACIDAD_NUMEROS.match(_llano(l.texto)) for l in derecha):
+            return True
+        if _es_cabecera_cortada(compacta):
+            cola = " ".join(_llano(l.texto) for l in [linea] + derecha)
+            if RE_COLA_RANGO.search(re.sub(r"[^A-Z0-9\[\]/ ]", "", cola)):
+                return True
+    return False
+
+
+def _es_capacidad(compacta: str) -> bool:
+    from ..datos.difuso import fuzz
+
+    return any(fuzz.ratio(compacta, p) >= 80 for p in PALABRAS_CAPACIDAD)
+
+
+def _es_cabecera_cortada(compacta: str) -> bool:
+    """"ULEPSZ", "POTENZIA", "yJY4WEHMA..." (en ruso): el principio de la palabra de la cabecera."""
+    from ..datos.difuso import fuzz
+    from .builds import PALABRAS_CABECERA
+
+    for palabra in list(PALABRAS_CABECERA) + list(_CABECERA_RUSA):
+        n = min(len(compacta), len(palabra))
+        if n >= 6 and fuzz.ratio(compacta[:n], palabra[:n]) >= (80 if palabra in _CABECERA_RUSA else 85):
+            return True
     return False
 
 
@@ -866,13 +931,9 @@ class VigiaVistas(QObject):
     def mirar_cabecera(self, imagen, t_visto: float = 0.0) -> bool:
         from .ocr import ErrorMotorOCR, unir_filas
 
-        if imagen.shape[0] > ALTO_REFERENCIA * FRANJA_ALTO_REL * 1.1:
-            import cv2
-
-            f = ALTO_REFERENCIA * FRANJA_ALTO_REL / imagen.shape[0]
-            imagen = cv2.resize(imagen, None, fx=f, fy=f, interpolation=cv2.INTER_AREA)
         try:
-            lineas = [l for l in unir_filas(self._motor().leer_tira(imagen)) if l.confianza >= 0.3]
+            lineas = [l for l in unir_filas(self._motor().leer_tira(imagen, alto_deteccion=FRANJA_ALTO_DETECCION))
+                      if l.confianza >= 0.3]
         except ErrorMotorOCR:
             return False
         self.lecturas["build"] += 1
