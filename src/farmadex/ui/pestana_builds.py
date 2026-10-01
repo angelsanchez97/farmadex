@@ -3,9 +3,12 @@ propone una build basica.
 
 Estilo C (maqueta C_herramientas_build.png): a la izquierda el equipo en su pedestal,
 un buscador para elegirlo a mano, "Builds en Overframe", "Abrir ficha" y "Build basica
-para..."; a la derecha una casilla por mod equipado, "¿Esta bien mi build?" y, debajo,
-lo que diga la evaluacion o la build basica, los arcanos, la coleccion y lo que se leyo
-sin reconocer. Cada mod, arcano o equipo reconocido abre su ficha en Buscar al pulsarlo.
+para..."; a la derecha los mods y los arcanos con la misma disposicion que la pantalla
+de mejoras del juego (ui/rejilla_build.py: los 8 huecos, aura, exilus o postura y los
+arcanos, a escala), "¿Esta bien mi build?" y, debajo, lo que diga la evaluacion o la
+build basica, la coleccion y lo que se leyo sin reconocer. Los nombres van en el idioma
+del juego (datos/nombres_juego.py). Arriba, una segunda vista: el diccionario de
+aumentos y sindicatos (ui/diccionario_aumentos.py). Cada mod, arcano o equipo reconocido abre su ficha en Buscar al pulsarlo.
 Lo que el lector leyo pero no supo casar se ensena aparte, sin inventar nada.
 
 El equipo sale de la cabecera de la pantalla y, si no se reconocio (o sin leer nada),
@@ -30,24 +33,29 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QScrollArea,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
 
 from ..captura.builds import Build
 from ..config import cargar
-from ..datos import evaluar_build
+from ..datos import aumentos, disposicion_build, evaluar_build, nombres_juego
 from ..idiomas import es_castellano, t
 from .campo_atajo import texto_legible, texto_tecla
 from ..registro_log import obtener
 from . import builds_overframe, colores_tipo, widgets
+from .diccionario_aumentos import DiccionarioAumentos
+from .rejilla_build import DatosCarta, RejillaBuild
 from .estilo_c import (
     BotonC,
+    DesplegableC,
     EtiquetaC,
     Insignia,
     PanelC,
     Pedestal,
     Rombo,
+    SubPestanasC,
     Tecla,
     columna,
     fila,
@@ -81,7 +89,6 @@ TIPOS_NO_ELEGIBLES = ("Pet Parts", "Pet Resource", "Zaw Component", "Kitgun Comp
 GLIFO_BUILD = ""
 GLIFO_EVALUAR = ""
 GLIFO_BASICA = ""
-COLUMNAS_MODS = 4
 
 
 class _Entrada:
@@ -166,13 +173,24 @@ class PestanaBuilds(QWidget):
         self.panel_como = PanelC(t("Cómo se usa"), remate=False)
         self.nota = EtiquetaC("", "pequeno", envolver=True)
         self.panel_como.capa.addWidget(self.nota)
+        # En que idioma se ensenan los nombres de mods y arcanos: el del juego (se deduce
+        # de lo leido) o el que se elija aqui.
+        self.rotulo_idioma = EtiquetaC("", "pequeno", envolver=True)
+        self.selector_idioma = DesplegableC()
+        self.selector_idioma.currentIndexChanged.connect(self._idioma_elegido)
+        self.panel_como.capa.addWidget(self.rotulo_idioma)
+        self.panel_como.capa.addLayout(fila(self.selector_idioma, None))
 
         # -- derecha: mods, evaluacion, build basica, arcanos, coleccion y lo no reconocido --
         self.panel_mods = PanelC(t("Mods equipados"))
-        self.rejilla_mods = QGridLayout()
-        self.rejilla_mods.setHorizontalSpacing(px(10, False))
-        self.rejilla_mods.setVerticalSpacing(px(10, False))
-        self.panel_mods.capa.addLayout(self.rejilla_mods)
+        # Los mods y los arcanos, con la disposicion de la pantalla de mejoras del juego.
+        self.rejilla = RejillaBuild()
+        self.rejilla.abrir_item.connect(lambda i: self.abrir_item.emit(int(i)))
+        self.panel_mods.capa.addWidget(self.rejilla)
+        self.colocacion = None
+        # Lo que se sabe de los aumentos que lleva la build: sindicato, rango y coste.
+        self.capa_aumentos = columna(espacio=px(4, False))
+        self.panel_mods.capa.addLayout(self.capa_aumentos)
         self.boton_evaluar = BotonC(principal=True, icono=GLIFO_EVALUAR, tam=11)
         self.boton_evaluar.clicked.connect(self.mostrar_evaluacion)
         self.boton_evaluar.hide()
@@ -224,8 +242,12 @@ class PestanaBuilds(QWidget):
                           espacio=px(12, False))
         cuerpo = QHBoxLayout()
         cuerpo.setSpacing(px(16, False))
+        # La columna del equipo no crece mas de lo que necesita: el sitio es para la
+        # rejilla, que con la ventana maximizada llega al tamano real del juego.
+        for panel in (self.panel_equipo, self.panel_como):
+            panel.setMaximumWidth(px(400, False))
         cuerpo.addLayout(izquierda, 4)
-        cuerpo.addLayout(derecha, 7)
+        cuerpo.addLayout(derecha, 9)
         contenido = transparente(QWidget())
         caja_contenido = QVBoxLayout(contenido)
         caja_contenido.setContentsMargins(0, px(4, False), px(4, False), 0)
@@ -235,10 +257,72 @@ class PestanaBuilds(QWidget):
         area.setWidgetResizable(True)
         area.setFrameShape(QScrollArea.NoFrame)
         area.setWidget(contenido)
+        # Dos vistas: la build leida y el diccionario de aumentos.
+        self.vistas = SubPestanasC([("build", t("Mi build")), ("aumentos", t("Aumentos y sindicatos"))])
+        self.vistas.cambiada.connect(self.ver)
+        self.diccionario = DiccionarioAumentos()
+        self.diccionario.abrir_item.connect(lambda i: self.abrir_item.emit(int(i)))
+        self.pila = QStackedWidget()
+        transparente(self.pila)
+        self.pila.addWidget(area)
+        self.pila.addWidget(self.diccionario)
         caja = QVBoxLayout(self)
         caja.setContentsMargins(0, 0, 0, 0)
-        caja.addWidget(area)
+        caja.setSpacing(px(6, False))
+        caja.addWidget(self.vistas)
+        caja.addWidget(self.pila, 1)
+        self.vistas.poner_activa("build")
         self.retraducir()
+
+    def ver(self, clave: str) -> None:
+        """Cambia entre la build leida ("build") y el diccionario de aumentos ("aumentos")."""
+        self.vistas.poner_activa(clave)
+        self.pila.setCurrentIndex(1 if clave == "aumentos" else 0)
+        if clave == "aumentos":
+            self.diccionario.cargar()
+
+    def _idioma_elegido(self) -> None:
+        codigo = self.selector_idioma.currentData()
+        if not codigo or codigo == nombres_juego.elegido():
+            return
+        nombres_juego.elegir(codigo)
+        self._idioma_cambiado()
+
+    def _idioma_cambiado(self) -> None:
+        """Los nombres del juego pasan a otro idioma: se vuelve a escribir todo lo que los lleva."""
+        evaluar_build.olvidar_cache()
+        self._poner_idiomas()
+        if self.categorias:
+            self._cargar_elegibles_seguro()
+        if self.build is not None:
+            self._pintar_de_nuevo()
+        else:
+            self._poner_equipo_visible()
+        if self.diccionario._cargado:
+            self.diccionario.retraducir()
+
+    def _pintar_de_nuevo(self) -> None:
+        evaluacion, basica = self.evaluacion, self.basica
+        self.mostrar_build(self.build)
+        if evaluacion is not None:
+            self.mostrar_evaluacion()
+        if basica is not None:
+            self.mostrar_basica()
+
+    def _poner_idiomas(self) -> None:
+        self.rotulo_idioma.setText(t("Idioma de los nombres de mods y arcanos:"))
+        self.selector_idioma.blockSignals(True)
+        self.selector_idioma.clear()
+        visto = nombres_juego.NOMBRE_IDIOMA.get(self.config.get("idioma_juego_visto") or "", "")
+        auto = t("El del juego ({idioma})", idioma=visto) if visto else t("El del juego")
+        self.selector_idioma.addItem(auto, nombres_juego.AUTOMATICO)
+        for codigo in nombres_juego.IDIOMAS:
+            self.selector_idioma.addItem(nombres_juego.NOMBRE_IDIOMA[codigo], codigo)
+        self.selector_idioma.setCurrentIndex(max(0, self.selector_idioma.findData(nombres_juego.elegido())))
+        self.selector_idioma.setToolTip(t(
+            "Farmadex deduce el idioma del juego de lo que lee en la pantalla de mejoras. Si se equivoca, "
+            "elígelo aquí."))
+        self.selector_idioma.blockSignals(False)
 
     def _estilo_selector(self) -> None:
         self.selector.setStyleSheet(
@@ -253,6 +337,20 @@ class PestanaBuilds(QWidget):
         (se llama con el indice listo)."""
         self.con = con
         evaluar_build.olvidar_cache()
+        nombres_juego.olvidar_cache()
+        aumentos.olvidar_cache()
+        self.diccionario.conectar_indice(con)
+        # Auras y posturas: van en su hueco propio de la pantalla de mejoras.
+        try:
+            self.posturas = {i for (i,) in con.execute(
+                "SELECT id FROM items WHERE categoria = 'Mods' AND tipo = 'Stance Mod'")}
+        except Exception:  # noqa: BLE001
+            self.posturas = set()
+        try:
+            self.auras = {i for (i,) in con.execute(
+                "SELECT item_id FROM detalles WHERE datos LIKE '%\"compat\": \"AURA\"%'")}
+        except Exception:  # noqa: BLE001 - indice sin detalles: no se distinguen
+            self.auras = set()
         try:
             filas = list(con.execute("SELECT id, categoria, nombre_en FROM items"))
         except Exception:  # noqa: BLE001 - sin categorias se lista todo junto
@@ -291,10 +389,16 @@ class PestanaBuilds(QWidget):
         self.completador.model().setStringList(sorted(self._elegibles, key=str.lower))
 
     def nombre_de(self, item_id: int | None, respaldo: str = "") -> str:
-        """El nombre en el idioma de la interfaz (el lector puede haber casado otro idioma)."""
+        """El nombre en el idioma del juego (datos/nombres_juego.py): el lector puede haber
+        casado otro idioma, y la interfaz puede estar en uno distinto al del juego."""
         if not item_id:
             return respaldo
         es, en = self.nombres_es.get(item_id), self.nombres_en.get(item_id)
+        if self.con is not None:
+            try:
+                return nombres_juego.nombre(self.con, item_id, es or en or respaldo)
+            except Exception:  # noqa: BLE001 - conexion cerrada: lo que haya en memoria
+                pass
         if es_castellano():
             return es or en or respaldo
         return en or es or respaldo
@@ -319,6 +423,10 @@ class PestanaBuilds(QWidget):
                               (self.panel_sueltos, "Se leyó pero no se reconoció"),
                               (self.panel_evaluacion, "¿Está bien tu build?")):
             panel.poner_titulo(t(titulo))
+        self.vistas.poner_texto("build", t("Mi build"))
+        self.vistas.poner_texto("aumentos", t("Aumentos y sindicatos"))
+        self._poner_idiomas()
+        self.diccionario.retraducir()
         self.selector.setPlaceholderText(t("Elegir warframe o arma a mano…"))
         self.selector.setToolTip(t("Escribe parte del nombre y elige de la lista."))
         self.boton_overframe.setText(t("Builds en Overframe"))
@@ -357,6 +465,7 @@ class PestanaBuilds(QWidget):
 
     def repintar(self) -> None:
         self._estilo_selector()
+        self.diccionario.repintar()
         if self.build is not None:
             self.mostrar_build(self.build)
 
@@ -464,7 +573,8 @@ class PestanaBuilds(QWidget):
         self._entradas = []
         self._sueltos = []
         self._imagenes_pedidas.clear()
-        for capa in (self.rejilla_mods, self.capa_arcanos, self.capa_coleccion, self.capa_sueltos):
+        self.rejilla.vaciar()
+        for capa in (self.capa_aumentos, self.capa_arcanos, self.capa_coleccion, self.capa_sueltos):
             _vaciar_capa(capa)
         for panel in (self.panel_mods, self.panel_arcanos, self.panel_coleccion, self.panel_sueltos):
             panel.hide()
@@ -480,6 +590,7 @@ class PestanaBuilds(QWidget):
         nueva = build is not self.build
         self.build = build
         if nueva:
+            self._apuntar_idioma(build)
             # Una lectura nueva manda: si reconocio el equipo, se olvida el elegido a mano.
             if build.equipo is not None:
                 self.equipo_manual = None
@@ -521,20 +632,90 @@ class PestanaBuilds(QWidget):
             texto += " " + t("No se reconoció el equipo: elígelo a mano en el buscador.")
         self.estado.setText(texto)
 
-        for i, r in enumerate(build.equipados):
-            casilla = self._casilla_mod(r.item_id, self.nombre_de(r.item_id, r.nombre), r.puntuacion)
-            self.rejilla_mods.addWidget(casilla, i // COLUMNAS_MODS, i % COLUMNAS_MODS)
-        for c in range(COLUMNAS_MODS):
-            self.rejilla_mods.setColumnStretch(c, 1)
-        self.panel_mods.setVisible(bool(build.equipados))
+        self._pintar_rejilla(build)
+        self.panel_mods.setVisible(bool(build.equipados or build.arcanos))
         self._actualizar_boton_evaluar()
-        for r in build.arcanos:
-            self.capa_arcanos.addWidget(self._fila_item(r.item_id, self.nombre_de(r.item_id, r.nombre), r.puntuacion))
-        self.panel_arcanos.setVisible(bool(build.arcanos))
+        self.panel_arcanos.hide()  # los arcanos van en la rejilla, en su sitio
         for r in build.coleccion:
             self.capa_coleccion.addWidget(self._fila_item(r.item_id, self.nombre_de(r.item_id, r.nombre), r.puntuacion))
         self.panel_coleccion.setVisible(bool(build.coleccion))
         self._pintar_sueltos(build.sin_identificar)
+
+    # -- la rejilla, como en el juego ----------------------------------------------------
+
+    def _apuntar_idioma(self, build: Build) -> None:
+        """Deduce el idioma del juego de lo leido y lo apunta; si cambia, se nota en todo."""
+        if self.con is None:
+            return
+        try:
+            leidos = [(r.texto_ocr, r.item_id) for r in build.equipados + build.coleccion + build.arcanos]
+            visto = nombres_juego.detectar(self.con, leidos, getattr(build, "idioma", "") or "")
+            if visto and nombres_juego.apuntar_visto(visto):
+                log.info("Idioma del juego visto en la pantalla de mejoras: %s", visto)
+                evaluar_build.olvidar_cache()
+                self._poner_idiomas()
+                self._cargar_elegibles_seguro()
+        except Exception:  # noqa: BLE001 - sin idioma deducido se sigue con el que hubiera
+            log.debug("No se pudo deducir el idioma del juego", exc_info=True)
+
+    def clase_de_disposicion(self) -> str:
+        """La plantilla de huecos del equipo actual ("warframe", "arma", "cuerpo" o "")."""
+        item_id = self.equipo_actual()
+        if not item_id:
+            return ""
+        return disposicion_build.plantilla_de(self.categorias.get(item_id), self._tipo_de(item_id))
+
+    def _rareza(self, item_id: int) -> str:
+        if self.con is None:
+            return ""
+        try:
+            datos = evaluar_build._detalles(self.con, int(item_id))
+        except Exception:  # noqa: BLE001
+            return ""
+        return ((datos.get("mod") or datos.get("arcano") or {}).get("rareza")) or ""
+
+    def _tipo_de_mod(self, item_id: int) -> str:
+        if item_id in getattr(self, "auras", ()):
+            return "aura"
+        if item_id in getattr(self, "posturas", ()):
+            return "postura"
+        return "mod"
+
+    def _pintar_rejilla(self, build: Build) -> None:
+        ancho, alto = getattr(build, "ancho", 0), getattr(build, "alto", 0)
+        puntos = [disposicion_build.punto_de(r.caja, ancho, alto, self._tipo_de_mod(r.item_id))
+                  for r in build.equipados]
+        puntos_arcanos = [disposicion_build.punto_de(r.caja, ancho, alto, "arcano") for r in build.arcanos]
+        self.colocacion = disposicion_build.colocar(self.clase_de_disposicion(), puntos, puntos_arcanos)
+        rangos = None
+        cartas_mods, cartas_arcanos = [], []
+        for lista, salida, es_arcano in ((build.equipados, cartas_mods, False), (build.arcanos, cartas_arcanos, True)):
+            for r in lista:
+                nombre = self.nombre_de(r.item_id, r.nombre)
+                ayuda = ""
+                if not es_arcano and aumentos.de(self.con, r.item_id) is not None:
+                    if rangos is None:
+                        rangos = aumentos.rangos_del_perfil()
+                    lineas = aumentos.lineas(self.con, r.item_id, rangos)
+                    ayuda = "\n".join(texto for texto, _tinta in lineas)
+                    self._fila_aumento(nombre, lineas)
+                salida.append(DatosCarta(int(r.item_id), nombre, self._rareza(r.item_id), None, r.puntuacion,
+                                         es_arcano, ayuda))
+        self.rejilla.poner(self.colocacion, cartas_mods, cartas_arcanos)
+        for lista in (build.equipados, build.arcanos):
+            for r in lista:
+                carta = self.rejilla.carta_de(r.item_id)
+                if carta is None:
+                    continue
+                self._entradas.append(_Entrada(r.item_id, carta.datos.nombre, self._categoria(r.item_id),
+                                               r.puntuacion, carta))
+                self._pixmap(self.imagenes.get(r.item_id), 256, carta.poner_imagen)
+
+    def _fila_aumento(self, nombre: str, lineas: list[tuple[str, str]]) -> None:
+        """Debajo de la rejilla: de quien es el aumento y donde se compra."""
+        self.capa_aumentos.addWidget(EtiquetaC(f"{nombre}: {lineas[0][0]}", "fuerte", envolver=True))
+        for texto, tinta in lineas[1:]:
+            self.capa_aumentos.addWidget(EtiquetaC(texto, "pequeno", tinta=tinta or None, envolver=True))
 
     # -- ¿esta bien mi build? ------------------------------------------------------------
 
@@ -692,23 +873,6 @@ class PestanaBuilds(QWidget):
 
         self._pixmap(self.imagenes.get(item_id), 128, poner)
         return etiqueta
-
-    def _casilla_mod(self, item_id: int, nombre: str, puntuacion: float) -> PanelC:
-        """Casilla de un mod equipado: imagen, nombre, tipo y (si dudo) cuanto se parecia."""
-        casilla = PanelC(remate=False, fondo="panel2", clicable=True)
-        m = px(8, False)
-        casilla.capa.setContentsMargins(m, m, m, m)
-        casilla.capa.setSpacing(px(4, False))
-        casilla.setToolTip(t("Abrir la ficha en Buscar"))
-        casilla.pulsado.connect(lambda i=item_id: self.abrir_item.emit(int(i)))
-        casilla.capa.addLayout(fila(None, self._imagen(item_id, 54), None))
-        texto = EtiquetaC(nombre, "fuerte", envolver=True)
-        texto.setAlignment(Qt.AlignCenter)
-        casilla.capa.addWidget(texto)
-        piezas = [w for w in (self._insignia(item_id), self._parecido(puntuacion)) if w is not None]
-        casilla.capa.addLayout(fila(None, *piezas, None, espacio=px(6, False)))
-        self._entradas.append(_Entrada(item_id, nombre, self._categoria(item_id), puntuacion, casilla))
-        return casilla
 
     def _fila_item(self, item_id: int, nombre: str, puntuacion: float, apuntar: bool = True) -> PanelC:
         """Fila de un arcano o de un mod de la coleccion: imagen pequena, nombre y tipo.

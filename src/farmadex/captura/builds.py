@@ -170,6 +170,10 @@ class Build:
     # busqueda, el orden o el filtro), "huecos" (la geometria de las filas de tarjetas) o
     # "" si no se supo: entonces todo va a la coleccion y no se evalua.
     separador: str = ""
+    # Tamano de la captura leida (0 si no se sabe): con el y con la caja de cada nombre
+    # se sabe en que hueco de la pantalla va cada mod (datos/disposicion_build.py).
+    ancho: int = 0
+    alto: int = 0
 
     @property
     def vacia(self) -> bool:
@@ -847,6 +851,7 @@ def leer_build(imagen, motor, casador: Casador, categorias: dict[int, str]) -> B
     tiempos["reparto"] = time.perf_counter() - casado
     build.tiempos = tiempos
     build.lineas = lineas
+    build.alto, build.ancho = int(imagen.shape[0]), int(imagen.shape[1])
     build.idioma = idioma_de_cabecera(linea.texto) if linea is not None else ""
     if not build.equipados and not build.coleccion and not build.arcanos and parece_cirilico(lineas):
         # El OCR no lee cirilico: lo que sale son letras latinas parecidas

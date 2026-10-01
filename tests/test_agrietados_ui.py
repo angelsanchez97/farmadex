@@ -202,9 +202,11 @@ def test_build_se_lista_y_se_pulsa(builds):
     textos = p.textos_listados()
     assert any("Absorci" in t for t in textos)
     assert any("(Mod)" in t for t in textos) and any("(Arcano)" in t for t in textos)
-    # Cada cosa en su panel: el mod equipado en una casilla, arcano y coleccion en filas.
-    for panel in (p.panel_mods, p.panel_arcanos, p.panel_coleccion, p.panel_sueltos):
+    # Cada cosa en su sitio: el mod equipado y el arcano en la rejilla (como en la pantalla
+    # de mejoras del juego), la coleccion en filas.
+    for panel in (p.panel_mods, p.panel_coleccion, p.panel_sueltos):
         assert not panel.isHidden()
+    assert p.rejilla.carta_de(ids["/a/Energize"]) is not None and p.rejilla.carta_de(ids["/m/Vitality"]) is not None
     assert p.nombre_equipo.texto_completo() == "EXCALIBUR"
     abiertos = []
     p.abrir_item.connect(abiertos.append)
