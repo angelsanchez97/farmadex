@@ -382,11 +382,11 @@ def es_cabecera_mejoras(lineas) -> bool:
       cabecera y se ve aunque una grabacion o un aviso tapen la cabecera entera.
     """
     from ..datos.difuso import fuzz
-    from .builds import PALABRAS_CABECERA, es_cabecera
+    from .builds import PALABRAS_CABECERA, es_cabecera, es_resto_de_cabecera
 
     for linea in lineas:
         texto = linea.texto.strip()
-        if es_cabecera(texto):
+        if es_cabecera(texto) or es_resto_de_cabecera(texto):
             return True
         compacta = re.sub(r"[^A-Z]", "", _llano(texto))
         for palabra in PALABRAS_CABECERA:

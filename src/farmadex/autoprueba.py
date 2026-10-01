@@ -1353,6 +1353,9 @@ class Autoprueba:
         esperado = self.ids_por_nombre(info.get("equipo", "")) if info.get("equipo") else set()
         salida["equipo_ok"] = bool(equipo is not None and getattr(equipo, "item_id", None) in esperado) \
             if esperado else None
+        if esperado and equipo is not None and getattr(equipo, "item_id", None) not in esperado:
+            # Un equipo que no es el de la pantalla es un dato inventado, como un mod que no esta.
+            salida["inventados"].append(f"equipo: {getattr(equipo, 'nombre', '?')}")
         for p in partes:
             disponibles = Counter(r.item_id for r in leidos[p])
             aciertos = 0

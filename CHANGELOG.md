@@ -1,5 +1,33 @@
 # Cambios
 
+## 0.6.11
+
+Una corrección importante en la pestaña Build: Farmadex ya no te dice nunca un equipo que no es.
+
+**Un equipo equivocado, nunca más**
+- En la versión anterior, si el rótulo de la pantalla de mejoras se leía a medias, Farmadex podía
+  quedarse solo con el final («…PRIME [30]») y darlo por un arma de nombre parecido, con su imagen
+  y su build básica, como si estuviera seguro. Eso es justo lo que no puede pasar. Ahora el equipo
+  solo sale cuando lo leído es su nombre, o cuando le falta una sola letra y no hay ningún otro
+  equipo con el que confundirlo.
+- Palabras como «Prime», «Umbra», «Kuva», «Tenet» o «Coda» ya no bastan para reconocer nada: dicen
+  la variante, no el equipo. Y si el nombre pudo quedar cortado (falta la barra de delante o el
+  rango de detrás) y existe otro equipo que se llama igual con algo más, Farmadex no elige: te dice
+  que no lo sabe y te deja escogerlo.
+- Lo hemos comprobado con todos los warframes, armas y compañeros del juego, cambiándoles letras y
+  cortándoles el nombre de todas las formas: o sale el de verdad, o no sale ninguno.
+
+**El rótulo se lee con cualquier tema de colores y con medidores encima**
+- Si tienes la interfaz del juego con un tema de colores propio (por ejemplo el nombre en rojo
+  sobre fondo oscuro), el rótulo apenas se distinguía y el equipo se quedaba sin reconocer. Ahora,
+  cuando la lectura normal no lo saca, Farmadex vuelve a mirar el rótulo de una forma que no
+  depende del color.
+- Si llevas un medidor de rendimiento en la esquina (temperaturas, fotogramas, milisegundos) que
+  pisa el principio de «MEJORAS», el rótulo se reconoce igualmente, tanto al leer con el atajo como
+  cuando la build se lee sola.
+- La lectura de siempre no tarda más: la segunda mirada solo se hace cuando la primera no ha dado
+  con el equipo.
+
 ## 0.6.10
 
 Una versión para la pestaña Build: que el nombre de tu warframe o de tu arma salga siempre.

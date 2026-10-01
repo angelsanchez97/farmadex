@@ -211,7 +211,6 @@ def _equipo_de(cabecera: str, casador, categorias):
     ("MEJORAS / | INAROS PRIME [30]", "Inaros Prime"),
     ("MEJORAS / INAROS PRIME RANGO 30", "Inaros Prime"),
     ("UPGRADES Y TNAROS PRIME RANK 30", "Inaros Prime"),
-    ("MEJORAS Y TNAROS [30]", "Inaros"),               # sin "prime" leido, nunca el Prime
     ("MEJORAS / INAROS [30]", "Inaros"),
     ("MEJORAS / lVARA PRIME [30]", "Ivara Prime"),
     ("MEJORAS / NYX PRlME [30]", "Nyx Prime"),
@@ -224,6 +223,7 @@ def test_equipo_con_ruido_del_ocr(casador_equipos, cabecera, esperado):
 @pytest.mark.parametrize("cabecera", [
     "MEJORAS / REGULAR BOLTOR [30]",   # nombre puesto por el jugador: no es "Boltor" ni "Telos Boltor"
     "MEJORAS / R PRIME [30]",          # el nombre tapado: "prime" solo no dice cual
+    "MEJORAS Y TNAROS [30]",           # con una ficha quitada y una errata, y existiendo Inaros Prime: no se elige
     "MEJORAS Y PRIME [30]",
     "MEJORAS / Rhinnio Coleman",       # un nombre de jugador
     "MEJORAS / Alcance [30]",          # un mod no es un equipo
@@ -240,7 +240,9 @@ def test_limpieza_del_nombre_de_la_cabecera():
     assert "TNAROS PRIME" in B._nombres_de_equipo("Y TNAROS PRIME")
     assert B._nombres_de_equipo("MK1-BO")[0] == "MK1-BO"
     # Lo corto no se pela hasta quedarse sin nombre.
-    assert B._sin_fichas_sueltas("R PRIME") == "PRIME" and B._sin_fichas_sueltas("I LEX") == "I LEX"
+    # Solo se quita lo que puede ser la barra mal leida, y nunca hasta quedarse sin nombre.
+    assert B._sin_fichas_sueltas("R PRIME") == "R PRIME" and B._sin_fichas_sueltas("I LEX") == "I LEX"
+    assert B._sin_fichas_sueltas("Y TNAROS PRIME") == "TNAROS PRIME"
 
 
 # -- sin identificar: sugerencias de un clic, resumen claro y arcanos a su sitio --------------

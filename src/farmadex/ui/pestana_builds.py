@@ -526,7 +526,9 @@ class PestanaBuilds(QWidget):
         for intento in lector_builds._nombres_de_equipo(texto):
             entero = normalizar(intento)
             es_prime, propio = lector_builds._sin_prime(entero)
-            if len(propio.replace(" ", "")) >= 3:
+            # Con solo la variante ("PRIME [30]", "PRINE") no hay nombre que proponer: salian
+            # equipos de nombre parecido a la palabra ("Pride").
+            if len(lector_builds._partes_de_equipo(entero)[1]) >= 3:
                 leidos.append((es_prime, propio, entero))
         mejores: dict[int, float] = {}
         for item_id in set(self._elegibles.values()):

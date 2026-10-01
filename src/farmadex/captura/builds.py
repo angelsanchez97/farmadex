@@ -18,7 +18,7 @@ import unicodedata
 from dataclasses import dataclass, field
 
 from PySide6.QtCore import Signal, Slot
-from ..datos.difuso import fuzz
+from ..datos.difuso import Levenshtein, fuzz
 
 from ..idiomas import t
 from ..registro_log import obtener
@@ -237,11 +237,33 @@ def _arreglar_cabecera(texto: str) -> str:
     compacta = compacta.translate(_CIFRAS_POR_LETRAS)
     if not compacta:
         return texto
+    palabra = _palabra_de_cabecera(compacta)
+    return f"{palabra}/{detras}" if palabra else texto
+
+
+# Cuantas letras ajenas se admiten delante de la palabra de la cabecera ("165MEJORAS").
+MAXIMO_BASURA_CABECERA = 6
+
+
+def _palabra_de_cabecera(compacta: str) -> str | None:
+    """La palabra de la cabecera que es `compacta` (lo leido, en mayusculas y sin signos), o None.
+
+    Vale con erratas ("MEJ0RAS", "MEORAS", "MESJORAS") y con algo ajeno pegado delante: un
+    medidor de rendimiento pintado encima de la esquina (RivaTuner, el contador de FPS de
+    Steam) deja "165MEJORAS" o "WESJORAS" (captura real de un jugador). Tiene que parecerse
+    mucho y conservar el principio o el final de la palabra: "MEJORAS" no sale de "RAS"."""
     for palabra in PALABRAS_CABECERA:
         # Las 3 primeras letras tienen que estar: "MEJORAS" no puede salir de "RAS".
         if compacta[:3] == palabra[:3] and fuzz.ratio(compacta, palabra) >= 80:
-            return f"{palabra}/{detras}"
-    return texto
+            return palabra
+    for palabra in PALABRAS_CABECERA:
+        for inicio in range(0, min(MAXIMO_BASURA_CABECERA, max(0, len(compacta) - len(palabra) + 2)) + 1):
+            trozo = compacta[inicio:]
+            if len(trozo) < len(palabra) - 1:
+                break
+            if (trozo[:3] == palabra[:3] or trozo[-4:] == palabra[-4:]) and fuzz.ratio(trozo, palabra) >= 80:
+                return palabra
+    return None
 
 
 def es_cabecera(texto: str):
@@ -259,7 +281,9 @@ def idioma_de_cabecera(texto: str) -> str | None:
     for palabra, idioma in PALABRAS_CABECERA.items():
         if compacta.startswith(palabra) or (palabra == "UPGRADES" and compacta.startswith("UPGRADE")):
             return idioma
-    return None
+    # Leida aparte ("MESJORAS" en su caja, el nombre en otra) o sin nada detras.
+    sola = _palabra_de_cabecera(compacta.translate(_CIFRAS_POR_LETRAS)) if 5 <= len(compacta) <= 20 else None
+    return PALABRAS_CABECERA[sola] if sola else None
 
 
 def cabecera(lineas: list[Leido]) -> tuple[str, Leido | None]:
@@ -297,7 +321,7 @@ def _es_palabra_cabecera(texto: str) -> bool:
     compacta = re.sub(r"[^A-Z0-9|]", "", unicodedata.normalize("NFKD", texto).upper()).translate(_CIFRAS_POR_LETRAS)
     if len(compacta) < 5:
         return False
-    return any(compacta[:3] == p[:3] and fuzz.ratio(compacta, p) >= 80 for p in PALABRAS_CABECERA)
+    return _palabra_de_cabecera(compacta) is not None
 
 
 # Restos del rango y de las formas pegados detras del nombre: "HAALVU3O", "HAALVU303OI",
@@ -312,7 +336,7 @@ RE_SIN_RANGO = re.compile(
 
 
 # El rango sin su corchete de abrir: "INAROS PRIME 30]", "INAROS PRIME 3O)".
-RE_RANGO_SIN_ABRIR = re.compile(r"\s*(?:\d[\dOIl|]?|[OIl|]\d)\s*[\]\)】）］]\s*$")
+RE_RANGO_SIN_ABRIR = re.compile(r"\s*(?:\d[\dOIl|]?|[OIl|]\d)\s*[\]\)】）］](?:\s*\S{1,2})?\s*$")
 # Lo menos que tiene que quedar de un nombre al quitarle fichas sueltas de delante.
 MINIMO_NOMBRE_SIN_FICHAS = 5
 
@@ -322,13 +346,26 @@ def _sin_fichas_sueltas(nombre: str) -> str:
     PRIME") sale a veces leida como una letra suelta ("Y", "I", "|", "7") pegada delante
     del nombre. Se quitan hasta dos fichas de una o dos letras del principio, si lo que
     queda sigue pareciendo un nombre; si no, devuelve el nombre tal cual."""
+    return _quitar_fichas(nombre)[0]
+
+
+# Como sale la barra "/" de la cabecera cuando el OCR la toma por una letra o un signo.
+FICHAS_DE_BARRA = frozenset("YyIl1|/!7Jj")
+
+
+def _quitar_fichas(nombre: str) -> tuple[str, list[str]]:
+    """(nombre sin las fichas sueltas de delante, las fichas quitadas). Solo se quita lo que
+    puede ser la barra mal leida (una o dos fichas de un signo): "DA SPOROTHRIX" es un
+    "CODA SPOROTHRIX" cortado, no un Sporothrix con basura delante."""
     palabras = nombre.split()
-    quitadas = 0
-    while len(palabras) > 1 and quitadas < 2 and len(palabras[0]) <= 2:
+    quitadas: list[str] = []
+    while len(palabras) > 1 and len(quitadas) < 2 and len(palabras[0]) == 1 and palabras[0] in FICHAS_DE_BARRA:
+        quitadas.append(palabras[0])
         palabras = palabras[1:]
-        quitadas += 1
     resto = " ".join(palabras)
-    return resto if quitadas and len(resto.replace(" ", "")) >= MINIMO_NOMBRE_SIN_FICHAS else nombre
+    if quitadas and len(resto.replace(" ", "")) >= MINIMO_NOMBRE_SIN_FICHAS:
+        return resto, quitadas
+    return nombre, []
 
 
 def _nombres_de_equipo(nombre: str) -> list[str]:
@@ -369,6 +406,10 @@ def _nombres_de_equipo_base(nombre: str) -> list[str]:
     corte = re.split(r"[\[\(【（［]", nombre, maxsplit=1)[0].strip()
     if corte and corte != nombre:
         intentos.append(corte)
+        nombre = corte
+    sin_guion = nombre.rstrip(" -–—_.,;:'\"")
+    if sin_guion and sin_guion != nombre:
+        intentos.append(sin_guion)
     for base in [i for i in intentos if not re.search(r"[\[\(【（［]", i)]:
         sin_rango = RE_RANGO_PEGADO.sub("", base).strip()
         if sin_rango and sin_rango not in intentos:
@@ -883,6 +924,18 @@ def leer_build(imagen, motor, casador: Casador, categorias: dict[int, str]) -> B
     reconocidos = _nombres_a_dos_lineas(lineas, reconocidos, casador, categorias)
     nombre_equipo, linea = cabecera(lineas)
     equipo = _casar_equipo(nombre_equipo, linea, casador, categorias)
+    if equipo is None:
+        # La barra leida como una letra y el principio tapado: "ASI NEKROS PRIME [30]".
+        for l in lineas:
+            if l.y >= imagen.shape[0] * 0.12:
+                continue
+            for texto in nombres_ante_el_rango(l.texto):
+                equipo = _casar_equipo(texto, l, casador, categorias, entero=False)
+                if equipo is not None:
+                    nombre_equipo, linea = texto, l
+                    break
+            if equipo is not None:
+                break
     texto_releido = ""
     parece_mejoras = any(categorias.get(r.item_id) == "Mods" for r in reconocidos) or any(
         l.y < imagen.shape[0] * 0.1 and RE_RANGO_CABECERA.search(l.texto) for l in lineas)
@@ -925,41 +978,177 @@ def parece_cirilico(lineas: list[Leido]) -> bool:
 
 
 def _casar_equipo(nombre_equipo: str, linea: Leido | None, casador: Casador,
-                  categorias: dict[int, str]) -> Reconocido | None:
-    """El warframe o el arma que dice la cabecera (nunca un mod ni un arcano)."""
-    for nombre in _nombres_de_equipo(nombre_equipo) if nombre_equipo else []:
+                  categorias: dict[int, str], entero: bool | None = None) -> Reconocido | None:
+    """El warframe o el arma que dice la cabecera (nunca un mod ni un arcano).
+
+    Solo dos formas de acertar, las dos sin margen para inventar: lo leido ES el nombre de
+    un equipo (letra por letra, sin contar espacios ni tildes), o se parece a uno solo con
+    las reglas de `equipo_parecido`. El parecido general del casador (el de los mods) no
+    vale aqui: con el principio del rotulo tapado daba "ENANT PRIME" por "Venka Prime".
+
+    `entero` dice si el nombre se leyo con sus dos topes: la barra de la cabecera delante y
+    el rango detras ("MEJORAS/ NEKROS [30]"). Sin ellos pudo quedar cortado, y un equipo
+    que tiene hermanos de variante (Nekros / Nekros Prime, Bubonico / Bubonico Coda) no se
+    identifica: "NEKROS" a secas puede ser un "NEKROS PRIME" al que le falta el final. Por
+    defecto se deduce de la linea (que traiga la barra y el rango)."""
+    if not nombre_equipo:
+        return None
+    if entero is None:
+        entero = linea is not None and nombre_con_topes(linea.texto)
+    caja = (linea.x, linea.y, linea.ancho, linea.alto) if linea is not None else (0, 0, 0, 0)
+    intentos = _nombres_de_equipo(nombre_equipo)
+    pelados = _intentos_pelados(intentos)
+    for nombre in intentos:
         item_id, etiqueta, puntos = casador.casar(nombre, UMBRAL_MODS)
-        if item_id and categorias.get(item_id) not in ("Mods", "Arcanes", None):
-            caja = (linea.x, linea.y, linea.ancho, linea.alto) if linea is not None else (0, 0, 0, 0)
-            return Reconocido(nombre, item_id, etiqueta, puntos, caja)
-    return _casar_equipo_parecido(nombre_equipo, linea, casador, categorias) if nombre_equipo else None
+        if not item_id or categorias.get(item_id) in ("Mods", "Arcanes", None):
+            continue
+        if not _es_el_nombre(nombre, casador, item_id, con_espacios=not entero):
+            continue
+        # Sin los dos topes, o quitandole fichas sueltas, el nombre pudo quedar cortado: si
+        # es el principio o el final del de otro equipo, no se sabe cual de los dos es.
+        if (not entero or nombre in pelados) and _tiene_hermanos(item_id, casador, categorias):
+            continue
+        return Reconocido(nombre, item_id, etiqueta, 100.0, caja)
+    if not entero:
+        return None  # sin topes solo vale el nombre exacto: nada de parecidos
+    for nombre in intentos:
+        hallado = equipo_parecido(nombre, casador, categorias)
+        if hallado is None or (nombre in pelados and _tiene_hermanos(hallado[0], casador, categorias)):
+            continue
+        item_id, etiqueta, puntos = hallado
+        return Reconocido(nombre, item_id, etiqueta, puntos, caja)
+    return None
+
+
+def _intentos_pelados(intentos: list[str]) -> set[str]:
+    """Los intentos que salen de quitarle a otro una ficha suelta de delante (la barra mal
+    leida) o de detras (el borde del corchete)."""
+    pelados = set()
+    partidos = [i.split() for i in intentos]
+    for intento, palabras in zip(intentos, partidos):
+        for otras in partidos:
+            sobran = len(otras) - len(palabras)
+            if sobran <= 0:
+                continue
+            # Solo fichas de una o dos letras: "UNRANKED" o "RANGO 30" no son fichas sueltas.
+            if otras[sobran:] == palabras and all(len(f) <= 2 for f in otras[:sobran]):
+                pelados.add(intento)
+            elif otras[:len(palabras)] == palabras and all(len(f) <= 2 and not f.isdigit() for f in otras[len(palabras):]):
+                pelados.add(intento)
+    return pelados
+
+
+# "UNRANKED HYDROID" (sin rango, va delante) y "OBERON PRIME RANGA ZERO": tambien cierran el nombre.
+RE_SIN_TOPE_DE_RANGO = re.compile(rf"(?i)(?:UNRANKED|SIN\s*RANGO)\s|(?:{_PALABRA_RANGO})\s*Z[EÉ]RO\W*$")
+
+
+def nombre_con_topes(texto_linea: str) -> bool:
+    """Si la linea de la cabecera trae la barra (o los dos puntos) delante del nombre y el
+    rango detras: entonces el nombre esta entero."""
+    delante = bool(re.search(r"[/:]", texto_linea)) or es_cabecera(texto_linea) is not None
+    detras = bool(RE_RANGO_CABECERA.search(texto_linea) or RE_RANGO_SIN_ABRIR.search(texto_linea)
+                  or RE_RANGO_PEGADO.search(texto_linea) or RE_SIN_TOPE_DE_RANGO.search(texto_linea))
+    return delante and detras
+
+
+def _tiene_hermanos(item_id: int, casador: Casador, categorias: dict[int, str]) -> bool:
+    """Si el nombre de este equipo es el principio o el final del de otro: Nekros y Nekros
+    Prime, Bubonico y Bubonico Coda, pero tambien Bronco y Akbronco o Bo y Limbo. Leido sin
+    sus dos topes, no se sabe cual de los dos es."""
+    hechas = casador.__dict__.get("_con_hermanos")
+    if hechas is None:
+        de_equipo: dict[str, set[int]] = {}
+        for clave, (iid, _etiqueta) in casador.candidatos.items():
+            if categorias.get(iid) not in ("Mods", "Arcanes", None):
+                de_equipo.setdefault(clave.replace(" ", ""), set()).add(iid)
+        hechas = set()
+        for compacta, ids in de_equipo.items():
+            for corte in range(2, len(compacta)):
+                for trozo in (compacta[:corte], compacta[-corte:]):
+                    for otro in de_equipo.get(trozo, ()):
+                        if otro not in ids:
+                            hechas.add(otro)
+        casador._con_hermanos = hechas
+    return item_id in hechas
+
+
+def _es_el_nombre(nombre: str, casador: Casador, item_id: int, con_espacios: bool = False) -> bool:
+    """Si lo leido es, letra por letra, uno de los nombres de ese objeto. Los espacios no
+    cuentan (el OCR los pone y los quita: "HAALV U", "NYXPRIME") salvo con `con_espacios`."""
+    leido = normalizar(nombre)
+    if not leido:
+        return False
+    if con_espacios:
+        return casador.candidatos.get(leido, (None,))[0] == item_id
+    return leido.replace(" ", "") in _compactas_por_id(casador).get(item_id, ())
+
+
+def _compactas_por_id(casador: Casador) -> dict[int, set[str]]:
+    hechas = casador.__dict__.get("_compactas_por_id")
+    if hechas is None:
+        hechas = {}
+        for clave, valor in casador.candidatos.items():
+            hechas.setdefault(valor[0], set()).add(clave.replace(" ", ""))
+        casador._compactas_por_id = hechas
+    return hechas
 
 
 # Casado del equipo con alguna letra mal leida ("TNAROS" por "INAROS"): solo contra
-# warframes, armas y companeros, con un parecido alto y claro margen sobre el siguiente.
-UMBRAL_EQUIPO_PARECIDO = 80
-MARGEN_EQUIPO_PARECIDO = 10
-MINIMO_LETRAS_EQUIPO = 5
+# warframes, armas y companeros, y con reglas duras, porque un equipo equivocado con
+# apariencia de seguro es lo peor que puede pasar (la 0.6.10 dio "Pride" por un "PRINE [30]"
+# que era el final de "NEKROS PRIME [30]"):
+# - Las palabras de variante ("prime", "umbra", "kuva", "coda"...) no son el nombre: se
+#   apartan de lo leido y del catalogo, y tienen que coincidir exactamente. Un token que
+#   se parece a una de ellas ("PRINE", "PRlME") cuenta como esa variante, nunca como nombre.
+# - El nombre propio que queda tiene que tener letras suficientes, medir casi lo mismo y
+#   diferir en una letra (dos si es largo).
+# - Y ningun otro equipo puede quedar cerca: si lo hay, no se elige.
+PALABRAS_VARIANTE = frozenset({
+    "prime", "umbra", "wraith", "vandal", "prisma", "kuva", "tenet", "coda", "dex", "mk1", "mara", "rakta",
+    "sancti", "secura", "synoid", "telos", "vaykor", "carmine", "ceti", "dual", "dobles", "doble", "twin",
+    "gemelas", "gemelos", "duplas", "duplos", "doubles", "doppel", "jumelles", "jumeaux",
+})
+VARIANTE_DUDOSA = "?"  # no coincide con ninguna del catalogo: con ella no se identifica nada
+MINIMO_LETRAS_EQUIPO = 6
+LETRAS_NOMBRE_LARGO = 10
+MARGEN_LETRAS_EQUIPO = 2
 
 
-def candidatos_equipo(texto: str, casador: Casador, categorias: dict[int, str]) -> list[tuple[float, int, str]]:
-    """Los equipos del catalogo que mas se parecen a `texto`, de mas a menos:
-    (parecido, id, nombre), uno por objeto. Lo leido con "prime" solo se compara con
-    equipos Prime, y lo leido sin "prime" solo con los que no lo son."""
-    mejores: dict[int, tuple[float, int, str]] = {}
-    for intento in _nombres_de_equipo(texto):
-        es_prime, propio = _sin_prime(normalizar(intento))
-        # Se compara el nombre propio, sin "prime": con "R PRIME" (el nombre tapado) la
-        # palabra "prime" sola hacia parecidos a todos los Prime de nombre corto.
-        if len(propio.replace(" ", "")) < MINIMO_LETRAS_EQUIPO:
-            continue
-        for prime_clave, propio_clave, item_id, etiqueta in _claves_de_equipo(casador, categorias):
-            if prime_clave != es_prime or abs(len(propio_clave) - len(propio)) > 2:
-                continue
-            puntos = fuzz.ratio(propio, propio_clave)
-            if puntos >= 50 and puntos > mejores.get(item_id, (0.0,))[0]:
-                mejores[item_id] = (puntos, item_id, etiqueta)
-    return sorted(mejores.values(), key=lambda c: -c[0])
+def _variante_de(palabra: str) -> str | None:
+    """La palabra de variante que es `palabra`, tambien con una letra mal leida."""
+    if palabra in PALABRAS_VARIANTE:
+        return palabra
+    if len(palabra) >= 4:
+        cerca = [v for v in PALABRAS_VARIANTE
+                 if len(v) >= 4 and abs(len(v) - len(palabra)) <= 1 and Levenshtein.distance(palabra, v) <= 1]
+        if len(cerca) == 1:
+            return cerca[0]
+        if cerca:
+            return VARIANTE_DUDOSA  # a una letra de dos variantes ("PRIMA": prime o prisma)
+    return None
+
+
+def _partes_de_equipo(clave: str, exacto: bool = False) -> tuple[frozenset[str], str]:
+    """(variantes, nombre propio sin espacios) de un nombre normalizado. Con `exacto` (los
+    nombres del catalogo) las variantes solo valen bien escritas y sueltas; en lo leido
+    tambien con una letra cambiada o pegadas al nombre ("NYXPRIME")."""
+    variantes, propio = set(), []
+    for palabra in clave.split():
+        if exacto:
+            variante = palabra if palabra in PALABRAS_VARIANTE else None
+        else:
+            variante = _variante_de(palabra)
+            if variante is None:
+                for v in PALABRAS_VARIANTE:
+                    if len(v) >= 4 and len(palabra) >= len(v) + 2 and (palabra.endswith(v) or palabra.startswith(v)):
+                        variantes.add(v)
+                        palabra = palabra[:-len(v)] if palabra.endswith(v) else palabra[len(v):]
+                        break
+        if variante:
+            variantes.add(variante)
+        else:
+            propio.append(palabra)
+    return frozenset(variantes), "".join(propio)
 
 
 def _sin_prime(clave: str) -> tuple[bool, str]:
@@ -967,8 +1156,8 @@ def _sin_prime(clave: str) -> tuple[bool, str]:
     return "prime" in palabras, " ".join(p for p in palabras if p != "prime")
 
 
-def _claves_de_equipo(casador: Casador, categorias: dict[int, str]) -> list[tuple[bool, str, int, str]]:
-    """(es Prime, nombre propio, id, etiqueta) de las claves del casador que son un equipo
+def _claves_de_equipo(casador: Casador, categorias: dict[int, str]) -> list[tuple[frozenset[str], str, int, str]]:
+    """(variantes, nombre propio, id, etiqueta) de las claves del casador que son un equipo
     (se calculan una vez por casador)."""
     hechas = casador.__dict__.get("_claves_equipo")
     if hechas is None:
@@ -976,23 +1165,64 @@ def _claves_de_equipo(casador: Casador, categorias: dict[int, str]) -> list[tupl
         for clave, (item_id, etiqueta) in casador.candidatos.items():
             if categorias.get(item_id) in ("Mods", "Arcanes", None):
                 continue
-            es_prime, propio = _sin_prime(clave)
+            variantes, propio = _partes_de_equipo(clave, exacto=True)
             if propio:
-                hechas.append((es_prime, propio, item_id, etiqueta))
+                hechas.append((variantes, propio, item_id, etiqueta))
         casador._claves_equipo = hechas
     return hechas
 
 
-def _casar_equipo_parecido(nombre_equipo: str, linea: Leido | None, casador: Casador,
-                           categorias: dict[int, str]) -> Reconocido | None:
-    candidatos = candidatos_equipo(nombre_equipo, casador, categorias)
-    if not candidatos or candidatos[0][0] < UMBRAL_EQUIPO_PARECIDO:
+# Letras que el OCR confunde entre si por la forma: con ellas igualadas, "lVARA" es "IVARA".
+_MISMA_FORMA = str.maketrans({"l": "i", "1": "i", "|": "i", "!": "i", "0": "o", "5": "s", "8": "b"})
+
+
+def _misma_forma(propio: str) -> str:
+    return propio.translate(_MISMA_FORMA)
+
+
+def equipo_parecido(texto: str, casador: Casador, categorias: dict[int, str]) -> tuple[int, str, float] | None:
+    """(id, etiqueta, puntos) del unico equipo que es `texto` con alguna letra mal leida, o
+    None si no hay ninguno o no esta claro cual."""
+    variantes, propio = _partes_de_equipo(normalizar(texto))
+    if len(propio) < 3:
         return None
-    if len(candidatos) > 1 and candidatos[0][0] - candidatos[1][0] < MARGEN_EQUIPO_PARECIDO:
-        return None  # dos equipos igual de parecidos: no se elige
-    puntos, item_id, etiqueta = candidatos[0]
-    caja = (linea.x, linea.y, linea.ancho, linea.alto) if linea is not None else (0, 0, 0, 0)
-    return Reconocido(nombre_equipo, item_id, etiqueta, puntos, caja)
+    # Lo mismo salvo letras de igual forma (I, l, 1; O, 0...): vale tambien en nombres cortos,
+    # si solo hay un equipo asi.
+    forma = _misma_forma(propio)
+    iguales = {(iid, etiqueta) for v, p, iid, etiqueta in _claves_de_equipo(casador, categorias)
+               if v == variantes and len(p) == len(propio) and _misma_forma(p) == forma}
+    if len({iid for iid, _e in iguales}) == 1:
+        iid, etiqueta = sorted(iguales)[0]
+        return iid, etiqueta, 96.0
+    if iguales or len(propio) < MINIMO_LETRAS_EQUIPO:
+        return None
+    permitido = 2 if len(propio) >= LETRAS_NOMBRE_LARGO else 1
+    tope = permitido + MARGEN_LETRAS_EQUIPO
+    cerca: dict[int, tuple[int, str]] = {}
+    rivales: dict[int, int] = {}
+    for variantes_clave, propio_clave, item_id, etiqueta in _claves_de_equipo(casador, categorias):
+        if variantes_clave != variantes or abs(len(propio_clave) - len(propio)) > tope:
+            continue
+        distancia = Levenshtein.distance(propio, propio_clave, score_cutoff=tope)
+        if distancia > tope:
+            continue
+        rivales[item_id] = min(distancia, rivales.get(item_id, distancia))
+        if len(propio) != len(propio_clave) and (propio[0] != propio_clave[0] or propio[-1] != propio_clave[-1]
+                                                  or abs(len(propio) - len(propio_clave)) > 1):
+            # Una letra comida o repetida en medio vale; un nombre mas largo o mas corto por
+            # una punta es otro nombre cortado ("A SPOROTHRIX", "NEKROSP").
+            distancia = max(distancia, permitido + 1)
+        if item_id not in cerca or distancia < cerca[item_id][0]:
+            cerca[item_id] = (distancia, etiqueta)
+    if not cerca:
+        return None
+    orden = sorted(cerca.items(), key=lambda par: par[1][0])
+    item_id, (distancia, etiqueta) = orden[0]
+    if distancia > permitido:
+        return None
+    if any(otro != item_id and d < distancia + MARGEN_LETRAS_EQUIPO for otro, d in rivales.items()):
+        return None  # otro equipo casi igual de cerca: no se elige
+    return item_id, etiqueta, 100.0 - 8.0 * distancia
 
 
 # Lo que va entre la barra y el rango en la cabecera: "...RAS/RHINO PRIME [30]" (la
@@ -1044,33 +1274,135 @@ def _releer_cabecera(imagen, motor, casador: Casador, categorias: dict[int, str]
     alto, ancho = imagen.shape[:2]
     tiempos = dict(getattr(motor, "tiempos", None) or {})
     primero = ""
+    recortes = recortes_de_cabecera(lineas_pantalla, ancho, alto)
     try:
         # El reconocedor lee la linea entera de una vez y el resultado cambia con el
         # recorte (medido: con un recorte "RHINO PRIME", con otro "RNOPRIME"). Se
         # prueban unos pocos, de mas a menos probable, hasta que uno case.
-        for y0, y1, x0, x1 in recortes_de_cabecera(lineas_pantalla, ancho, alto):
+        leer_tira = getattr(motor, "leer_tira", None) if getattr(imagen, "ndim", 0) == 3 else None
+        for numero, (y0, y1, x0, x1) in enumerate(recortes):
             franja = imagen[y0:y1, x0:x1]
             try:
                 leidos = leer(franja)
             except ErrorMotorOCR:
                 return "", None
-            lineas = unir_filas([l for l in leidos if l.confianza >= MINIMO_CONFIANZA])
-            nombre, linea = cabecera(lineas)
-            candidatos = [(nombre, linea)] if nombre else []
-            for l in lineas:
-                m = RE_TRAS_BARRA.search(l.texto)
-                if m:
-                    candidatos.append((m.group(1).strip(), l))
-            for nombre, l in candidatos:
-                equipo = _casar_equipo(nombre, l, casador, categorias)
+            nombre, equipo = _equipo_de_franja(leidos, casador, categorias)
+            if equipo is not None:
+                return nombre, equipo
+            primero = primero or nombre
+            # Nada: el jugador puede tener la interfaz del juego con otro tema de colores (el
+            # nombre en rojo vivo sobre azul oscuro apenas tiene luz y el OCR lo pierde). Se
+            # relee la franja convertida a "el canal mas fuerte de cada punto", que no
+            # depende del color, tal cual y en negativo. Solo en los primeros recortes y solo
+            # cuando la lectura normal de la franja ha fallado.
+            if leer_tira is None or numero >= RECORTES_SIN_COLOR:
+                continue
+            for sin_color in franjas_sin_color(franja):
+                try:
+                    leidos = leer_tira(sin_color)
+                except ErrorMotorOCR:
+                    return primero, None
+                nombre, equipo = _equipo_de_franja(leidos, casador, categorias)
                 if equipo is not None:
                     return nombre, equipo
-            if candidatos and not primero:
-                primero = candidatos[0][0]
+                primero = primero or nombre
     finally:
         if hasattr(motor, "tiempos"):
             motor.tiempos = tiempos  # los de la lectura grande son los que van al registro
     return primero, None
+
+
+# Cuantos recortes de la cabecera se releen sin color (cada uno, dos lecturas mas).
+RECORTES_SIN_COLOR = 2
+# Lo que va tras la ultima barra de una linea, sin rango ni restos: "WESJORAS/TORXICAS DOBLESCOEN".
+RE_TRAS_BARRA_SUELTA = re.compile(r"[/:]\s*([^/:]{3,})$")
+
+
+# Lo que la barra de la cabecera deja cuando el OCR la lee como una letra.
+_BARRA_LEIDA = "Il1|/YJ7!"
+
+
+def nombres_ante_el_rango(texto: str) -> list[str]:
+    """De "ASI NEKROS PRIME [30]" o "ASINEKRDS PRIME [30]" (lo que queda de "MEJORAS/ NEKROS
+    PRIME [30]" con el principio tapado y la barra leida como una I), los textos que pueden
+    ser el nombre: lo que va delante del rango, quitando por delante un resto de la palabra
+    de la cabecera y de la barra. Quien llama solo los acepta si casan con un equipo."""
+    m = RE_RANGO_CABECERA.search(texto)
+    if m is None or re.search(r"[/:]", texto[:m.start()]):
+        return []
+    delante = texto[:m.start()].strip(" -–—_.,;'\"")
+    if len(delante) < 4:
+        return []
+    salida = []
+    mayus = unicodedata.normalize("NFKD", delante).upper()
+    for corte in range(1, min(len(delante) - 3, MAXIMO_BASURA_CABECERA + 2)):
+        resto_cabecera = re.sub(r"[^A-Z0-9|/!]", "", mayus[:corte])
+        if not resto_cabecera:
+            continue
+        cola, barra = (resto_cabecera[:-1], resto_cabecera[-1]) if resto_cabecera[-1] in _BARRA_LEIDA else (resto_cabecera, "")
+        es_resto = any(p.endswith(cola) for p in PALABRAS_CABECERA) if cola else bool(barra)
+        if es_resto and (barra or delante[corte:corte + 1] == " "):
+            nombre = delante[corte:].strip()
+            if len(nombre) >= 4 and nombre not in salida:
+                salida.append(nombre)
+    return salida
+
+
+def es_resto_de_cabecera(texto: str) -> bool:
+    """Si la linea es lo que queda de la cabecera con el principio tapado y la barra leida
+    como una letra: "ASI NEKROS PRIME [30]", "RASINEKROS PRIME [30]". Hacen falta dos letras
+    o mas del final de la palabra ("AS" de "MEJORAS"), la barra y el rango entre corchetes."""
+    m = RE_RANGO_CABECERA.search(texto)
+    if m is None or not any(c in m.group(0) for c in "[(【（［"):
+        m = RE_RANGO_SIN_ABRIR.search(texto)  # "...PRIME3O]": sin el corchete de abrir
+    if m is None:
+        return False
+    mayus = re.sub(r"[^A-Z0-9|/!]", "", unicodedata.normalize("NFKD", texto[:m.start()]).upper())
+    for corte in range(3, min(len(mayus) - 3, MAXIMO_BASURA_CABECERA + 2)):
+        cola, barra = mayus[:corte - 1], mayus[corte - 1]
+        if barra in _BARRA_LEIDA.upper() and any(p.endswith(cola) for p in PALABRAS_CABECERA):
+            return True
+    return False
+
+
+def franjas_sin_color(franja):
+    """La franja en gris "canal mas fuerte" (un rojo, un verde o un azul vivos quedan tan
+    claros como un blanco) y su negativo, las dos en BGR como espera el motor."""
+    import numpy as np
+
+    fuerte = np.ascontiguousarray(franja.max(axis=2))
+    return [np.dstack([fuerte] * 3), np.dstack([255 - fuerte] * 3)]
+
+
+def _equipo_de_franja(leidos, casador: Casador, categorias: dict[int, str]) -> tuple[str, Reconocido | None]:
+    """El equipo que dicen las lineas de una franja de cabecera: (texto del nombre, equipo).
+    Sin equipo, el primer texto que parecia el nombre (para ensenarlo como "sin identificar")."""
+    lineas = unir_filas([l for l in leidos if l.confianza >= MINIMO_CONFIANZA])
+    nombre, linea = cabecera(lineas)
+    candidatos = [(nombre, linea)] if nombre else []
+    for l in lineas:
+        m = RE_TRAS_BARRA.search(l.texto)
+        if m:
+            candidatos.append((m.group(1).strip(), l))
+    # Ultimo recurso: lo que va tras la barra aunque la palabra de delante no se
+    # reconozca y no haya rango. Solo vale si casa con un equipo del catalogo.
+    dudosos = []
+    for l in lineas:
+        m = RE_TRAS_BARRA_SUELTA.search(l.texto.strip())
+        if m and m.group(1).strip() not in [c[0] for c in candidatos]:
+            dudosos.append((m.group(1).strip(), l))
+        for texto in nombres_ante_el_rango(l.texto):
+            if texto not in [c[0] for c in candidatos + dudosos]:
+                dudosos.append((texto, l))
+    for texto, l in candidatos:
+        equipo = _casar_equipo(texto, l, casador, categorias)
+        if equipo is not None:
+            return texto, equipo
+    for texto, l in dudosos:
+        equipo = _casar_equipo(texto, l, casador, categorias, entero=False)
+        if equipo is not None:
+            return texto, equipo
+    return (candidatos[0][0] if candidatos else ""), None
 
 
 def _tarjetas_ampliadas(lineas: list[Leido], reconocidos: list[Reconocido], casador: Casador,
