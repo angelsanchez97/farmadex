@@ -628,6 +628,7 @@ class PestanaAjustes(QWidget):
     prioridad_recompensas_cambiada = Signal(str)
     barra_tareas_cambiada = Signal(bool)  # Ajustes > General > "Mostrar en la barra de tareas"
     ocr_modo_cambiado = Signal(str)  # "auto", "rapido", "ligero" o "windows" (captura/ocr.py)
+    borrar_historial_chat = Signal()  # boton de Ajustes > Precios en el chat
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -1136,6 +1137,42 @@ class PestanaAjustes(QWidget):
         lectura.addRow(self.estado_juego)
         self._meter("reliquias", self._grupo("Lectura de pantalla"), lectura)
 
+        # -- precios en el chat y al copiar (ui/precios_chat.py) --------------------
+        self.precio_enlaces_chat = QCheckBox()
+        self._fijo(self.precio_enlaces_chat.setText, "Enseñar el precio al pasar el ratón por un enlace del chat")
+        self.precio_enlaces_chat.setChecked(bool(self.config.get("precio_enlaces_chat", True)))
+        self.precio_enlaces_chat.toggled.connect(lambda v: self._guardar("precio_enlaces_chat", v))
+        self.portapapeles_ventas = QCheckBox()
+        self._fijo(self.portapapeles_ventas.setText, "Enseñar los precios de las listas de venta que copie")
+        self.portapapeles_ventas.setChecked(bool(self.config.get("portapapeles_ventas", False)))
+        self.portapapeles_ventas.toggled.connect(lambda v: self._guardar("portapapeles_ventas", v))
+        self.historial_chat = QCheckBox()
+        self._fijo(self.historial_chat.setText, "Guardar un historial de lo que miro en el chat")
+        self.historial_chat.setChecked(bool(self.config.get("historial_chat", False)))
+        self.historial_chat.toggled.connect(lambda v: self._guardar("historial_chat", v))
+        self.boton_borrar_historial_chat = self._boton("Borrar el historial del chat")
+        self.boton_borrar_historial_chat.clicked.connect(self._borrar_historial_chat)
+        chat = self._formulario()
+        chat.addRow(self.precio_enlaces_chat)
+        chat.addRow(self._nota(
+            "Pon el ratón encima de un objeto entre corchetes en el chat del juego y sale lo que "
+            "vale: lo más barato y lo más caro a lo que se ha vendido este mes, y a cuánto se vende "
+            "y se compra ahora. Sirve para piezas prime, sets, reliquias, mods, arcanos y agrietados."
+        ))
+        chat.addRow(self.portapapeles_ventas)
+        chat.addRow(self._nota(
+            "Si copias un mensaje de venta (por ejemplo «WTS [Loki Prime] 100p»), sale a la derecha "
+            "una lista con el precio de cada cosa. Para eso Farmadex mira el texto que copias; no lo "
+            "guarda ni lo manda a ningún sitio. Viene apagado: enciéndelo solo si lo quieres."
+        ))
+        chat.addRow(self.historial_chat)
+        chat.addRow(self._nota(
+            "Apunta en este ordenador qué objetos has mirado en el chat, su precio, la hora y quién "
+            "lo escribió. Viene apagado porque guarda nombres de otros jugadores. No sale de tu PC."
+        ))
+        chat.addRow(self.boton_borrar_historial_chat)
+        self._meter("reliquias", self._grupo("Precios en el chat"), chat)
+
         # -- diagnostico de reliquias ----------------------------------------------
         # Para el "no me sale nada al abrir una reliquia" de quien no sabe mandar el
         # registro: una lista de comprobaciones con veredicto y un .zip en el Escritorio.
@@ -1559,6 +1596,10 @@ class PestanaAjustes(QWidget):
         self.aviso_parche.setVisible(bool(texto))
 
     # -- acciones ----------------------------------------------------------
+
+    def _borrar_historial_chat(self) -> None:
+        self.borrar_historial_chat.emit()
+        self.boton_borrar_historial_chat.setText(t("Historial borrado"))
 
     def _guardar(self, clave: str, valor) -> None:
         self.config[clave] = valor

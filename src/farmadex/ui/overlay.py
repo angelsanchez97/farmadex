@@ -637,6 +637,9 @@ class VentanaOverlay(QWidget):
             )
             return
         self.tarjeta_reliquia.olvidar_indice()
+        from ..chat import nombres as nombres_chat
+
+        nombres_chat.olvidar()  # los nombres para el chat se montan del indice nuevo
         self.buscador.habilitar(True)
         self.objetivos.conectar_indice(indice.conectar())
         self.primes.conectar_indice(indice.conectar())
@@ -836,6 +839,19 @@ class VentanaOverlay(QWidget):
         self.hilo_captura.start()
         self.hilo_pasivo.start(QThread.LowPriority)
         self.hover_reliquias.iniciar()
+        # Precios al pasar el raton por un enlace del chat y de las listas de venta copiadas
+        # (ui/precios_chat.py): su propio hilo, para no esperar detras de otras lecturas.
+        from .precios_chat import ServicioChat
+
+        self.servicio_chat = ServicioChat(
+            self.config, sobre_farmadex=self._cursor_sobre_farmadex,
+            se_puede_pintar=lambda: self.modo_pantalla != pantalla.MODO_EXCLUSIVO, motor_ocr=motor, parent=self)
+        self.ajustes.precio_enlaces_chat.toggled.connect(self.servicio_chat.activar_enlaces)
+        self.ajustes.portapapeles_ventas.toggled.connect(self.servicio_chat.activar_portapapeles)
+        self.ajustes.historial_chat.toggled.connect(self.servicio_chat.activar_historial)
+        self.ajustes.borrar_historial_chat.connect(self.servicio_chat.historial.borrar)
+        self.ajustes.ocr_modo_cambiado.connect(self.servicio_chat.cambiar_motor)
+        self.servicio_chat.iniciar()
 
         self.disparador = DisparadorAutomatico(bool(self.config.get("ocr_reliquias_auto", True)))
         self.disparador.disparar.connect(self.leer_recompensas)
@@ -1935,6 +1951,9 @@ class VentanaOverlay(QWidget):
         w = QApplication.widgetAt(QCursor.pos())
         if w is None or w is self.tarjeta_reliquia.tarjeta:
             return False
+        chat = getattr(self, "servicio_chat", None)
+        if chat is not None and w.window() in chat.ventanas():
+            return False
         # El fondo transparente del modo juego no tapa el juego: solo cuenta lo pintado.
         return not (w.isWindow() and w.testAttribute(Qt.WA_TranslucentBackground))
 
@@ -2755,6 +2774,8 @@ class VentanaOverlay(QWidget):
         self.historial.parar()
         if self.hover_reliquias is not None:
             self.hover_reliquias.parar()
+        if getattr(self, "servicio_chat", None) is not None:
+            self.servicio_chat.cerrar()
         self.ayuda_reliquias.quitar()
         self.tarjeta_reliquia.ocultar()
         self.tarjeta_reliquia.cerrar()
