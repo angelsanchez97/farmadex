@@ -754,6 +754,10 @@ class VentanaOverlay(QWidget):
         self.servicio_market.listo.connect(self.buscador.mostrar_precios)
         self.servicio_market.listo.connect(self.compacta.mostrar_precios)
         self.hilo_market.start()
+        # Foto diaria de precios: carga local y descargas programadas, todo en hilos propios.
+        from ..online import precios_diarios
+
+        precios_diarios.iniciar()
 
     def _arrancar_captura(self) -> None:
         """OCR y vigilancia de EE.log, cada cosa en su hilo."""
@@ -2819,6 +2823,9 @@ class VentanaOverlay(QWidget):
             self.hilo_mundo.quit()
             self.hilo_mundo.wait(3000)
             self.servicio_market.cerrar()
+            from ..online import precios_diarios
+
+            precios_diarios.detener()
             self.hilo_market.quit()
             self.hilo_market.wait(3000)
         if self.tarea and self.tarea.isRunning():
