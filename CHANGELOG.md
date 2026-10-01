@@ -1,5 +1,24 @@
 # Cambios
 
+## 0.6.8
+
+Una versión pequeña para que la lectura de pantalla acierte más.
+
+**La build se lee sola en más casos**
+- Hasta ahora Farmadex reconocía la pantalla de mejoras por el rótulo de arriba («MEJORAS /
+  EXCALIBUR»). Si algo lo tapaba (la cámara del streamer, un aviso de grabación, la tarjeta de un mod
+  ampliada o la ayuda del juego) o si el juego está en ruso, no se enteraba y había que usar el atajo.
+  Ahora también se fija en la barra de capacidad que hay justo debajo y en la cola del rótulo, así
+  que la build se lee sola aunque el rótulo no se vea entero. Probado con capturas reales de
+  jugadores en inglés, español, francés, alemán, italiano, polaco, portugués y ruso, desde 1080p
+  hasta 4K y en pantallas ultrapanorámicas; en el resto de pantallas del juego sigue sin saltar.
+- En ruso, Farmadex sigue sin poder leer los nombres de los mods, pero ahora lo dice en vez de
+  quedarse callado.
+
+**Reliquias al pasar el ratón**
+- En las rejillas apretadas el nombre de la reliquia sale pegado a la palabra «Relic» (o
+  «Relique» en francés) y no se reconocía. Ya se entiende.
+
 ## 0.6.7
 
 Esta versión trae una herramienta nueva: una lista de lo que más merece la pena vender en
