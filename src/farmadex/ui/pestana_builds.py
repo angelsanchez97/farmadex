@@ -590,6 +590,10 @@ class PestanaBuilds(QWidget):
         nueva = build is not self.build
         self.build = build
         if nueva:
+            # Una lectura nueva se ensena siempre: si la pestana se habia quedado en "Aumentos
+            # y sindicatos", el equipo, su nombre y "Builds en Overframe" no se veian.
+            if self.pila.currentIndex() != 0:
+                self.ver("build")
             self._apuntar_idioma(build)
             # Una lectura nueva manda: si reconocio el equipo, se olvida el elegido a mano.
             if build.equipo is not None:
