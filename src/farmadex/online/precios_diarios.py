@@ -306,13 +306,26 @@ class PreciosDiarios:
         rango_max = objeto.get("r")
         if subtipo is None and objeto.get("s"):
             subtipo = objeto["s"][0]
+        # Unos pocos mods tienen variante ("regular"/"atragraph"): warframe.market separa sus
+        # ordenes por variante, pero las ventas cerradas las da juntas, sin variante. Esas
+        # estadisticas se ensenan con la variante normal (la primera), nunca con la rara.
+        normal = bool(objeto.get("s")) and subtipo == objeto["s"][0]
+
+        def de(r):
+            propios = mercados.get(_clave(r, subtipo))
+            juntos = mercados.get(_clave(r, None)) if normal else None
+            if isinstance(propios, list) and isinstance(juntos, list):
+                return [a if a is not None else b for a, b in zip(propios, juntos)]
+            return propios if propios is not None else juntos
+
         if rango is None and rango_max is not None:
             rango = rango_max
-            if _clave(rango, subtipo) not in mercados:
+            if de(rango) is None:
                 # Sin datos al rango maximo: el mas alto que tenga alguno.
-                vistos = [r for r, s in map(_partir_clave, mercados) if r is not None and s == subtipo]
+                vistos = [r for r, s in map(_partir_clave, mercados)
+                          if r is not None and (s == subtipo or (normal and s is None))]
                 rango = max(vistos) if vistos else rango
-        valores = mercados.get(_clave(rango, subtipo))
+        valores = de(rango)
         if valores is None and rango_max is None and rango is not None:
             valores = mercados.get(_clave(None, subtipo))  # piden rango de algo sin rangos
             rango = None if valores is not None else rango

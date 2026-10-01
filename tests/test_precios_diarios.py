@@ -374,3 +374,21 @@ def qapp_precios():
     from PySide6.QtWidgets import QApplication
 
     return QApplication.instance() or QApplication([])
+
+
+def test_mods_con_variante_juntan_ordenes_y_ventas_cerradas(tmp_path):
+    doc = _doc()
+    doc["objetos"]["vitality"] = {"n": "Vitality", "r": 10, "s": ["regular", "atragraph"], "t": ["mod"], "p": {
+        "10": [None, None, None, None, None, None, 15, 54, 36.4, 188, 39, 30, 17],
+        "10|regular": [40, 45, 20, 9, 1, 23, None, None, None, None, None, None, None],
+        "10|atragraph": [250, 250, None, 1, 0, 1, None, None, None, None, None, None, None],
+        "0": [None, None, None, None, None, None, 2, 5, 2.6, 14, 2.5, 8, 3],
+    }}
+    p = _cargada(tmp_path, doc)
+    v = p.buscar("vitality")
+    assert (v.rango, v.subtipo, v.venta_min, v.min_30d, v.max_30d, v.volumen_30d) == (10, "regular", 40, 15, 54, 188)
+    rara = p.buscar("vitality", subtipo="atragraph")
+    assert rara.venta_min == 250 and rara.min_30d is None  # las ventas cerradas no se le atribuyen
+    r0 = p.buscar("vitality", 0)
+    assert r0.venta_min is None and r0.min_30d == 2
+    assert p.rangos("vitality") == [0, 10]
