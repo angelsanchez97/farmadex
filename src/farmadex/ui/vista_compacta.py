@@ -542,6 +542,10 @@ class VistaCompacta(QWidget):
             f"<div style='margin-top:3px'>{' '.join(etiquetas)}</div>",
             f"<div style='margin-top:6px'>{self._donde(datos)}</div>",
         ]
+        # Un aumento: sindicato, rango y coste (y si ya puedes comprarlo, si se sabe).
+        aumento = ficha_detalles.bloque_aumento(self.con, item["id"]) if item["categoria"] == "Mods" else ""
+        if aumento:
+            lineas.append(aumento)
         if not con_nombre:  # desplegado en la lista: el nombre ya esta en su cabecera
             lineas.pop(0)
         if self._precio_html:

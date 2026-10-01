@@ -31,6 +31,7 @@ import sqlite3
 from dataclasses import dataclass, field
 
 from ..idiomas import es_castellano, t
+from . import nombres_juego
 
 # -- que hace cada mod, leido de su efecto al rango maximo (en ingles, el texto de WFCD) --
 
@@ -267,13 +268,21 @@ def _detalles(con: sqlite3.Connection, item_id: int) -> dict:
     return datos if isinstance(datos, dict) else {}
 
 
-def _nombre(nombre_es: str | None, nombre_en: str | None) -> str:
+def _nombre(nombre_es: str | None, nombre_en: str | None, con: sqlite3.Connection | None = None,
+            item_id: int | None = None) -> str:
+    """El nombre como lo ensena el juego: con `con` e `item_id`, en el idioma del juego
+    (datos/nombres_juego.py); sin ellos, castellano o ingles segun la interfaz."""
     if es_castellano():
-        return nombre_es or nombre_en or ""
-    return nombre_en or nombre_es or ""
+        respaldo = nombre_es or nombre_en or ""
+    else:
+        respaldo = nombre_en or nombre_es or ""
+    if con is not None and item_id:
+        return nombres_juego.nombre(con, item_id, respaldo)
+    return respaldo
 
 
-def _mod_desde(item_id: int, nombre_en: str, nombre_es: str | None, datos: dict, fuentes: int = 0) -> Mod:
+def _mod_desde(item_id: int, nombre_en: str, nombre_es: str | None, datos: dict, fuentes: int = 0,
+               con: sqlite3.Connection | None = None) -> Mod:
     info = datos.get("mod") or datos.get("arcano") or {}
     efectos = (info.get("efecto") or {}).get("en") or []
     efecto = efectos[-1] if efectos else ""
@@ -281,7 +290,7 @@ def _mod_desde(item_id: int, nombre_en: str, nombre_es: str | None, datos: dict,
     compat = info.get("compat") or ""
     if compat == "AURA":
         clases.add("aura")
-    return Mod(item_id=item_id, nombre_en=nombre_en or "", nombre=_nombre(nombre_es, nombre_en), compat=compat,
+    return Mod(item_id=item_id, nombre_en=nombre_en or "", nombre=_nombre(nombre_es, nombre_en, con, item_id), compat=compat,
                rareza=info.get("rareza") or "", polaridad=info.get("polaridad") or "", drenaje=info.get("drenaje"),
                efecto=efecto, clases=clases, elementos=elementos, corrupto=corrupto, lineas=lineas, fuentes=fuentes)
 
@@ -293,7 +302,7 @@ def cargar_mod(con: sqlite3.Connection, item_id: int) -> Mod | None:
         return None
     if not fila:
         return None
-    return _mod_desde(item_id, fila[0], fila[1], _detalles(con, item_id))
+    return _mod_desde(item_id, fila[0], fila[1], _detalles(con, item_id), con=con)
 
 
 def cargar_equipo(con: sqlite3.Connection, item_id: int) -> Equipo | None:
@@ -305,7 +314,7 @@ def cargar_equipo(con: sqlite3.Connection, item_id: int) -> Equipo | None:
     if not fila:
         return None
     datos = _detalles(con, item_id)
-    return Equipo(item_id=item_id, nombre_en=fila[0] or "", nombre=_nombre(fila[1], fila[0]), categoria=fila[2] or "",
+    return Equipo(item_id=item_id, nombre_en=fila[0] or "", nombre=_nombre(fila[1], fila[0], con, item_id), categoria=fila[2] or "",
                   tipo=fila[3] or "", arma=datos.get("arma") or {}, warframe=datos.get("warframe") or {})
 
 
@@ -417,11 +426,11 @@ def nombres_de(con: sqlite3.Connection, nombres_en: list[str]) -> str:
     salida = []
     for nombre_en in nombres_en:
         try:
-            fila = con.execute("SELECT nombre_es FROM items WHERE nombre_en = ? AND categoria = 'Mods' "
-                               "AND nombre_es IS NOT NULL LIMIT 1", (nombre_en,)).fetchone()
+            fila = con.execute("SELECT nombre_es, id FROM items WHERE nombre_en = ? AND categoria = 'Mods' "
+                               "ORDER BY (nombre_es IS NULL) LIMIT 1", (nombre_en,)).fetchone()
         except sqlite3.Error:
             fila = None
-        salida.append(_nombre(fila[0] if fila else None, nombre_en))
+        salida.append(_nombre(fila[0] if fila else None, nombre_en, con, fila[1] if fila else None))
     return ", ".join(salida)
 
 
@@ -536,7 +545,8 @@ _CACHE_MODS: dict[int, list[Mod]] = {}
 
 
 def _todos_los_mods(con: sqlite3.Connection) -> list[Mod]:
-    clave = id(con)
+    # Los nombres van dentro: otro idioma del juego es otra lista.
+    clave = (id(con), nombres_juego.idioma())
     if clave in _CACHE_MODS:
         return _CACHE_MODS[clave]
     fuentes: dict[int, int] = {}
@@ -558,7 +568,8 @@ def _todos_los_mods(con: sqlite3.Connection) -> list[Mod]:
             d = json.loads(datos)
         except (TypeError, ValueError):
             continue
-        mods.append(_mod_desde(item_id, nombre_en, nombre_es, d if isinstance(d, dict) else {}, fuentes.get(item_id, 0)))
+        mods.append(_mod_desde(item_id, nombre_en, nombre_es, d if isinstance(d, dict) else {}, fuentes.get(item_id, 0),
+                               con=con))
     _CACHE_MODS.clear()
     _CACHE_MODS[clave] = mods
     return mods

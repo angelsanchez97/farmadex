@@ -144,6 +144,11 @@ POR_DEFECTO = {
     "aviso_lectura": True,
     # La vista completa se cerro maximizada: vuelve a abrirse asi (ui/overlay.py).
     "overlay_maximizada": False,
+    # Idioma en que se ensenan los nombres de mods y arcanos de la pestana Build y del
+    # diccionario de aumentos: "auto" = el del juego (el de la ultima pantalla de mejoras
+    # leida, que se apunta en "idioma_juego_visto") y, si aun no se sabe, el de la interfaz.
+    "idioma_juego": "auto",
+    "idioma_juego_visto": "",
 }
 
 

@@ -118,6 +118,7 @@ def html_detalles(con: sqlite3.Connection | None, item: dict | None, compacto: b
         partes.append(bloque_warframe(datos["warframe"], compacto))
     if "mod" in datos:
         partes.append(bloque_efecto(datos["mod"], compacto, es_mod=True))
+        partes.append(bloque_aumento(con, item.get("id")))
     if "arcano" in datos:
         partes.append(bloque_efecto(datos["arcano"], compacto, es_mod=False))
     return "".join(p for p in partes if p)
@@ -208,7 +209,7 @@ def bloques(con: sqlite3.Connection | None, item: dict | None) -> dict:
         salida["warframe"] = bloque_warframe(datos["warframe"], titulo=False, con_habilidades=False)
         salida["habilidades"] = html_habilidades(datos["warframe"])
     if "mod" in datos:
-        salida["mod"] = bloque_efecto(datos["mod"], es_mod=True, titulo=False)
+        salida["mod"] = bloque_efecto(datos["mod"], es_mod=True, titulo=False) + bloque_aumento(con, item.get("id"))
     if "arcano" in datos:
         salida["arcano"] = bloque_efecto(datos["arcano"], es_mod=False, titulo=False)
     return {k: v for k, v in salida.items() if v}
@@ -342,6 +343,26 @@ def html_habilidades(wf: dict | None) -> str:
                      f"<td><b>{html.escape(nombre)}</b><br>"
                      f"<span style='color:{p['suave']}'>{html.escape(desc)}</span></td></tr>")
     return _tabla(filas)
+
+
+def bloque_aumento(con: sqlite3.Connection | None, item_id: int | None) -> str:
+    """Si el mod es un aumento: de que warframe o arma es, que sindicato lo vende, a que
+    rango y por cuanto, y (si el perfil leido trae tu rango) si ya puedes comprarlo.
+    Cadena vacia si no es un aumento (datos/aumentos.py)."""
+    try:
+        from ..datos import aumentos
+
+        lineas = aumentos.lineas(con, item_id, aumentos.rangos_del_perfil()) if aumentos.de(con, item_id) else []
+    except Exception:  # noqa: BLE001 - un indice raro no rompe la ficha
+        return ""
+    if not lineas:
+        return ""
+    p = PALETA
+    filas = [f"<div style='margin:2px 0 0 4px'><b>{html.escape(lineas[0][0])}</b></div>"]
+    for texto, tinta in lineas[1:]:
+        estilo = f" style='color:{p[tinta]}'" if tinta in p else ""
+        filas.append(f"<div style='margin:2px 0 0 4px'><span{estilo}>{html.escape(texto)}</span></div>")
+    return "<div style='margin:6px 0 6px 0'>" + "".join(filas) + "</div>"
 
 
 def bloque_efecto(datos: dict, compacto: bool = False, es_mod: bool = True, titulo: bool = True) -> str:
