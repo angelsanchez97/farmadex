@@ -144,6 +144,11 @@ POR_DEFECTO = {
     "aviso_lectura": True,
     # La vista completa se cerro maximizada: vuelve a abrirse asi (ui/overlay.py).
     "overlay_maximizada": False,
+    # Lo que sale solo en el juego sin atajo (captura/vista.py): precio al ver un objeto
+    # comerciable, panel al abrir un agrietado y lectura de la build al abrir mejoras.
+    "vista_precio_auto": True,
+    "vista_rivens_auto": True,
+    "vista_builds_auto": True,
 }
 
 
