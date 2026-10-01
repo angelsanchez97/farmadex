@@ -1198,6 +1198,11 @@ class PestanaAjustes(QWidget):
             "ni el orden de los sitios."
         ))
         self._meter("datos", self._grupo("Datos del juego"), datos)
+        # Precios diarios de warframe.market: fecha del dato y cuenta atras (ui/panel_precios.py).
+        from .panel_precios import PanelPrecios
+
+        self.panel_precios = PanelPrecios()
+        self._contenido["datos"].addWidget(self.panel_precios)
 
         # -- avanzado (plegado): mantenimiento que casi nadie necesita --------------------
         self.boton_avanzado = QPushButton()
@@ -1493,6 +1498,7 @@ class PestanaAjustes(QWidget):
         self._textos_prioridad()
         self._plegar_avanzado(self.boton_avanzado.isChecked())
         self.vista_previa.retraducir()
+        self.panel_precios.retraducir()
         self._pintar_aspecto()
         self._ajustar_ancho_secciones()
         self.aviso_hotkey.setText("")

@@ -1,0 +1,59 @@
+# Foto diaria de precios de warframe.market para Farmadex.
+#
+# Cada dia a las 00:00 UTC (GitHub puede retrasar los cron unos minutos) descarga
+# precios en vivo y estadisticas de 30 dias de todos los objetos comerciables,
+# comprueba el fichero y lo deja como adjunto de la release fija "precios":
+#   https://github.com/<repo>/releases/download/precios/precios.json.gz
+#   https://github.com/<repo>/releases/download/precios/precios_version.json
+# Farmadex mira primero precios_version.json (pequeno) y solo baja el grande si
+# es de otro dia y su SHA-256 cuadra.
+#
+# La release "precios" es prerelease y nunca "latest": el actualizador de la
+# aplicacion lee /releases/latest y no debe confundirla con una version.
+name: Precios diarios
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: precios
+  cancel-in-progress: false
+
+jobs:
+  generar:
+    runs-on: ubuntu-latest
+    # Una pasada completa ronda los 50-60 min a 2.5 peticiones/s; con reintentos
+    # por 429 puede alargarse. El limite de un job alojado son 6 h.
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: herramientas/precios
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Generar precios
+        run: python herramientas/precios/generar.py --salida salida/precios.json.gz
+
+      - name: Validar antes de publicar
+        run: python herramientas/precios/generar.py --validar salida/precios.json.gz
+
+      - name: Publicar en la release "precios"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view precios >/dev/null 2>&1; then
+            gh release create precios --title "Precios diarios (automatico)" \
+              --notes "Foto diaria de precios de warframe.market que usa Farmadex. Se reemplaza sola cada dia a las 00:00 UTC." \
+              --prerelease --latest=false
+          fi
+          # Primero el grande y despues la version: un cliente que lea la version nueva
+          # ya encuentra el fichero que le corresponde.
+          gh release upload precios salida/precios.json.gz --clobber
+          gh release upload precios salida/precios_version.json --clobber
