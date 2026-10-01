@@ -943,6 +943,7 @@ class VentanaOverlay(QWidget):
         self.vigilante.evento.connect(self.lector_pasivo.evento)
         self.vigilante.pantalla.connect(self.hover_reliquias.pantalla_juego)
         self.vigilante.pantalla.connect(self.vigia_vistas.pantalla_juego)
+        self.vigilante.evento.connect(self.vigia_vistas.evento)
         self.vigilante.arranque.connect(self._arranque_juego)
         self.vigilante.start()
 

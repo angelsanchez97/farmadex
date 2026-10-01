@@ -101,16 +101,6 @@ class LectorPasivo(QObject):
         self._temporizador.timeout.connect(self.tic)
         self._temporizador.start()
         log.info("Lector pasivo en marcha (perfil=%s, inventario=%s)", self.activo_perfil, self.activo_inventario)
-        # El motor de fondo se carga ya, con el arranque, y no en la primera lectura: cargarlo
-        # a mitad de partida le quitaba la CPU a la lectura que tocase en ese momento (medido
-        # con la autoprueba: unas recompensas de 150 ms que se iban a mas de 500).
-        QTimer.singleShot(0, self._precalentar)
-
-    def _precalentar(self) -> None:
-        try:
-            self.motor.precalentar()
-        except Exception as e:  # noqa: BLE001 - es solo un calentamiento: se cargara al leer
-            log.debug("El motor OCR de fondo no se pudo precalentar: %s", e)
 
     @Slot()
     def parar(self) -> None:

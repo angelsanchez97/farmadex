@@ -144,3 +144,26 @@ def test_la_build_automatica_no_abre_la_ventana_y_el_atajo_si():
     VentanaOverlay.leer_build(v)
     VentanaOverlay._build_leida(v, build)
     assert llamadas == [("leer", True), "pestana", "mostrar", "modo", "ir_a"]
+
+
+def test_el_vigia_no_mira_mientras_hay_recompensas_de_reliquia(monkeypatch):
+    """Con la pantalla de recompensas abierta (aviso de EE.log) el vigia se queda quieto."""
+    from farmadex.captura import vista
+
+    v = vista.VigiaVistas("rapidocr", precio=True, rivens=True, builds=True)
+    miradas = []
+    monkeypatch.setattr(v, "_ventana_juego", lambda: miradas.append(1) or None)
+    monkeypatch.setattr(v, "_juego_detras", lambda: None)
+    v.tic()
+    assert miradas == [1]
+    v.evento("reliquia_recompensas")
+    v.tic()
+    assert miradas == [1]  # ni siquiera busca la ventana del juego
+    v.evento("reliquia_elegida")
+    v.tic()
+    assert miradas == [1, 1]
+    v.evento("reliquia_abierta")
+    v._reliquia_hasta -= vista.PAUSA_RELIQUIA_S + 1  # el aviso de cierre no llego: caduca solo
+    v.tic()
+    assert len(miradas) == 3
+    v.deleteLater()

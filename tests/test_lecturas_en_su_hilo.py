@@ -146,7 +146,16 @@ def ventana(app, con, tmp_path, monkeypatch):
     v._arrancar_captura()
     yield v
     v.hover_reliquias.parar()
-    for hilo in (v.hilo_captura, getattr(v, "hilo_pasivo", None)):
+    # Tambien los hilos de lo que sale solo (vigia de vistas, red del agrietado) y del chat:
+    # un QThread que sigue vivo cuando acaba el proceso de pruebas lo tumba al salir.
+    for nombre in ("vistas", "servicio_chat"):
+        servicio = getattr(v, nombre, None)
+        if servicio is not None:
+            try:
+                servicio.cerrar()
+            except RuntimeError:  # ya lo cerro la propia prueba (cerrar_de_verdad)
+                pass
+    for hilo in (v.hilo_captura, getattr(v, "hilo_pasivo", None), getattr(v, "hilo_vista", None)):
         if hilo is not None:
             hilo.quit()
             hilo.wait(3000)

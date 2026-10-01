@@ -437,6 +437,11 @@ class Quieta:
 # -- el vigia -------------------------------------------------------------------------
 
 
+# Tras el aviso de EE.log de una pantalla de reliquia, cuanto se deja de mirar como mucho
+# (si el aviso de que se cerro no llega). Igual que el lector pasivo.
+PAUSA_RELIQUIA_S = 20.0
+
+
 class VigiaVistas(QObject):
     """Vive en su hilo. `iniciar()` arranca el temporizador; todo lo demas va por senales."""
 
@@ -484,6 +489,7 @@ class VigiaVistas(QObject):
         self.franja_centro = Quieta()
         self._riven_a_la_vista = False
         self._build_a_la_vista = False
+        self._reliquia_hasta = 0.0  # monotonic hasta el que hay una pantalla de reliquia
         # medidas
         self.sondeos = 0
         self.lecturas = {"precio": 0, "riven": 0, "build": 0}
@@ -532,6 +538,17 @@ class VigiaVistas(QObject):
     @Slot(str, str)
     def pantalla_juego(self, accion: str, nombre: str) -> None:
         self.pantalla_log = nombre if accion == "abierta" else ("pausa" if accion == "pausa" else None)
+
+    @Slot(str)
+    def evento(self, nombre: str) -> None:
+        """Los avisos de EE.log de la pantalla de recompensas de reliquia: mientras esta
+        abierta no se mira nada. Ahi no hay precio, agrietado ni build que sacar, y una
+        lectura del vigia a la vez que la de las recompensas la hacia esperar (medido con la
+        autoprueba y el PC cargado: de 150 ms a mas de 500)."""
+        if nombre in ("reliquia_abierta", "reliquia_recompensas"):
+            self._reliquia_hasta = time.monotonic() + PAUSA_RELIQUIA_S
+        elif nombre in ("reliquia_cerrada", "reliquia_elegida"):
+            self._reliquia_hasta = 0.0
 
     @property
     def activo(self) -> bool:
@@ -600,6 +617,8 @@ class VigiaVistas(QObject):
     def tic(self) -> None:
         if self._ocupado or not self.activo:
             return
+        if time.monotonic() < self._reliquia_hasta:
+            return  # pantalla de recompensas de reliquia: la CPU es para leerlas
         self._ocupado = True
         try:
             hwnd = self._ventana_juego()
