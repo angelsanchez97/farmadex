@@ -1,5 +1,126 @@
 # Cambios
 
+## 0.6.6
+
+Esta versión va de precios al instante. Farmadex guarda cada día los precios de warframe.market en
+tu ordenador y los enseña sin esperas allí donde los necesitas: en el chat del juego, al mirar un
+objeto, al abrir un agrietado. También llegan la build colocada como en el juego, un diccionario de
+aumentos y los recursos con meta.
+
+Dos cosas vienen apagadas y solo funcionan si las enciendes tú en Ajustes: el conteo automático de
+recursos al acabar la misión (está en pruebas) y lo que mira el portapapeles o guarda historial del
+chat.
+
+**Precios al instante**
+- Farmadex guarda ahora cada día una foto de los precios de warframe.market de todo lo que se puede
+  comerciar: a cuánto lo venden y lo compran los jugadores conectados y, de las ventas cerradas del
+  último mes, lo más barato, lo más caro y la media. En mods y arcanos va por rango.
+- Así los precios salen al momento, sin esperar a que conteste la web del mercado cada vez.
+- La foto se prepara sola cada noche y Farmadex la descarga en segundo plano poco después de
+  medianoche (hora UTC), o al abrirlo si la que tienes es de otro día. Si la del día aún no está
+  lista o no hay conexión, sigue con la anterior, dice de qué día es y lo vuelve a intentar más
+  tarde sin molestar.
+- En Ajustes > Datos, el nuevo apartado «Precios del mercado» dice de cuándo son tus precios, cuánto
+  falta para la próxima actualización y tiene un botón para actualizarlos a mano.
+- Si todavía no hay ninguna foto guardada, o juegas en una plataforma que no es PC, los precios se
+  siguen consultando en vivo como hasta ahora.
+- Allí donde sale un precio guardado se lee que viene de warframe.market y de cuándo es el dato.
+
+**Precios en el chat del juego**
+- Pasa el ratón por un objeto del chat y sabrás lo que vale. Al dejar el cursor sobre cualquier
+  objeto entre corchetes del chat de Warframe sale al momento una tarjeta con lo más barato y lo
+  más caro a lo que se ha vendido este mes y a cuánto se vende y se compra ahora. Si es un mod o un
+  arcano lo ves sin subir y al máximo. Vale para piezas prime, sets, reliquias, mods, arcanos y
+  también agrietados: del nombre del agrietado saca sus estadísticas y te dice por cuánto se están
+  vendiendo los parecidos.
+- No hace falta pulsar nada ni esperar, y no le pesa al juego: Farmadex solo mira un trocito de
+  pantalla junto al cursor cuando paras el ratón, y solo lee algo si ahí hay un enlace del chat
+  resaltado.
+- Si Farmadex no está seguro de qué objeto es, no enseña nada. Y si no tiene precio de algo, lo
+  dice ("sin datos") en vez de inventárselo.
+- Historial del chat (opcional, viene apagado). Si lo enciendes en Ajustes, apunta qué objetos has
+  mirado, su precio, la hora y quién lo escribió. Se queda solo en tu ordenador y se borra con un
+  botón. Viene apagado porque guarda nombres de otros jugadores.
+
+**Precios de lo que copias (opcional, viene apagado)**
+- Copia tu mensaje de venta y mira si vas bien de precio. Si lo enciendes en Ajustes, al copiar un
+  texto de venta ("WTS [Loki Prime] 100p", "Vendo set de Loki Prime y Gracia Arcana rango 5"…) sale
+  a la derecha una lista con el precio de cada cosa al lado de lo que pides tú.
+- Entiende cuándo hablas del set completo, cuándo dices un rango concreto ("R5", "rango 5", "max")
+  y los agrietados por su nombre ("Rubico Critacan"), en español, en inglés y con los nombres del
+  juego en otros idiomas. Lo que no reconoce lo marca como "no reconocido".
+- Para esto Farmadex mira el texto que copias, y nada más: no lo guarda ni lo manda a ningún sitio.
+  Solo se entera cuando copias algo, y solo si lo has encendido.
+
+**Farmadex mira por ti: precios, agrietados y builds que salen solos**
+- Precio al ver un objeto. Deja el ratón encima de un mod, un arcano o una pieza o plano prime (en
+  el inventario, en el comercio, en el arsenal...) y, si el juego lo marca como intercambiable,
+  Farmadex saca al lado un recuadro con lo que piden y lo que ofrecen y lo más barato y lo más caro
+  del último mes. Si el objeto tiene rangos, lo enseña sin rango y al rango máximo. En las piezas
+  prime añade lo que cuesta el set completo. No hay que pulsar nada.
+- Primero sale "Leyendo…" y enseguida el dato. Si Farmadex no está seguro de qué objeto es, no
+  enseña ningún precio: prefiere callar a darte el de otra cosa.
+- Agrietados que se evalúan solos. Al abrir un agrietado (al revelarlo, al ciclarlo o desde un
+  enlace del chat) aparece a la izquierda, a media altura, un panel con su nota, lo que piden en
+  warframe.market por otros parecidos, la lista de esas subastas y una comparación clara: si tu
+  tirada está por encima o por debajo de la media de los parecidos y a cuántos supera. Si hay pocas
+  subastas para comparar, te lo dice en vez de inventarse un veredicto.
+- La build se lee sola, sin molestarte. Al entrar en Mejoras del arsenal, Farmadex lee la build sin
+  que pulses nada y te avisa con un recuadro pequeño que no te quita el juego de delante ni abre la
+  ventana. Cuando quieras verla entera, pulsa el atajo de siempre: ese sí abre la ventana, como
+  hasta ahora.
+- Nada de esto pesa mientras juegas: Farmadex solo echa un vistazo cuando el ratón se queda quieto
+  sobre algo o cuando cambia la pantalla de un menú, y durante la partida no lee nada.
+- Las tres cosas vienen encendidas y se pueden apagar por separado en Ajustes > Datos del juego,
+  junto a las demás lecturas automáticas.
+- Farmadex pregunta con calma: las búsquedas de subastas de agrietados van de pocas en pocas y lo
+  que ya ha preguntado lo recuerda un rato, para respetar las normas de warframe.market. Si miras
+  muchos agrietados seguidos, el precio de los parecidos puede tardar un poco más en salir.
+- Lo que todavía no hace: no lee el rango exacto del objeto que miras (el juego lo pinta con rombos,
+  no con números), y con el juego en ruso la build no se lee sola.
+
+**Build**
+- Tu build, colocada como en el juego. Al leer la pantalla de mejoras, la pestaña Build ya no te
+  enseña los mods en una lista cualquiera: los pinta en su sitio, igual que los ves en Warframe.
+  Los huecos de mods en sus dos filas, el aura y el exilus arriba (o la postura, si es un arma
+  cuerpo a cuerpo) y los arcanos a la derecha. Vale para warframes y para armas.
+- Del mismo tamaño que en el juego. Con la ventana maximizada, las tarjetas de los mods salen del
+  tamaño que tienen en tu pantalla de Warframe, sea cual sea tu monitor. Si la ventana es más
+  pequeña, todo se encoge a la vez sin deformarse.
+- Si no sabe dónde va un mod, te lo dice. Cuando Farmadex no puede saber en qué hueco está cada mod
+  (por ejemplo, si solo hay uno o dos a la vista), los muestra en el orden en que los leyó y te
+  avisa, en vez de colocarlos al azar. Y un hueco donde no leyó nada se queda en blanco, sin
+  asegurar que esté vacío.
+- Los nombres, en el idioma de tu juego. Si juegas en español, los mods y los arcanos salen en
+  español aunque tengas Farmadex o Windows en otro idioma. Farmadex lo deduce solo de lo que lee en
+  pantalla, y si se equivoca puedes elegir el idioma a mano en la propia pestaña. Esto vale también
+  para «¿Está bien mi build?» y para la «Build básica».
+- Nuevo: diccionario de aumentos y sindicatos. Dentro de Build hay una vista nueva con todos los
+  mods de aumento de warframes y de armas. Puedes buscar por el nombre en español, en inglés o en
+  otro idioma, por el warframe o el arma, o por el sindicato, y ver qué sindicato lo vende, a qué
+  rango y cuánto cuesta. Si un dato no está, pone «no se sabe».
+- El sindicato de un aumento, siempre a mano. Cuando el objeto que lees o buscas es un aumento, su
+  ficha y el recuadro de la vista pequeña te dicen de qué sindicato sale y a qué rango. Y si llevas
+  aumentos en la build leída, aparece debajo de los mods.
+- ¿Puedo comprarlo ya? Si has leído tu perfil y Farmadex conoce tu rango en ese sindicato, te dice
+  si ya llegas o todavía no. Si no lo conoce, no se lo inventa.
+
+**Mis metas: recursos con meta**
+- Nuevo botón "Añadir un recurso con meta" en Mis metas > Objetivos. Escribes el nombre del recurso
+  (Plástidos, Neurodos, Placa de aleación…) en tu idioma, pones cuánto quieres reunir y listo: no
+  hace falta pasar por el buscador.
+- Cada recurso enseña su barra de progreso, cuánto te falta y dónde cae: los planetas, una misión
+  corta para farmearlo y, si lo suelta un jefe, cuál.
+- Con el lápiz corriges a mano lo que llevas cuando quieras, y el botón nuevo "Empezar de cero" lo
+  pone a 0 sin tocar la meta.
+- En pruebas, y apagado mientras no lo enciendas tú: "Contar al acabar la misión". Al terminar una
+  misión Farmadex mira la pantalla de resultados un momento y suma lo que hayas recogido de los
+  recursos que tienes como meta. Solo suma lo que lee con total seguridad; si una cantidad no la ve
+  clara, o el recurso no está a la vista, no la suma y te lo dice para que la apuntes tú con el +.
+  Cada misión cuenta una sola vez.
+- Lo dejamos en pruebas y apagado porque todavía no lo hemos podido comprobar jugando de verdad. Si
+  lo enciendes y ves que suma mal o que no suma, cuéntanoslo.
+
 ## 0.6.5
 
 Esta versión sale de lo que nos contó quien la prueba a diario: atajos que no se atascan y se

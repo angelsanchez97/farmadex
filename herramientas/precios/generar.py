@@ -183,7 +183,14 @@ def _num(valor):
 
 
 def resumir_ordenes(ordenes: list) -> dict[str, dict]:
-    """Por mercado (rango/subtipo): lo que ofrecen ahora los jugadores conectados."""
+    """Por mercado (rango/subtipo): lo que ofrecen ahora los jugadores conectados.
+
+    Los precios son siempre POR UNIDAD. Las reliquias, los arcanos, los peces y demas
+    objetos que se cambian por lotes llevan `perTrade` (6 = "de seis en seis") y su
+    `platinum` es el precio del lote entero: se divide, porque las ventas cerradas que
+    publica warframe.market van por unidad y, sin dividir, una reliquia que se vende a
+    5 p salia como "venden desde 30".
+    """
     grupos: dict[str, dict] = {}
     for o in ordenes or []:
         if not isinstance(o, dict) or o.get("visible") is False:
@@ -194,8 +201,11 @@ def resumir_ordenes(ordenes: list) -> dict[str, dict]:
         try:
             platino = float(o.get("platinum"))
             cantidad = int(o.get("quantity") or 1)
+            lote = int(o.get("perTrade") or 1)
         except (TypeError, ValueError):
             continue
+        if lote > 1:
+            platino = platino / lote
         g = grupos.setdefault(_clave(o.get("rank"), o.get("subtype")), {"sell": [], "buy": [], "cant": 0})
         if o.get("type") == "sell":
             g["sell"].append(platino)

@@ -1,5 +1,10 @@
 {
   "_comentario": "Textos da interface do Farmadex. Chave = texto em espanhol do código; valor = tradução. As {chaves} são variáveis e devem ficar como estão. Apague uma linha para voltar ao espanhol.",
+  "warframe.market · precios del {fecha} UTC": "warframe.market · preços de {fecha} UTC",
+  "Mods puestos": "Mods equipados",
+  "Pulsa {atajo} para verla entera en Farmadex.": "Prime {atajo} para a ver inteira no Farmadex.",
+  "Ábrela entera en Farmadex, en Herramientas > Build.": "Abre-a inteira no Farmadex, em Ferramentas > Build.",
+  "Leer sola la build al abrir la pantalla de mejoras (sale un recuadro pequeño, sin abrir la ventana)": "Ler a build sozinha ao abrir o ecrã de melhorias (aparece uma caixa pequena, sem abrir a janela)",
   "Agrietado: {nombre}": "Riven: {nombre}",
   "Apunta en este ordenador qué objetos has mirado en el chat, su precio, la hora y quién lo escribió. Viene apagado porque guarda nombres de otros jugadores. No sale de tu PC.": "Anota neste computador os itens que você olhou no chat, o preço, a hora e quem escreveu. Vem desligado porque guarda nomes de outros jogadores. Não sai do seu PC.",
   "Borrar el historial del chat": "Apagar o histórico do chat",

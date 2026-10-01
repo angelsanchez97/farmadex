@@ -106,3 +106,14 @@ def indice_poblado(con):
 
     indice.poblar_busqueda(con)
     return con, importador, drops
+
+
+@pytest.fixture(autouse=True)
+def _freno_de_subastas_limpio():
+    """El freno de busquedas de subastas es uno para todo el programa: que las peticiones
+    (falsas) de una prueba no hagan esperar a la siguiente."""
+    from farmadex.agrietados import mercado
+
+    mercado.FRENO_SUBASTAS.olvidar()
+    yield
+    mercado.FRENO_SUBASTAS.olvidar()

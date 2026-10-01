@@ -95,3 +95,30 @@ def test_combinar_y_validar(tmp_path):
     vacio = {**doc, "objetos": {}}
     ruta.write_bytes(gzip.compress(json.dumps(vacio).encode()))
     assert gen.validar(ruta, completo=False)  # sin el testigo no se publica
+
+
+def test_ordenes_por_lotes_dan_el_precio_por_unidad():
+    """Las reliquias se cambian de seis en seis: `platinum` es el lote entero, no la unidad.
+
+    Caso real (Lith K5, 01/10/2026): ventas cerradas a 5 p la unidad y ordenes de "36 p por
+    6". Sin dividir, salia "venden desde 30" al lado de "ventas de 30 dias: 4-14 p".
+    """
+    def lote(tipo, platino, por_trato, cantidad=6, subtipo="intact"):
+        o = _orden(tipo, platino, cantidad=cantidad, subtipo=subtipo)
+        o["perTrade"] = por_trato
+        return o
+
+    ordenes = [
+        lote("sell", 6, 1, 10), lote("sell", 10, 1, 4), lote("sell", 36, 6, 42), lote("sell", 42, 6, 48),
+        lote("buy", 31, 6, 720), lote("buy", 4, 1, 99),
+        lote("sell", 85, 6, 6, "radiant"), lote("buy", 36, 6, 120, "radiant"),
+    ]
+    r = gen.resumir_ordenes(ordenes)
+    assert r["|intact"]["venta_min"] == 6          # 36 p por 6 = 6 p la unidad
+    assert r["|intact"]["compra_max"] == 5.2       # 31 p por 6
+    assert r["|intact"]["cantidad_venta"] == 104
+    assert r["|radiant"]["venta_min"] == 14.2 and r["|radiant"]["compra_max"] == 6
+    # Sin `perTrade` (o con 1, o con algo raro) el precio se queda como viene.
+    raro = _orden("sell", 50)
+    raro["perTrade"] = None
+    assert gen.resumir_ordenes([raro])[""]["venta_min"] == 50

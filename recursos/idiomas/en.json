@@ -1,5 +1,10 @@
 {
   "_comentario": "Farmadex UI texts. Key = the Spanish text used in the code; value = the translation. {braces} are placeholders and must stay as they are. Delete a line to fall back to Spanish.",
+  "warframe.market · precios del {fecha} UTC": "warframe.market · prices from {fecha} UTC",
+  "Mods puestos": "Mods equipped",
+  "Pulsa {atajo} para verla entera en Farmadex.": "Press {atajo} to see it in full in Farmadex.",
+  "Ábrela entera en Farmadex, en Herramientas > Build.": "Open it in full in Farmadex, under Tools > Build.",
+  "Leer sola la build al abrir la pantalla de mejoras (sale un recuadro pequeño, sin abrir la ventana)": "Read the build on its own when you open the upgrades screen (a small box appears, the window does not open)",
   "Agrietado: {nombre}": "Riven: {nombre}",
   "Apunta en este ordenador qué objetos has mirado en el chat, su precio, la hora y quién lo escribió. Viene apagado porque guarda nombres de otros jugadores. No sale de tu PC.": "Keeps a note on this computer of the items you looked at in chat, their price, the time and who wrote it. It comes switched off because it stores other players' names. It never leaves your PC.",
   "Borrar el historial del chat": "Delete the chat history",

@@ -26,10 +26,13 @@ def _precios():
     except ImportError:
         return None
     try:
-        return precios_diarios.precios()
+        snapshot = precios_diarios.precios()
     except Exception:  # noqa: BLE001 - sin snapshot se dice "sin datos"
         log.exception("No se pudo abrir el snapshot de precios")
         return None
+    # `precios()` siempre devuelve la foto comun, aunque aun este vacia (sin descargar, o
+    # de otra plataforma): eso cuenta como "sin precios descargados", nunca como dato.
+    return snapshot if getattr(snapshot, "disponible", True) else None
 
 
 @dataclass
@@ -119,9 +122,9 @@ def texto_ahora(precio) -> str:
 
 
 def texto_fecha(fecha) -> str:
-    """'Precios del 30/09 00:00 UTC' o 'Sin precios descargados'."""
+    """'warframe.market · precios del 30/09 00:00 UTC' o 'Sin precios descargados'."""
     if not isinstance(fecha, datetime):
         return t("Sin precios descargados todavía")
     if fecha.tzinfo is None:
         fecha = fecha.replace(tzinfo=timezone.utc)
-    return t("Precios del {fecha} UTC", fecha=fecha.astimezone(timezone.utc).strftime("%d/%m %H:%M"))
+    return t("warframe.market · precios del {fecha} UTC", fecha=fecha.astimezone(timezone.utc).strftime("%d/%m %H:%M"))

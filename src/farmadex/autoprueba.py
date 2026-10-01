@@ -32,6 +32,10 @@ Opciones:
     --perfil FLUJO         perfila (cProfile) ese flujo y deja perfil_<flujo>.txt
     --depurar              registro con todo el detalle (DEBUG)
     --sin-red              toda la pasada sin conexion (arrancar sin internet)
+    --precios-reales       antes de cortar la red, baja la foto diaria de precios de la release
+                           de verdad (unica salida a internet de la pasada); luego se buscan
+                           precios en ella ya sin red (flujo precios_reales)
+    --precios-base URL     de donde bajarla (un servidor local de pruebas) en vez de GitHub
     --vigia-ms N           apunta las paradas de la ventana de mas de N ms (120 por defecto)
 
 Todo lo que escribe va dentro de <carpeta>: los datos (FARMADEX_DATOS, con su propio
@@ -57,7 +61,7 @@ ARGUMENTO = "--autoprueba"
 ARGUMENTO_CARGA = "--autoprueba-carga"
 
 FLUJOS = (
-    "instancia", "actualizar_al_abrir", "arranque", "recompensas", "cursor", "build", "agrietado",
+    "instancia", "actualizar_al_abrir", "precios_reales", "arranque", "recompensas", "cursor", "build", "agrietado",
     "hover", "vista_precio", "vista_riven", "vista_build", "vista_reposo", "tarjeta_app", "rafagas", "buscar", "fichas", "secciones", "modo_juego", "refrescos", "minimizar",
     "bienvenida", "guia", "cierre",
 )
@@ -106,7 +110,8 @@ CONSULTAS = (
 def _leer_argumentos(argv: list[str]) -> dict:
     opciones: dict = {"capturas": [], "hover": [], "solo": None, "nucleos": 0, "carga": 0,
                       "indice": None, "datos": None, "red_fixtures": None, "etiqueta": "", "perfil": None,
-                      "vigia_ms": 120, "sin_red": False, "vista": None}
+                      "vigia_ms": 120, "sin_red": False, "vista": None,
+                      "precios_reales": False, "precios_base": None}
     resto = [a for a in argv if a != ARGUMENTO]
     i = 0
     carpeta = None
@@ -116,7 +121,7 @@ def _leer_argumentos(argv: list[str]) -> dict:
         if a in ("--capturas", "--hover"):
             opciones[a[2:]].append(valor)
             i += 2
-        elif a in ("--indice", "--datos", "--red-fixtures", "--etiqueta", "--perfil", "--vista"):
+        elif a in ("--indice", "--datos", "--red-fixtures", "--etiqueta", "--perfil", "--vista", "--precios-base"):
             opciones[a[2:].replace("-", "_")] = valor
             i += 2
         elif a in ("--nucleos", "--carga", "--vigia-ms"):
@@ -130,6 +135,9 @@ def _leer_argumentos(argv: list[str]) -> dict:
             i += 1
         elif a == "--sin-red":
             opciones["sin_red"] = True
+            i += 1
+        elif a == "--precios-reales":
+            opciones["precios_reales"] = True
             i += 1
         elif a == "--solo":
             opciones["solo"] = set((valor or "").split(","))
@@ -909,6 +917,8 @@ class Autoprueba:
         self.red.modo_base = "sin_red" if self.op.get("sin_red") else "normal"
         self.red.modo = self.red.modo_base
         self.resultado["red"] = self.red.modo_base
+        if self.op.get("precios_reales"):
+            self._bajar_precios_reales()  # lo unico que sale a internet, antes de cortar la red
         self.red.instalar()
         self._blindar()
 
@@ -999,6 +1009,78 @@ class Autoprueba:
         instancia.soltar()
         datos["ok"] = datos["aparte"] and datos["adquirida"]
         self.flujo("instancia", datos)
+
+    def _bajar_precios_reales(self) -> None:
+        """Baja la foto diaria con el descargador de verdad (el mismo codigo que usa la app)."""
+        from .online import precios_diarios as pd
+
+        datos: dict = {}
+        try:
+            foto = pd.PreciosDiarios()
+            descargador = pd.Descargador(foto, base=self.op.get("precios_base") or None)
+            datos["url"] = descargador.base
+            t0 = time.perf_counter()
+            tarea = descargador.actualizar(manual=True)
+            datos["resultado"] = tarea.esperar(120)
+            datos["detalle"] = str(getattr(tarea, "detalle", "") or "")[:200]
+            datos["descarga_s"] = round(time.perf_counter() - t0, 2)
+            datos["fichero_bytes"] = foto.ruta.stat().st_size if foto.ruta.exists() else 0
+        except Exception as e:  # noqa: BLE001 - se apunta y el flujo lo da por fallido
+            datos["roto_descarga"] = f"{type(e).__name__}: {e}"
+        self._precios_reales = datos
+
+    def flujo_precios_reales(self) -> None:
+        """Con la red ya cortada: la foto bajada se carga del disco y contesta al instante."""
+        datos = dict(getattr(self, "_precios_reales", None) or {})
+        if not datos:
+            self.flujo("precios_reales", {"nota": "sin --precios-reales: no se sale a internet"})
+            return
+        from .chat import precios as chat_precios
+        from .online import precios_diarios as pd
+        from .ui import vista_objeto
+
+        pd._reiniciar_para_pruebas(None)  # como al abrir Farmadex otra vez: del disco, sin red
+        red_antes = len(self.red.peticiones)
+        t0 = time.perf_counter()
+        foto = pd.precios()
+        foto.cargado.wait(20)
+        datos["carga_ms"] = _ms(time.perf_counter() - t0)
+        datos["disponible"] = bool(foto.disponible)
+        datos["objetos"] = len(foto)
+        datos["fecha"] = str(foto.fecha)
+        slugs = [s for s in ("arcane_energize", "serration", "primed_continuity", "loki_prime_set",
+                             "rhino_prime_set", "lith_a1_relic", "galvanized_chamber", "molt_augmented")
+                 if s in foto] or list(foto.objetos())[:8]
+        tiempos, vistos, vacios = [], [], 0
+        for slug in slugs:
+            t1 = time.perf_counter()
+            filas_chat = chat_precios.filas(slug, None)
+            objeto = vista_objeto.ObjetoVisto(item_id=0, slug=slug, nombre=slug)
+            filas_vista = vista_objeto.filas_precio(objeto, vista_objeto._precios())
+            tiempos.append(_ms(time.perf_counter() - t1))
+            precio = foto.buscar(slug, foto.rango_max(slug))
+            if precio is None or not any(f.precio is not None for f in filas_chat):
+                vacios += 1
+            texto = " ".join(str(x) for fila in filas_vista for x in fila[1:])
+            vistos.append({"slug": slug, "venta_min": getattr(precio, "venta_min", None),
+                           "min_30d": getattr(precio, "min_30d", None), "max_30d": getattr(precio, "max_30d", None),
+                           "dice_fuente": "warframe.market" in texto})
+        # Lo que la foto no trae no sale: ni en el chat ni en el recuadro.
+        falso = "objeto_que_no_existe_en_el_mercado"
+        inventados = int(foto.buscar(falso) is not None) + sum(
+            1 for f in chat_precios.filas(falso, None) if f.precio is not None)
+        pie = chat_precios.texto_fecha(chat_precios.fecha_snapshot())
+        datos.update({
+            "buscados": len(slugs), "con_precio": len(slugs) - vacios, "inventados": inventados,
+            "tiempos": _resumen_tiempos(tiempos), "muestra": vistos[:4], "pie_chat": pie,
+            "peticiones_red_durante": len(self.red.peticiones) - red_antes,
+        })
+        datos["ok"] = bool(
+            datos.get("resultado") in ("nuevo", "al_dia", "aun_no_hay") and datos.get("fichero_bytes") and datos["disponible"] and datos["objetos"] > 1000
+            and slugs and not vacios and not inventados and "warframe.market" in pie
+            and all(v["dice_fuente"] for v in vistos) and datos["peticiones_red_durante"] == 0
+            and datos["tiempos"].get("max", 9999) <= 50)
+        self.flujo("precios_reales", datos)
 
     def flujo_actualizar_al_abrir(self) -> None:
         try:
@@ -2411,7 +2493,7 @@ class Autoprueba:
         l.append(f"secciones: primera vez {tiempos(d.get('primera'))}; despues {tiempos(d.get('tiempos'))}")
         for caso in f.get("refrescos", {}).get("casos", []):
             l.append(f"refresco {caso['que']}: {tiempos(caso['tiempos'])}")
-        for nombre in ("minimizar", "bienvenida", "guia", "instancia", "actualizar_al_abrir", "cierre"):
+        for nombre in ("minimizar", "bienvenida", "guia", "instancia", "actualizar_al_abrir", "precios_reales", "cierre"):
             d = {k: v for k, v in f.get(nombre, {}).items() if k not in ("casos",)}
             l.append(f"{nombre}: {json.dumps(d, ensure_ascii=False, default=str)[:400]}")
         congelaciones = [c for c in self.resultado.get("congelaciones", []) if c["flujo"] != "(autoprueba)"]

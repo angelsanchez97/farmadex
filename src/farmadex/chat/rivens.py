@@ -113,4 +113,10 @@ class ServicioRivens(QObject):
             pass
 
     def cerrar(self) -> None:
+        try:  # quien espere turno para pedir subastas deja de esperar
+            from ..agrietados.mercado import FRENO_SUBASTAS
+
+            FRENO_SUBASTAS.soltar()
+        except Exception:  # noqa: BLE001
+            pass
         self._hilos.shutdown(wait=False, cancel_futures=True)

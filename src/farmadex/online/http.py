@@ -63,7 +63,9 @@ class Cliente:
         self._cache: dict[str, tuple[float, object]] = {}
         self._cerrojo = threading.Lock()
 
-    def json(self, url: str, segundos_cache: float = 0.0, intentos: int = 3):
+    def json(self, url: str, segundos_cache: float = 0.0, intentos: int = 3, freno=None):
+        """`freno` (algo con `esperar()`) se pasa antes de cada peticion de verdad: lo que
+        sale de la cache no gasta turno."""
         if segundos_cache:
             with self._cerrojo:
                 guardado = self._cache.get(url)
@@ -72,6 +74,8 @@ class Cliente:
 
         ultimo: Exception | None = None
         for intento in range(intentos):
+            if freno is not None:
+                freno.esperar()
             self.limitador.esperar()
             try:
                 r = self.cliente.get(url)

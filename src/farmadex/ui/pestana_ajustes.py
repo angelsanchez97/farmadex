@@ -1101,7 +1101,7 @@ class PestanaAjustes(QWidget):
         self.vista_rivens.setChecked(bool(self.config.get("vista_rivens_auto", True)))
         self.vista_rivens.toggled.connect(lambda v: self._guardar("vista_rivens_auto", v))
         self.vista_builds = QCheckBox()
-        self._fijo(self.vista_builds.setText, "Leer sola la build al abrir la pantalla de mejoras")
+        self._fijo(self.vista_builds.setText, "Leer sola la build al abrir la pantalla de mejoras (sale un recuadro pequeño, sin abrir la ventana)")
         self.vista_builds.setChecked(bool(self.config.get("vista_builds_auto", True)))
         self.vista_builds.toggled.connect(lambda v: self._guardar("vista_builds_auto", v))
 

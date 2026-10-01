@@ -32,6 +32,7 @@ log = obtener("vista_objeto")
 
 SEGUNDOS_RECUADRO = 12.0  # si el juego no dice nada (raton quieto), el recuadro se va solo
 SUBASTAS_EN_PANEL = 6
+SEGUNDOS_RECUADRO_BUILD = 10.0  # el aviso de "build leida" se va solo
 
 
 def _precios():
@@ -45,10 +46,13 @@ def _precios():
     except Exception:  # noqa: BLE001 - modulo aun sin integrar o roto: sin precios
         return None
     try:
-        return precios_diarios.precios()
+        pd = precios_diarios.precios()
     except Exception:  # noqa: BLE001 - fichero ilegible: sin precios, se dice
         log.exception("No se pudo abrir el fichero diario de precios")
         return None
+    # `precios()` siempre devuelve algo, aunque aun no haya fichero bajado (o sea de otra
+    # plataforma): eso es "todavia no hay precios", no "warframe.market no tiene datos".
+    return pd if getattr(pd, "disponible", True) else None
 
 
 @dataclass
@@ -262,6 +266,26 @@ def filas_riven(d: DatosRiven) -> list[tuple]:
     return filas
 
 
+def filas_build(build, atajo: str = "") -> list[tuple]:
+    """Las filas del recuadro de "build leida sola": que se ha leido y como verla entera."""
+    equipo = getattr(getattr(build, "equipo", None), "nombre", "") or getattr(build, "equipo_texto", "") or ""
+    filas: list[tuple] = [("titulo", equipo or t("Build leída"), "acento")]
+    if equipo:
+        filas.append(("sub", t("Build leída")))
+    filas.append(("fila", t("Mods puestos"), str(len(getattr(build, "equipados", []) or []))))
+    arcanos = len(getattr(build, "arcanos", []) or [])
+    if arcanos:
+        filas.append(("fila", t("Arcanos"), str(arcanos)))
+    filas.append(("sep",))
+    if atajo:
+        from .campo_atajo import texto_legible
+
+        filas.append(("texto", t("Pulsa {atajo} para verla entera en Farmadex.", atajo=texto_legible(atajo))))
+    else:
+        filas.append(("texto", t("Ábrela entera en Farmadex, en Herramientas > Build.")))
+    return filas
+
+
 # -- red del agrietado (su hilo) ------------------------------------------------------
 
 
@@ -325,6 +349,10 @@ class ControladorVistas(QObject):
         self._zona_juego = zona_juego  # () -> QRect | None
         self.caja_precio: CajaJuego | None = None
         self.caja_riven: CajaJuego | None = None
+        self.caja_build: CajaJuego | None = None
+        self._temporizador_build = QTimer(self)
+        self._temporizador_build.setSingleShot(True)
+        self._temporizador_build.timeout.connect(self.esconder_build)
         self.objeto: ObjetoVisto | None = None
         self.riven: DatosRiven | None = None
         self._clave_riven = ""
@@ -351,10 +379,9 @@ class ControladorVistas(QObject):
             from ..online import precios_diarios
         except Exception:  # noqa: BLE001 - la zona de precios aun no esta: sin aviso
             return
-        observar = getattr(precios_diarios, "al_actualizar", None)
         try:
-            if observar is None:
-                observar = getattr(precios_diarios.precios(), "al_actualizar", None)
+            # `al_actualizar` es un metodo de la foto comun (PreciosDiarios).
+            observar = getattr(precios_diarios.precios(), "al_actualizar", None)
             if observar is not None:
                 observar(self._precios_nuevos.emit)
         except Exception:  # noqa: BLE001 - sin aviso, el recuadro se rehace la proxima vez
@@ -487,6 +514,35 @@ class ControladorVistas(QObject):
         if self.caja_riven is not None and self.caja_riven.isVisible():
             self.caja_riven.hide()
 
+    # -- build leida sola --
+
+    def mostrar_build(self, build, atajo: str = "") -> None:
+        """La build se ha leido sola: un recuadro pequeno que no coge el foco ni el raton.
+
+        La ventana de Farmadex no se abre ni viene al frente; la build queda puesta en
+        Herramientas > Build y el atajo la abre entera."""
+        if self.caja_build is None:
+            self.caja_build = CajaJuego(300)
+            try:
+                from .aviso_lectura import excluir_de_capturas
+
+                self.caja_build.winId()
+                excluir_de_capturas(self.caja_build)  # que la lectura de pantalla no lo vea
+            except Exception:  # noqa: BLE001 - sin exclusion sigue siendo un recuadro pequeno
+                log.debug("El recuadro de la build no se pudo sacar de las capturas")
+        self.caja_build.poner(filas_build(build, atajo))
+        x, y = colocar_panel_riven((self.caja_build.width(), self.caja_build.height()), self._zona())
+        self.caja_build.move(x, y)
+        self.caja_build.show()
+        self.caja_build.raise_()
+        self._temporizador_build.start(int(SEGUNDOS_RECUADRO_BUILD * 1000))
+
+    @Slot()
+    def esconder_build(self) -> None:
+        self._temporizador_build.stop()
+        if self.caja_build is not None and self.caja_build.isVisible():
+            self.caja_build.hide()
+
     # -- comun --
 
     def _medir(self, tipo: str, t_visto: float) -> None:
@@ -497,16 +553,23 @@ class ControladorVistas(QObject):
             self.mostrado.emit(tipo, ms)
 
     def rectangulos(self) -> list[QRect]:
-        return [c.geometry() for c in (self.caja_precio, self.caja_riven) if c is not None and c.isVisible()]
+        return [c.geometry() for c in (self.caja_precio, self.caja_riven, self.caja_build) if c is not None and c.isVisible()]
 
     def cerrar(self) -> None:
         self.esconder_precio()
         self.esconder_riven()
-        for caja in (self.caja_precio, self.caja_riven):
+        self.esconder_build()
+        for caja in (self.caja_precio, self.caja_riven, self.caja_build):
             if caja is not None:
                 caja.deleteLater()
-        self.caja_precio = self.caja_riven = None
+        self.caja_precio = self.caja_riven = self.caja_build = None
         if self.hilo is not None:
+            try:  # si la red del agrietado espera turno para pedir subastas, que no espere mas
+                from ..agrietados import mercado
+
+                mercado.FRENO_SUBASTAS.soltar()
+            except Exception:  # noqa: BLE001
+                pass
             self.hilo.quit()
             self.hilo.wait(2000)
             self.hilo = None

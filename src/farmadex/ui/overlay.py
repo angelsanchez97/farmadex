@@ -1644,12 +1644,17 @@ class VentanaOverlay(QWidget):
 
     def leer_build(self) -> None:
         """Atajo o boton de la pestana Build: lee la pantalla de mejoras del arsenal."""
+        self._build_sola = False
         self._leer_por_turno("build")
 
     def _build_vista_sola(self, _t_visto: float = 0.0) -> None:
-        """La pantalla de mejoras esta delante (captura/vista.py): como pulsar el atajo."""
+        """La pantalla de mejoras esta delante (captura/vista.py): se lee sola.
+
+        A diferencia del atajo, no abre ni trae al frente la ventana: el resultado sale en
+        un recuadro pequeno que no coge el foco (`ControladorVistas.mostrar_build`)."""
         self._t_build_sola = _t_visto
-        self._leer_por_turno("build")
+        self._build_sola = True
+        self._leer_por_turno("build", recuadro=False)
 
     def _zona_juego_qt(self):
         """El rectangulo del juego en pantalla (para colocar los recuadros), o None."""
@@ -1660,12 +1665,23 @@ class VentanaOverlay(QWidget):
         return QRect(r.x, r.y, r.ancho, r.alto) if r is not None else None
 
     def _build_leida(self, build) -> None:
+        sola, self._build_sola = getattr(self, "_build_sola", False), False
         self.builds.mostrar_build(build)
         if build.vacia:
             self.aviso_lectura.fallo("build", t(build.aviso) if getattr(build, "aviso", "") else
                                      t("No se reconoció nada en la pantalla de mejoras"))
             return
         self.aviso_lectura.listo("build")
+        if sola:
+            # Leida sin atajo: la ventana se queda como esta (ni se abre ni coge el foco).
+            # La build ya esta puesta en Herramientas > Build para cuando se abra.
+            vistas = getattr(self, "vistas", None)
+            if vistas is not None:
+                try:
+                    vistas.mostrar_build(build, self.config.get("hotkey_build", ""))
+                except Exception:  # noqa: BLE001 - el recuadro nunca tumba la lectura
+                    log.exception("No se pudo ensenar el recuadro de la build")
+            return
         self.mostrar()
         if self.modo != "completo":
             self.aplicar_modo("completo")
@@ -2814,6 +2830,12 @@ class VentanaOverlay(QWidget):
 
     def cerrar_de_verdad(self) -> None:
         log.info("Cerrando la ventana y los hilos de trabajo")
+        try:  # los hilos de red que esperen turno para pedir subastas dejan de esperar
+            from ..agrietados import mercado as mercado_agrietados
+
+            mercado_agrietados.FRENO_SUBASTAS.cerrar()
+        except Exception:  # noqa: BLE001 - cerrar no puede fallar por esto
+            log.exception("No se pudo soltar el freno de subastas")
         self._reloj_encima.stop()
         self._guardar_geometria()
         # El reproductor de guias que lanzo esta ventana (solo ese proceso, por su PID).

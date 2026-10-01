@@ -9,7 +9,11 @@
   mediana y volumen de cada arma (weeklyRivensPC.json). Cache de un dia.
 
 Limites: warframe.market publica 3 peticiones por segundo; aqui se hace 1 por
-segundo, que sobra para una consulta hecha a mano.
+segundo, que sobra para una consulta hecha a mano. La busqueda de subastas tiene un
+limite aparte y mucho mas bajo (unas 10-20 por minuto): TODAS las busquedas de
+subastas del programa (pestana de Agrietados, panel que sale solo en el juego, precios
+del chat y de las listas copiadas) pasan por `FRENO_SUBASTAS`, uno solo para todos, y
+lo ya pedido sale de la cache sin gastar turno.
 """
 
 from __future__ import annotations
@@ -35,6 +39,86 @@ BASE_V1 = "https://api.warframe.market/v1"
 URL_MEDIAS_DE = "https://www-static.warframe.com/repos/weeklyRivensPC.json"
 POR_SEGUNDO = 1.0
 CACHE_SUBASTAS = 600
+# Busquedas de subastas por minuto entre todo el programa (las reglas de warframe.market
+# hablan de 10-20; se usa el valor bajo).
+SUBASTAS_POR_MINUTO = 10
+
+
+class FrenoSoltado(RuntimeError):
+    """Se estaba esperando turno y el programa se cierra: la peticion no se hace."""
+
+
+class FrenoSubastas:
+    """Como mucho `maximo` peticiones cada `ventana` segundos, entre todos los hilos.
+
+    `esperar()` devuelve enseguida si hay turno; si no, duerme hasta que caduque la
+    peticion mas antigua de la ventana. Nunca se llama desde el hilo de la interfaz.
+    """
+
+    def __init__(self, maximo: int = SUBASTAS_POR_MINUTO, ventana: float = 60.0, reloj=time.monotonic):
+        self.maximo = max(1, int(maximo))
+        self.ventana = float(ventana)
+        self._reloj = reloj
+        self._tiempos: list[float] = []
+        self._condicion = threading.Condition()
+        self._tanda = 0
+        self._cerrado = False
+        self.esperas = 0  # veces que alguien ha tenido que esperar (para medir)
+
+    def _libre_en(self, ahora: float) -> float:
+        self._tiempos = [x for x in self._tiempos if ahora - x < self.ventana]
+        if len(self._tiempos) < self.maximo:
+            return 0.0
+        return self._tiempos[0] + self.ventana - ahora
+
+    def esperar(self) -> float:
+        """Coge turno; devuelve los segundos que ha habido que esperar."""
+        t0 = self._reloj()
+        with self._condicion:
+            tanda = self._tanda
+            contado = False
+            while True:
+                if self._cerrado or tanda != self._tanda:
+                    raise FrenoSoltado("Farmadex se está cerrando")
+                ahora = self._reloj()
+                falta = self._libre_en(ahora)
+                if falta <= 0:
+                    self._tiempos.append(ahora)
+                    return ahora - t0
+                if not contado:
+                    contado = True
+                    self.esperas += 1
+                    log.info("Subastas de warframe.market: tope por minuto alcanzado, se espera %.0f s", falta)
+                self._condicion.wait(falta)
+
+    def usadas(self) -> int:
+        with self._condicion:
+            self._libre_en(self._reloj())
+            return len(self._tiempos)
+
+    def soltar(self) -> None:
+        """Al cerrar: quien este esperando turno deja de esperar (su peticion falla)."""
+        with self._condicion:
+            self._tanda += 1
+            self._condicion.notify_all()
+
+    def cerrar(self) -> None:
+        """Farmadex se cierra: nadie espera turno ya, ni ahora ni las peticiones en cola
+        (un hilo de red dormido aqui un minuto no dejaria cerrar el programa)."""
+        with self._condicion:
+            self._cerrado = True
+            self._tanda += 1
+            self._condicion.notify_all()
+
+    def olvidar(self) -> None:
+        """Para las pruebas: como recien creado."""
+        with self._condicion:
+            self._tiempos = []
+            self._cerrado = False
+            self.esperas = 0
+
+
+FRENO_SUBASTAS = FrenoSubastas()
 CACHE_ARMAS = 86400
 FICHERO_ARMAS = "agrietados_armas.json"
 
@@ -235,10 +319,15 @@ class MercadoAgrietados:
             partes.append("positive_stats=" + ",".join(positivos))
         if negativos:
             partes.append("negative_stats=" + ",".join(negativos))
-        datos = self.cliente.json(f"{BASE_V1}/auctions/search?" + "&".join(partes), segundos_cache=CACHE_SUBASTAS)
+        datos = self._buscar_subastas("&".join(partes))
         resumen = analizar_subastas(arma_slug, datos)
         resumen.subastas = resumen.subastas[:limite]
         return resumen
+
+    def _buscar_subastas(self, consulta: str):
+        """La UNICA puerta a `auctions/search`: cache de diez minutos y el freno comun."""
+        return self.cliente.json(f"{BASE_V1}/auctions/search?{consulta}", segundos_cache=CACHE_SUBASTAS,
+                                 freno=FRENO_SUBASTAS)
 
     # -- horquilla de precio de parecidos -------------------------------------------------
 
@@ -285,7 +374,7 @@ class MercadoAgrietados:
                   "positive_stats=" + ",".join(positivos)]
         if negativo:
             partes.append(f"negative_stats={negativo}")
-        datos = self.cliente.json(f"{BASE_V1}/auctions/search?" + "&".join(partes), segundos_cache=CACHE_SUBASTAS)
+        datos = self._buscar_subastas("&".join(partes))
         resumen = analizar_subastas(arma_slug, datos)
         con_precio = [s for s in resumen.subastas if s.precio]
         return calcular_horquilla(arma_slug, [s.precio for s in con_precio], nivel), con_precio
@@ -469,5 +558,6 @@ def cerrar_compartido() -> None:
     global _instancia
     with _cerrojo:
         instancia, _instancia = _instancia, None
+    FRENO_SUBASTAS.soltar()
     if instancia is not None:
         instancia.cerrar()
