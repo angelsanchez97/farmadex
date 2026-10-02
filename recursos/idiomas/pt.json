@@ -1,5 +1,12 @@
 {
   "_comentario": "Textos da interface do Farmadex. Chave = texto em espanhol do código; valor = tradução. As {chaves} são variáveis e devem ficar como estão. Apague uma linha para voltar ao espanhol.",
+  "Un mod agrietado (riven). Léelo con el atajo de agrietados para ver sus estadísticas.": "Um mod Riven. Leia-o com o atalho de Rivens para ver as suas estatísticas.",
+  "OJO: hay {n} huecos ocupados que no he podido leer (están marcados en la rejilla).": "ATENÇÃO: {n} espaços ocupados não puderam ser lidos (estão marcados na grade).",
+  "OJO: hay un hueco ocupado que no he podido leer (está marcado en la rejilla).": "ATENÇÃO: um espaço ocupado não pôde ser lido (está marcado na grade).",
+  "No he podido leer este mod": "Não consegui ler este mod",
+  "No he podido leer este arcano": "Não consegui ler este arcano",
+  "En la pantalla hay un mod en este hueco, pero no se ha podido leer su nombre (tapado, ampliado o con una letra que no se entiende). Vuelve a leer con la pantalla despejada.": "Na tela há um mod neste espaço, mas não foi possível ler o seu nome (coberto, ampliado ou com uma letra que não se entende). Leia de novo com a tela livre.",
+  "Leído: {texto}": "Lido: {texto}",
   "{n} mods equipados": "{n} mods equipados",
   "{n} más en la colección": "mais {n} na coleção",
   "¿Es {nombre}?": "É {nombre}?",

@@ -93,11 +93,14 @@ class Carta(QWidget):
         super().leaveEvent(evento)
 
     def mouseReleaseEvent(self, evento):  # noqa: N802
-        if evento.button() == Qt.LeftButton and self.rect().contains(evento.position().toPoint()):
+        # La tarjeta "No he podido leer este mod" (sin objeto) no abre nada.
+        if evento.button() == Qt.LeftButton and self.datos.item_id and self.rect().contains(evento.position().toPoint()):
             self.pulsada.emit(int(self.datos.item_id))
         super().mouseReleaseEvent(evento)
 
     def _marco(self) -> QColor:
+        if not self.datos.item_id:
+            return color("aviso")
         if self.datos.arcano:
             return color("acento")
         return QColor(COLOR_RAREZA.get(self.datos.rareza, color("borde").name()))
@@ -147,7 +150,8 @@ class Carta(QWidget):
         pie = self.datos.puntuacion < 100
         if pie:
             zona.setHeight(alto * 0.62)
-        self._texto(p, zona, self.datos.nombre, alto * 0.215, color("texto"), 600)
+        tinta = color("aviso") if not self.datos.item_id else color("texto")
+        self._texto(p, zona, self.datos.nombre, alto * 0.215 if self.datos.item_id else alto * 0.17, tinta, 600)
         if pie:
             f = QFont(TEXTO)
             f.setPixelSize(max(8, int(alto * 0.14)))
@@ -317,12 +321,16 @@ class RejillaBuild(QWidget):
         self.aviso.hide()
         self.titulo_sueltos.hide()
         self.cartas: dict[int, Carta] = {}
+        self.cartas_no_leidas: dict[str, Carta] = {}
+        self.no_leidos: dict[str, str] = {}
         self.colocacion: disposicion.Disposicion | None = None
 
     def vaciar(self) -> None:
         self.lienzo.vaciar()
         self.lienzo_sueltos.vaciar()
         self.cartas = {}
+        self.cartas_no_leidas = {}
+        self.no_leidos = {}
         self.colocacion = None
         self.aviso.hide()
         self.titulo_sueltos.hide()
@@ -335,21 +343,28 @@ class RejillaBuild(QWidget):
         self.cartas.setdefault(int(datos.item_id), carta)
         return carta
 
-    def poner(self, colocacion: disposicion.Disposicion, mods: list[DatosCarta], arcanos: list[DatosCarta]) -> None:
-        """Pinta la build. `mods` y `arcanos` van en el orden leido, como en `colocacion`."""
+    def poner(self, colocacion: disposicion.Disposicion, mods: list[DatosCarta], arcanos: list[DatosCarta],
+              no_leidos: dict[str, str] | None = None) -> None:
+        """Pinta la build. `mods` y `arcanos` van en el orden leido, como en `colocacion`.
+
+        `no_leidos` es clave de hueco -> lo que se leyo ahi: huecos que se ven ocupados en la
+        pantalla pero cuyo mod no se pudo leer. Se pintan como "No he podido leer este mod",
+        nunca como un hueco vacio: el usuario tiene que saber que su build esta incompleta.
+        """
         self.vaciar()
         self.colocacion = colocacion
+        self.no_leidos = dict(no_leidos or {})
         ac, al = disposicion.ANCHO_CARTA, disposicion.ALTO_CARTA
         aa, ala = disposicion.ANCHO_ARCANO, disposicion.ALTO_ARCANO
         if colocacion.segura:
             for hueco in colocacion.huecos:
                 if hueco.tipo == "arcano":
                     i = colocacion.arcanos.get(hueco.clave)
-                    carta = self._carta(arcanos[i], False) if i is not None else None
+                    carta = self._carta(arcanos[i], False) if i is not None else self._no_leida(hueco)
                     self.lienzo.anadir(hueco.x, hueco.y - 0.3, aa, ala, carta, rotulo_hueco("arcano"))
                 else:
                     i = colocacion.mods.get(hueco.clave)
-                    carta = self._carta(mods[i], False) if i is not None else None
+                    carta = self._carta(mods[i], False) if i is not None else self._no_leida(hueco)
                     self.lienzo.anadir(hueco.x, hueco.y, ac, al, carta, rotulo_hueco(hueco.tipo))
             sueltos = [mods[i] for i in colocacion.sueltos_mods] + [arcanos[i] for i in colocacion.sueltos_arcanos]
             if sueltos:
@@ -365,6 +380,31 @@ class RejillaBuild(QWidget):
             self._en_orden(self.lienzo, list(mods) + list(arcanos), dudosa=True)
         self.lienzo.recolocar()
         self.lienzo_sueltos.recolocar()
+
+    def _no_leida(self, hueco: disposicion.Hueco) -> Carta | None:
+        """La tarjeta "No he podido leer este mod" de un hueco que se ve ocupado, o None si
+        el hueco no esta entre los no leidos (entonces se pinta como hueco)."""
+        if hueco.clave not in self.no_leidos:
+            return None
+        texto = self.no_leidos[hueco.clave]
+        if texto.startswith("agrietado:"):
+            # Un mod agrietado (riven): no esta en el catalogo, pero se sabe que es.
+            texto = texto.partition(":")[2].strip()
+            nombre = t("Agrietado")
+            ayuda = t("Un mod agrietado (riven). Léelo con el atajo de agrietados para ver sus estadísticas.")
+        else:
+            nombre = t("No he podido leer este mod") if hueco.tipo != "arcano" else t("No he podido leer este arcano")
+            ayuda = t("En la pantalla hay un mod en este hueco, pero no se ha podido leer su nombre "
+                      "(tapado, ampliado o con una letra que no se entiende). Vuelve a leer con la "
+                      "pantalla despejada.")
+        if texto:
+            ayuda += "\n" + t("Leído: {texto}", texto=texto)
+        datos = DatosCarta(0, nombre, "", None, 100.0, hueco.tipo == "arcano", ayuda)
+        carta = Carta(datos, dudosa=True)
+        carta.setCursor(Qt.ArrowCursor)
+        carta.setToolTip(ayuda)
+        self.cartas_no_leidas[hueco.clave] = carta
+        return carta
 
     def _en_orden(self, lienzo: _Lienzo, datos: list[DatosCarta], dudosa: bool) -> None:
         for n, d in enumerate(datos):

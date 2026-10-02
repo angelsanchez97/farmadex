@@ -90,6 +90,20 @@ CREATE TABLE IF NOT EXISTS items_nombres (
 );
 CREATE INDEX IF NOT EXISTS ix_items_nombres_idioma ON items_nombres(idioma);
 
+-- Otros nombres de un objeto, por idioma. origen = 'oficial': el nombre entero con que lo
+-- pinta el juego cuando no sale de juntar padre y pieza ("Hoja de War" es una pieza de
+-- Broken War; "Motor del Mazo del Lobo"). origen = 'anterior': el que tenia el indice
+-- antes de usar el de DE (el del glosario propio, o el de WFCD si no decia lo mismo); se
+-- conserva para que lo que ya se reconocia y se encontraba al buscar siga igual.
+-- Solo AÑADE: quien la lee (el casador, la busqueda) tolera que falte.
+CREATE TABLE IF NOT EXISTS items_alias (
+  item_id INTEGER NOT NULL REFERENCES items(id),
+  idioma TEXT NOT NULL,
+  nombre TEXT NOT NULL,
+  origen TEXT NOT NULL,
+  PRIMARY KEY (item_id, idioma, nombre)
+);
+
 -- Recetas: que pide cada objeto para fabricarse y cuanto (Magistar: 750 Ferrita, 300 Rubedo...).
 -- Aparte de items.padre_id porque los recursos compartidos (Criotica, Rubedo) pierden el
 -- padre al pasar a Resources, y la pestana Objetivos los necesita para marcarlos uno a uno.

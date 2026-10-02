@@ -5,6 +5,8 @@ Fuentes (todas con licencia libre y sin credenciales):
   - drops.warframestat.us: tablas de drops oficiales de Digital Extremes.
   - warframe.com/droptables: la pagina original de esas tablas, que DE publica antes de
     que WFCD la vuelque a JSON (ver tabla_oficial.py). Es un extra: si falla, se sigue.
+  - content.warframe.com/PublicExport: los nombres de las piezas tal como los pinta el
+    juego en cada idioma (ver nombres_oficiales.py). Tambien es un extra.
 
 Nada de esto toca el juego: son ficheros JSON publicos.
 """
@@ -23,6 +25,7 @@ from ..config import DIR_DATOS, RUTA_ESTADO_DATOS, USER_AGENT, crear_carpetas
 from ..registro_log import obtener
 from .tabla_oficial import NOMBRE_FICHERO as FICHERO_TABLA_OFICIAL
 from .tabla_oficial import URL_TABLA_OFICIAL, fecha_publicacion
+from . import nombres_oficiales
 from ..ficheros import reemplazar, temporal_de
 
 log = obtener("descargas")
@@ -475,6 +478,9 @@ class Descargador:
         if self._sincronizar_tabla_oficial(forzar):
             cambios = True
 
+        if self._sincronizar_nombres_oficiales(forzar):
+            cambios = True
+
         if cambios:
             self.estado.descargado_en = time.strftime("%Y-%m-%dT%H:%M:%S")
             self.estado.ficheros = {
@@ -522,6 +528,40 @@ class Descargador:
         self.estado.oficial_fecha = fecha.isoformat() if fecha else ""
         log.info("Tabla oficial de DE descargada (%s)", self.estado.oficial_fecha or "sin fecha")
         return True
+
+    @staticmethod
+    def carpeta_nombres_oficiales() -> Path:
+        return DIR_DATOS / nombres_oficiales.NOMBRE_CARPETA
+
+    def _sincronizar_nombres_oficiales(self, forzar: bool = False) -> bool:
+        """Baja de DE los nombres de las piezas en cada idioma si hay version nueva. True
+        si ha cambiado algo (y entonces toca rehacer el indice).
+
+        Nunca lanza: sin ellos el indice se construye con los nombres de WFCD, como
+        siempre. Lo normal es que no baje nada: son siete consultas de medio KB para ver
+        que la version publicada es la que ya se tiene (solo cambia con los parches).
+        """
+        if self.sin_red():
+            log.info("Sin conexion: no se consultan los nombres oficiales de DE")
+            return False
+
+        def descargar(url: str, destino: Path) -> None:
+            self._descargar_una_vez(url, destino, "Descargando los nombres del juego")
+
+        try:
+            resultado = nombres_oficiales.sincronizar(
+                descargar, self.carpeta_nombres_oficiales(), progreso=self.progreso, forzar=forzar,
+                seguir=lambda: not self.sin_red(),
+            )
+        except Exception:  # noqa: BLE001 - es un extra: pase lo que pase, se sigue
+            log.exception("No se pudieron comprobar los nombres oficiales de DE")
+            return False
+        nuevos = sorted(i for i, estado in resultado.items() if estado == "nuevo")
+        if nuevos:
+            log.info("Nombres oficiales de DE actualizados: %s", ", ".join(nuevos))
+        else:
+            log.info("Nombres oficiales de DE al dia (%s)", resultado)
+        return bool(nuevos)
 
     def _descargar_catalogo(self, rutas_items: dict[str, Path]) -> None:
         """Baja las categorias, el catalogo de piezas y las traducciones.

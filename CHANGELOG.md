@@ -1,5 +1,64 @@
 # Cambios
 
+## 0.6.12
+
+Una versión dedicada a la precisión: que una build leída esté entera, y que cuando algo no se
+pueda leer, Farmadex te lo diga en vez de callárselo.
+
+**Una build ya no pierde mods en silencio**
+- Hasta ahora, si Farmadex no conseguía leer el nombre de una tarjeta, ese hueco se quedaba vacío
+  y la build parecía completa cuando le faltaba un mod. Ahora mira la rejilla de la pantalla,
+  cuenta los huecos que se ven ocupados y los compara con lo que ha leído. Si en un hueco hay una
+  tarjeta y no ha salido ningún nombre, vuelve a leer esa tarjeta aparte, ampliada y sin depender
+  de los colores de tu interfaz.
+- Y si aun así no puede, **lo señala en su hueco** con «No he podido leer este mod» y te avisa en
+  el resumen. Un mod que no se puede leer ya no desaparece: sabes que está ahí y cuál es el hueco,
+  y te basta con volver a leer con la pantalla despejada.
+- Lo mismo con lo que tapa la pantalla: si tienes el ratón sobre una tarjeta y esta se agranda, o
+  hay abierta la ayuda de un mod, de un arcano o de una habilidad, los huecos que quedan debajo
+  salen marcados como tapados en vez de darse por vacíos. La tarjeta agrandada vuelve a su hueco.
+- Los mods agrietados que lleves puestos salen en su sitio como «Agrietado».
+
+**Nunca un mod que no es**
+- Hay mods cuyo nombre es el principio de otro: Intensificación e Intensificación Umbral,
+  Continuidad y Continuidad Prime, Vitalidad y Vitalidad Umbral, Flujo y Flujo Prime. Si la
+  tarjeta estaba medio tapada justo por donde va la segunda palabra, Farmadex daba el corto como
+  si estuviera seguro. Ahora, cuando hay algo encima de la tarjeta, la vuelve a leer y, si sigue
+  sin saber cuál de los dos es, te lo enseña como dudoso («Intensificación (¿Intensificación
+  Umbral?)») en lugar de afirmar uno.
+- Los nombres de las tarjetas se leen limpios de los restos que a veces se pegan (el número del
+  rango, un destello, el borde de la tarjeta). Lo que antes salía como «parecido» estando bien
+  escrito ahora sale seguro.
+- En las recompensas, una pieza de un equipo Prime mal leída ya no puede acabar como la pieza del
+  mismo equipo sin Prime, ni al revés: si no está claro cuál de las dos es, no se da ninguna.
+
+**El equipo se reconoce en más rótulos**
+- Armas de lich y de hermana con el nombre de su dueño delante o detrás, en cualquier idioma.
+- Nombres largos que el juego corta con puntos suspensivos.
+- Rótulos con el laurel de la maestría o el rango pegados al nombre, armas de MOA y armas de
+  archwing, que ahora tienen su propia rejilla.
+- Pantallas sin la colección a la vista, y ranuras de arcano o de exilus bloqueadas, que cuentan
+  como vacías. El mod «Buscar» ya no se confunde con la caja de búsqueda.
+
+**Los nombres, como los escribe el juego en cada idioma**
+- En francés, alemán y portugués Farmadex usaba para las piezas palabras propias que no siempre
+  eran las del juego, y en italiano y polaco las piezas no tenían nombre. Ahora los nombres salen
+  de lo que publica Digital Extremes, así que una recompensa como «Ash Prime - Neuroptiques» o
+  «Ash Prime: Powłoka» se reconoce a la primera.
+- Las reliquias también tienen su nombre en esos idiomas («Relique Lith A1», «Lith-Relikt: A1»), y
+  en castellano el exacto del juego («Reliquia Réquiem I»). Los planos en portugués («Guandao
+  Prime (Diagrama)») se reconocen como planos.
+- Arreglado: las Neurópticas de Volt salían como pieza de Chroma y la Hoja de Wrath como si fuera
+  de Pride; algunos objetos perdían medio nombre en otros idiomas; y las piezas con nombre propio
+  («Hoja de War», «Motor del Mazo del Lobo») no se reconocían al leerlas.
+
+**Al actualizar**
+- La primera vez que abras esta versión, Farmadex rehace sus datos; tarda un momento y solo pasa
+  una vez. Además descarga los nombres oficiales del juego; si en ese momento no hay conexión,
+  sigue con los que tenía y lo vuelve a intentar más adelante.
+- La lectura de una build puede tardar un poco más cuando hay tarjetas que releer. Es a cambio
+  de que salga entera.
+
 ## 0.6.11
 
 Una corrección importante en la pestaña Build: Farmadex ya no te dice nunca un equipo que no es.
