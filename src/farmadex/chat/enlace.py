@@ -46,7 +46,9 @@ BRILLO_MINIMO = 0.42
 # Geometria en fracciones de la altura del juego.
 SONDA_ANCHO, SONDA_ALTO = 0.24, 0.026   # primera mirada, muy pequena
 TIRA_ANCHO, TIRA_ALTO = 0.80, 0.090     # la linea entera (enlaces largos) y sus vecinas
-ALTO_LINEA_MIN, ALTO_LINEA_MAX = 0.0045, 0.034
+# El chat se puede agrandar en las opciones del juego: con la escala grande una linea de
+# enlace mide ~0,046 del alto (fotogramas reales de 2025); con 0,034 no se cogia.
+ALTO_LINEA_MIN, ALTO_LINEA_MAX = 0.0045, 0.062
 HUECO_MAX_REL = 0.9  # hueco entre letras de un mismo enlace, en altos de linea
 PIXELES_MIN_REL = 1.2e-5  # amarillo minimo en la sonda (x alto^2): ~56 px a 4K, ~6 a 720p
 CHAT_MIN_REL = 1.5e-5  # azul/turquesa minimo en la tira para creer que es el chat
@@ -60,10 +62,36 @@ RADIO_PX = 30
 # -- color ---------------------------------------------------------------------------------
 
 
+def _mascara_amarillo(imagen_bgr):
+    """El amarillo del enlace con el raton encima, por tono y no por un color exacto.
+
+    Medido en fotogramas reales de un video de 2025 del chat de comercio (1080p): el
+    enlace con el raton encima sale (184, 185, 113), tono 60 grados y saturacion 0,38,
+    no el #e7d45d (tono 52, saturacion 0,6) con el que se habia escrito la deteccion,
+    que no lo cogia (0 de 4 enlaces reales). El tono queda entre 46 y 76 grados en todos
+    los fotogramas; el dorado de los menus (tono 40) y el blanco (sin saturacion) quedan
+    fuera, y el azul del enlace y el turquesa del usuario estan en 170-195 grados.
+    """
+    import cv2
+    import numpy as np
+
+    hsv = cv2.cvtColor(np.ascontiguousarray(imagen_bgr), cv2.COLOR_BGR2HSV)
+    h, s, v = hsv[..., 0], hsv[..., 1], hsv[..., 2]
+    return ((h >= AMARILLO_H[0]) & (h <= AMARILLO_H[1]) & (s >= AMARILLO_S_MIN)
+            & (v >= BRILLO_MINIMO * 255.0))
+
+
+# Tono (H de OpenCV, 0-180: grados/2) y saturacion minima del amarillo del enlace con el raton.
+AMARILLO_H = (23, 38)
+AMARILLO_S_MIN = 55
+
+
 def mascara(imagen_bgr, referencia: tuple[int, int, int], tolerancia: float | None = None):
     """Pixeles del color `referencia` (con sus bordes mezclados con un fondo oscuro)."""
     import numpy as np
 
+    if referencia == AMARILLO and tolerancia is None:
+        return _mascara_amarillo(imagen_bgr)
     img = imagen_bgr.astype(np.float32)
     b, g, r = img[..., 0], img[..., 1], img[..., 2]
     alto = np.maximum(np.maximum(r, g), b)
@@ -84,6 +112,19 @@ def intensidad(imagen_bgr, referencia: tuple[int, int, int] = AMARILLO):
     b, g, r = img[..., 0], img[..., 1], img[..., 2]
     alto = np.maximum(np.maximum(r, g), b)
     ref = np.array(referencia, dtype=np.float32)
+    if referencia == AMARILLO:
+        # Por tono, como la mascara: la tinta es lo amarillo (R y G altos, B mas bajo) y
+        # vale tanto para el #e7d45d de siempre como para el amarillo real medido.
+        import cv2
+
+        # Mas tolerante que la mascara: los bordes de las letras (y el video o la captura
+        # comprimidos) pierden saturacion y se van de tono, y al OCR le hacen falta enteras.
+        hsv = cv2.cvtColor(np.ascontiguousarray(imagen_bgr), cv2.COLOR_BGR2HSV).astype(np.float32)
+        centro = (AMARILLO_H[0] + AMARILLO_H[1]) / 2.0
+        ancho = (AMARILLO_H[1] - AMARILLO_H[0]) / 2.0 + 10.0
+        parecido_h = np.clip(1.0 - np.abs(hsv[..., 0] - centro) / ancho, 0.0, 1.0)
+        parecido_s = np.clip((hsv[..., 1] - 12.0) / 40.0, 0.0, 1.0)
+        return np.clip(parecido_h * parecido_s * alto, 0, 255).astype(np.uint8)
     ref_n = ref / ref.max()
     seguro = np.maximum(alto, 1.0)
     d = np.maximum(np.maximum(np.abs(r / seguro - ref_n[0]), np.abs(g / seguro - ref_n[1])),
@@ -163,7 +204,15 @@ def imagen_para_ocr(tira_bgr, caja: Caja, referencia=AMARILLO, alto_objetivo: in
     margen_x = max(3, caja.alto // 2)
     y0, y1 = max(0, caja.y - margen_y), min(tira_bgr.shape[0], caja.y + caja.alto + margen_y)
     x0, x1 = max(0, caja.x - margen_x), min(tira_bgr.shape[1], caja.x + caja.ancho + margen_x)
-    tinta = intensidad(tira_bgr[y0:y1, x0:x1], referencia)
+    recorte = tira_bgr[y0:y1, x0:x1]
+    tinta = intensidad(recorte, referencia)
+    if referencia == AMARILLO:
+        # Las letras enteras, no solo lo que es amarillo puro: los bordes (y una captura o
+        # un video comprimidos) pierden tono y saturacion y al OCR le llegaban a trozos.
+        # Se coge el brillo de todo lo que este a dos pixeles de la mascara.
+        cerca = cv2.dilate(mascara(recorte, referencia).astype(np.uint8), np.ones((3, 3), np.uint8), iterations=2)
+        brillo = recorte.max(axis=2)
+        tinta = np.where(cerca > 0, np.maximum(tinta, brillo), tinta).astype(np.uint8)
     gris = 255 - tinta
     escala = alto_objetivo / max(1, gris.shape[0])
     if abs(escala - 1.0) > 0.1:

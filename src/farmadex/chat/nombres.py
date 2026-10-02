@@ -203,11 +203,12 @@ class Resolutor:
         return None
 
 
-    def arma_parecida(self, palabras: list[str]) -> tuple[str, int] | None:
+    def arma_parecida(self, palabras: list[str], umbral: float | None = None) -> tuple[str, int] | None:
         """Como `arma_al_principio` pero con una letra mal leida ("rsvnapse" -> Synapse).
 
         El OCR a veces lee el corchete de delante como una letra: se prueba tambien sin ella.
-        Solo armas de una o dos palabras y con un parecido alto, sin empate con otra arma.
+        Solo armas de una o dos palabras y con un parecido alto (80, o `umbral`), sin empate
+        con otra arma.
         """
         from rapidfuzz import fuzz, process
 
@@ -219,7 +220,7 @@ class Resolutor:
             for prueba in dict.fromkeys((trozo, trozo[1:] if trozo[:1] in "rl1ijt(" else trozo)):
                 if len(prueba) < 4:
                     continue
-                mejores = process.extract(prueba, claves, scorer=fuzz.ratio, limit=2, score_cutoff=80)
+                mejores = process.extract(prueba, claves, scorer=fuzz.ratio, limit=2, score_cutoff=umbral or 80)
                 if mejores and (len(mejores) == 1 or mejores[0][1] - mejores[1][1] >= 5):
                     return self.armas[mejores[0][0]], largo
         return None
