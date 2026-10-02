@@ -161,3 +161,11 @@ def test_el_titulo_se_recorta_hasta_mas_alla_del_icono(monkeypatch):
         else vista.IconoEncontrado(x=600, y=400, lado=40, puntuacion=0.95, ancho=40)
     v._leer_titulo(imagen, Region(0, 0, imagen.shape[1], imagen.shape[0]), Region(0, 0, 2560, h), icono, 500, 450, 0.0)
     assert anchos and anchos[0] >= 600 + 40 + int(h * 0.09) - (600 - int(h * vista.TITULO_IZQ_REL))
+
+
+def test_un_titulo_que_acaba_en_punto_no_es_un_objeto():
+    """"BUSCAR..." (la caja de busqueda del inventario en castellano) casaba con el mod Fetch."""
+    casador = SimpleNamespace(casar=lambda texto, umbral=88: (5, "Buscar", 100.0))
+    lectura = vista.interpretar_titulo([_l("BUSCAR...", 0, 0, 80, 12)], [], casador)
+    assert lectura.item_id is None and "punto" in lectura.motivo
+    assert vista.interpretar_titulo([_l("BUSCAR", 0, 0, 80, 12)], [], casador).item_id == 5

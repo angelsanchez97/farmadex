@@ -242,6 +242,11 @@ def interpretar_titulo(lineas_titulo, todas, casador, umbral: int = 88, exigir_p
     textos = [l.texto.strip() for l in lineas_titulo if l.texto.strip() and not RE_SOLO_CIFRAS.match(l.texto.strip())]
     if not textos:
         return Lectura(motivo="no se ve el nombre")
+    # "BUSCAR..." (la caja de busqueda, junto al icono en el inventario en castellano) casaba
+    # con el mod "Fetch", que en castellano se llama "Buscar": un nombre de objeto nunca
+    # acaba en punto.
+    if RE_ACABA_EN_PUNTO.search(textos[-1]):
+        return Lectura(texto=" ".join(textos), motivo="acaba en punto: no es un nombre de objeto")
     # El rango no se lee: el recuadro lo ensena con rombos, y el "RANGO 5" que a veces
     # sale en el texto es la descripcion del efecto, no el rango del objeto.
     rango = None
@@ -261,6 +266,7 @@ def interpretar_titulo(lineas_titulo, todas, casador, umbral: int = 88, exigir_p
 
 
 RE_SOLO_CIFRAS = re.compile(r"^[\d\s.,/xX%+\-]+$")
+RE_ACABA_EN_PUNTO = re.compile(r"[.…]\s*$")
 
 # -- el recuadro sin icono: el filete de debajo del precio -------------------------------
 
