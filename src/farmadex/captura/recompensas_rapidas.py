@@ -428,7 +428,10 @@ def leer_pantalla(
     # Cuentan las tarjetas reconocidas, no las leidas: con la escala del HUD por debajo
     # del 100 % la fila fija corta los nombres por arriba ("RhinoPr rime", "ystemes") y
     # salian cuatro tarjetas sin reconocer que se daban por buenas sin mirar la franja.
-    completa = bool(en_pantalla) and (esperadas is None or _reconocidas(en_pantalla) >= esperadas)
+    # Y tampoco vale una fila con alguna tarjeta sin identificar: la franja entera (otra
+    # escala, mas contexto) puede leerla, y `leer_pantalla` se queda con la mejor de las dos.
+    completa = (bool(en_pantalla) and _reconocidas(en_pantalla) == len(en_pantalla)
+                and (esperadas is None or _reconocidas(en_pantalla) >= esperadas))
     if completa or lento is None:
         return Lectura(en_pantalla, "fila" if en_pantalla else "nada", tiempos)
     otros = lento(ventana, tiempos)

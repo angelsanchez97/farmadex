@@ -10,6 +10,7 @@ descartan, y el resultado de una lectura que ya tiene otra detras no se ensena.
 
 from __future__ import annotations
 
+import re
 import time
 from typing import Callable
 
@@ -33,6 +34,39 @@ LADO_MINIMO = 608
 # los nombres miden el doble y un recuadro fijo solo cogia media palabra; a 720p cogia
 # medio inventario de alrededor.
 ANCHO_RECUADRO, ALTO_RECUADRO = 620, 170
+
+
+# Si el raton esta sobre el dibujo de una tarjeta (recompensas, inventario), el nombre
+# cae por debajo del recuadro normal: la segunda mirada baja hasta este multiplo del alto.
+# Medido en el banco de precision: con el raton en el dibujo de la tarjeta de recompensa
+# (a 0,33 del alto) el recuadro normal solo cogia 8 de 34 nombres; con este, todos.
+FACTOR_RECUADRO_BAJO = 2.6
+
+
+def region_mas_baja(region, limite=None, factor: float = FACTOR_RECUADRO_BAJO):
+    """El mismo recuadro, estirado hacia abajo (sin salirse de `limite`, la ventana del juego)."""
+    alto = int(region.alto * factor)
+    if limite is not None:
+        alto = min(alto, limite.y + limite.alto - region.y)
+    return pantalla.Region(region.x, region.y, region.ancho, max(region.alto, alto))
+
+
+# "+1 Steel Essence", "+50 Ferrita": el aviso de lo recogido en la mision, no un objeto
+# que el raton senale (en el banco de precision se colo como ficha al estirar el recuadro).
+RE_RECOGIDO = re.compile(r"^\s*\+\s*\d")
+
+
+def alineados(encontrados, punto, ancho_region: int) -> list:
+    """Lo leido que esta encima o debajo del raton, del mas cercano al mas lejano."""
+    encontrados = [r for r in encontrados if not RE_RECOGIDO.match(r.texto_ocr or "")]
+
+    def distancia(r):
+        x = r.caja[0] + r.caja[2] / 2
+        y = r.caja[1] + r.caja[3] / 2
+        return (x - punto[0]) ** 2 + (y - punto[1]) ** 2
+
+    cercanos = [r for r in encontrados if alineado_con_raton(r.caja, punto, ancho_region)]
+    return sorted(cercanos, key=lambda r: (distancia(r), -r.puntuacion))
 
 
 def tamano_recuadro(alto_juego: int | None) -> tuple[int, int]:
@@ -112,31 +146,31 @@ class LectorCursor(LectorBase):
         if encontrados is None:
             self.candidatos.emit([])
             return
-        if not encontrados:
-            self.estado.emit(t("No se reconoció nada bajo el cursor"))
-            self.candidatos.emit([])
-            return
 
         # El que este mas cerca del raton es el que senala. El raton no siempre esta en el
         # centro del recuadro: junto al borde del juego el recuadro se desplaza hacia dentro.
         punto = punto_del_raton(region)
 
-        def distancia(r):
-            x = r.caja[0] + r.caja[2] / 2
-            y = r.caja[1] + r.caja[3] / 2
-            return (x - punto[0]) ** 2 + (y - punto[1]) ** 2
-
         # Solo cuenta lo que esta encima o debajo del raton: si el nombre que senala no se
         # ha podido leer, el vecino de al lado no es la respuesta (abria la ficha de otra
         # pieza de la pantalla de recompensas).
-        cercanos = [r for r in encontrados if alineado_con_raton(r.caja, punto, region.ancho)]
-        if not cercanos:
+        ordenados = alineados(encontrados, punto, region.ancho)
+        if not ordenados:
+            # Con el raton sobre el dibujo de una tarjeta el nombre queda mas abajo:
+            # segunda mirada con el recuadro estirado hacia abajo.
+            region_baja = region_mas_baja(region, juego)
+            imagen = pantalla.capturar(region_baja) if region_baja.alto > region.alto else None
+            if imagen is not None:
+                otros = self._leer_protegido(imagen, umbral=85) or []
+                ordenados = alineados(otros, punto_del_raton(region_baja), region_baja.ancho)
+                log.info("Bajo el cursor, segunda mirada mas abajo: %d encontrados, %d alineados",
+                         len(otros), len(ordenados))
+        if not ordenados:
             log.info("Bajo el cursor: nada alineado con el raton (%s)",
                      ", ".join(repr(r.nombre) for r in encontrados))
             self.estado.emit(t("No se reconoció nada bajo el cursor"))
             self.candidatos.emit([])
             return
-        ordenados = sorted(cercanos, key=lambda r: (distancia(r), -r.puntuacion))
         mejor = ordenados[0]
         if self._vieja(numero):
             # Mientras se leia se volvio a pulsar el atajo: manda la lectura nueva.

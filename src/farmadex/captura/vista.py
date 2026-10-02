@@ -84,6 +84,7 @@ RECORTE_ANCHO_REL = 1.24
 RECORTE_ARRIBA_REL, RECORTE_ABAJO_REL = 0.50, 0.25
 # Del icono hacia la izquierda y hacia arriba esta el titulo (fracciones del alto).
 TITULO_IZQ_REL, TITULO_ARRIBA_REL = 0.37, 0.095
+TITULO_DER_REL = 0.10
 
 _ICONO_B85 = (
     "c-l>pJ7`m37=~+e&VT>^bJDa;Lz|?cAQC|Zk;H%$L2bm*;-Et*8W*Py)<jTj2Nki@!9^Dxt=gI_Dk7-"
@@ -821,7 +822,10 @@ class VigiaVistas(QObject):
         if icono is not None:
             x0 = max(0, icono.x - int(h * TITULO_IZQ_REL))
             y0 = max(0, icono.y - int(h * TITULO_ARRIBA_REL))
-            x1 = min(imagen.shape[1], icono.x + (icono.ancho or icono.lado) + int(h * 0.012))
+            # Un titulo largo sigue a la derecha del icono ("ACCELTRA PRIME BLUEPRINT" a 1440p
+            # acababa 0,065 h mas alla y se leia "BLUEPR"): el recorte llega hasta el borde del
+            # recuadro. Lo que empiece a la derecha del icono no es titulo (lineas_de_titulo).
+            x1 = min(imagen.shape[1], icono.x + (icono.ancho or icono.lado) + int(h * TITULO_DER_REL))
             y1 = min(imagen.shape[0], icono.y + int(icono.lado * 1.25))
         else:
             fx, fy, largo = filete
