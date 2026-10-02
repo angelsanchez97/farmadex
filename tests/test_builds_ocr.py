@@ -228,7 +228,7 @@ def test_tarjeta_enorme_se_reduce_antes_del_ocr():
             return []
 
     class Lector:
-        def leer(self, lineas):
+        def leer(self, lineas, **_relecturas):
             return lineas
 
     leer_tarjeta(np.zeros((2736, 2016, 3), np.uint8), Motor(), Lector())
