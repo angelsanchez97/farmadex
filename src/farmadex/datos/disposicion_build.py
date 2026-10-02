@@ -59,6 +59,9 @@ PLANTILLAS: dict[str, list[Hueco]] = {
     "arma": _ocho() + [Hueco("exilus", "exilus", 4.0, 1.5), Hueco("arcano1", "arcano", 3.97, 0.6)],
     "cuerpo": [Hueco("postura", "postura", 1.0, 0.0), Hueco("exilus", "exilus", 2.0, 0.0)] + _ocho()
     + [Hueco("arcano1", "arcano", 3.97, 0.21)],
+    # Arma de archwing (Mausolon...): sin exilus, con dos arcanos a la derecha ("PRIMARY" y
+    # "SECONDARY"), medidos en una captura real a 1080p.
+    "archgun": _ocho() + [Hueco("arcano1", "arcano", 3.97, 0.6), Hueco("arcano2", "arcano", 3.97, 2.24)],
 }
 
 # Que acepta cada tipo de hueco: el aura solo va en el suyo y la postura en el suyo
@@ -74,7 +77,11 @@ def plantilla_de(categoria: str | None, tipo: str | None = None) -> str:
     if categoria in ("Primary", "Secondary"):
         return "" if tipo == "Companion Weapon" else "arma"
     if categoria == "Melee":
-        return "cuerpo" if tipo in ("Melee", "") else ""
+        # Por exclusion: el indice trae algun arma cuerpo a cuerpo con el tipo mal puesto
+        # ("Dual Viciss" como "Rifle"), y sin plantilla no se validaban sus huecos.
+        return "" if tipo in ("Componente", "Zaw Component") or "Component" in tipo else "cuerpo"
+    if categoria == "Arch-Gun":
+        return "archgun"
     return ""
 
 
@@ -99,6 +106,19 @@ class Disposicion:
     # Por que no se sabe: "sin_medidas" (no hay posiciones), "pocos" (no da para medir la
     # rejilla), "ambigua" (dos colocaciones igual de buenas), "no_encaja" o "".
     motivo: str = ""
+    # La rejilla encontrada (solo con `segura` y plantilla): paso de columna y origen del
+    # hueco (0, 0), en las mismas unidades que los puntos (fracciones del alto de la
+    # captura). Con ellos se sabe donde cae en la captura cada hueco, tambien los vacios.
+    paso: float = 0.0
+    x0: float = 0.0
+    y0: float = 0.0
+
+    def centro_de(self, hueco: Hueco) -> tuple[float, float] | None:
+        """(x, y) del hueco en las unidades de los puntos: x respecto al centro de la
+        pantalla e y el borde de abajo del nombre; None si no hay rejilla medida."""
+        if not self.paso:
+            return None
+        return self.x0 + hueco.x * self.paso, self.y0 + hueco.y * self.paso * RELACION_FILAS
 
 
 def _pasos_candidatos(puntos: list[Punto]) -> list[float]:
@@ -162,7 +182,7 @@ def colocar(clase: str, mods: list[Punto | None], arcanos: list[Punto | None]) -
     if not pasos:
         salida.sueltos_mods, salida.sueltos_arcanos, salida.motivo = todos, todos_arcanos, "pocos"
         return salida
-    soluciones: list[tuple[int, float, dict[int, str]]] = []
+    soluciones: list[tuple[int, float, dict[int, str], tuple[float, float, float]]] = []
     for paso in pasos:
         fila = paso * RELACION_FILAS
         # Si la colocacion buena existe, alguno de los tres primeros nombres cae en su hueco.
@@ -170,18 +190,20 @@ def colocar(clase: str, mods: list[Punto | None], arcanos: list[Punto | None]) -
             for h in huecos:
                 if ancla.tipo not in _ACEPTA[h.tipo]:
                     continue
-                asignacion, error = _asignar(puntos, huecos, paso, ancla.x - h.x * paso, ancla.y - h.y * fila)
-                soluciones.append((len(asignacion), error, asignacion))
-    mejor = max(n for n, _e, _a in soluciones)
+                x0, y0 = ancla.x - h.x * paso, ancla.y - h.y * fila
+                asignacion, error = _asignar(puntos, huecos, paso, x0, y0)
+                soluciones.append((len(asignacion), error, asignacion, (paso, x0, y0)))
+    mejor = max(n for n, _e, _a, _r in soluciones)
     # Casi todo lo leido tiene que caer en un hueco (se admite alguna tarjeta ampliada).
     if mejor < 2 or mejor < len(puntos) - max(1, len(puntos) // 4):
         salida.sueltos_mods, salida.sueltos_arcanos, salida.motivo = todos, todos_arcanos, "no_encaja"
         return salida
-    empatadas = [a for n, _e, a in soluciones if n == mejor]
+    empatadas = [a for n, _e, a, _r in soluciones if n == mejor]
     if any(a != empatadas[0] for a in empatadas[1:]):
         salida.sueltos_mods, salida.sueltos_arcanos, salida.motivo = todos, todos_arcanos, "ambigua"
         return salida
-    asignacion = min((s for s in soluciones if s[0] == mejor), key=lambda s: s[1])[2]
+    _n, _e, asignacion, rejilla = min((s for s in soluciones if s[0] == mejor), key=lambda s: s[1])
+    salida.paso, salida.x0, salida.y0 = _ajustar_rejilla(puntos, huecos, asignacion, rejilla)
     for i in todos:
         if i in asignacion:
             salida.mods[asignacion[i]] = i
@@ -195,6 +217,34 @@ def colocar(clase: str, mods: list[Punto | None], arcanos: list[Punto | None]) -
             salida.sueltos_arcanos.append(j)
     salida.segura = True
     return salida
+
+
+def _ajustar_rejilla(puntos: list[Punto], huecos: list[Hueco], asignacion: dict[int, str],
+                     rejilla: tuple[float, float, float]) -> tuple[float, float, float]:
+    """(paso, x0, y0) afinados con todos los nombres colocados, no solo con el ancla: el
+    origen es la media de lo que dice cada nombre y el paso sale de la separacion entre
+    columnas y filas distintas (minimos cuadrados). Con un solo nombre se queda el ancla."""
+    paso, x0, y0 = rejilla
+    por_clave = {h.clave: h for h in huecos}
+    pares = [(puntos[i], por_clave[clave]) for i, clave in asignacion.items() if clave in por_clave]
+    if len(pares) < 2:
+        return rejilla
+    # paso = argmin sum((p.x - x0 - h.x*paso)^2 + (p.y - y0 - h.y*paso*R)^2) con x0, y0 libres:
+    # se centra cada coordenada y se ajusta la pendiente.
+    n = len(pares)
+    mx = sum(p.x for p, _h in pares) / n
+    my = sum(p.y for p, _h in pares) / n
+    mhx = sum(h.x for _p, h in pares) / n
+    mhy = sum(h.y * RELACION_FILAS for _p, h in pares) / n
+    numerador = sum((p.x - mx) * (h.x - mhx) + (p.y - my) * (h.y * RELACION_FILAS - mhy) for p, h in pares)
+    denominador = sum((h.x - mhx) ** 2 + (h.y * RELACION_FILAS - mhy) ** 2 for _p, h in pares)
+    if denominador > 1e-9:
+        afinado = numerador / denominador
+        if PASO_MIN <= afinado <= PASO_MAX and abs(afinado - paso) <= 0.1 * paso:
+            paso = afinado
+    x0 = mx - mhx * paso
+    y0 = my - mhy * paso
+    return paso, x0, y0
 
 
 def _grupos(valores: list[float], hueco: float) -> list[float]:

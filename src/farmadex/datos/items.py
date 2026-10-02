@@ -38,13 +38,21 @@ def _texto(valor) -> str | None:
 # de icono en 75 nombres del catalogo. Sin quitarlas la ficha las ensena tal cual y las
 # tablas de drops ("Crimson Archon Shard") no casan.
 RE_ETIQUETA = re.compile(r"<[^<>]*>\s*")
+RE_ETIQUETA_SOLA = re.compile(r"<[^<>]*>")
 
 
 def _nombre(valor) -> str | None:
+    """El nombre como se lee en pantalla: sin etiquetas de icono y en una sola linea.
+
+    Se quita la etiqueta y nada mas: al llevarse tambien el espacio de detras,
+    "File-a-Style<RETRO_TM> Notepad" se quedaba en "File-a-StyleNotepad" en los idiomas
+    que la llevan en medio. Y algunos nombres traen un salto de linea dentro (el tema de
+    Gauss Prime, antes de "Redline"): los espacios y saltos seguidos quedan en uno.
+    """
     texto = _texto(valor)
     if not texto:
         return texto
-    limpio = RE_ETIQUETA.sub("", texto).strip()
+    limpio = " ".join(RE_ETIQUETA_SOLA.sub("", texto).split())
     return limpio or texto
 
 
@@ -175,20 +183,37 @@ CATEGORIAS_SIN_INGREDIENTES = frozenset({"Relics", "Node"})
 _UNIONES = ("de", "del", "d'", "du", "des", "di", "da", "do", "dos", "das", "von", "der")
 
 
+# Signos con los que el juego separa el objeto de su pieza segun el idioma: "Ash Prime -
+# Chassis" (frances, italiano), "Ash Prime: Chassis" (aleman, portugues, polaco) y
+# "Equinox (Aspecto Noturno)".
+_SEPARADORES = " -–—:,;"
+
+
+def _suelto(texto: str | None) -> str | None:
+    """La pieza a secas de lo que queda al quitar el objeto: "- Neuroptiques" ->
+    "Neuroptiques", "(Aspecto Noturno)" -> "Aspecto Noturno". None si no queda nada."""
+    parte = (texto or "").strip(_SEPARADORES)
+    if parte.startswith("(") and parte.endswith(")"):
+        parte = parte[1:-1].strip(_SEPARADORES)
+    return parte or None
+
+
 def _sin_padre(texto: str, *padres: str | None) -> str | None:
     """La parte de la pieza en un nombre completo: "Pala superior de Daikyu Prime" -> "Pala superior".
 
-    Vale con el padre delante o detras ("Daikyu Prime Oberer Wurfarm"). Si al quitarlo
-    no queda nada, None (se usara el glosario).
+    Vale con el padre delante o detras ("Daikyu Prime Oberer Wurfarm") y con los signos
+    que pone el juego entre los dos ("Ash Prime - Chassis", "Ash Prime: Chassis"). Si al
+    quitarlo no queda nada, None (se usara el glosario).
     """
     for padre in padres:
         if not padre:
             continue
-        bajo, clave = texto.lower(), padre.lower()
-        pos = bajo.find(clave)
+        # Como palabra entera si se puede: "War" no es el principio de "Warframe".
+        m = re.search(r"(?<!\w)" + re.escape(padre) + r"(?!\w)", texto, re.IGNORECASE)
+        pos = m.start() if m else texto.lower().find(padre.lower())
         if pos == -1:
             continue
-        resto = (texto[:pos] + " " + texto[pos + len(padre):]).strip()
+        resto = _suelto(texto[:pos] + " " + texto[pos + len(padre):]) or ""
         palabras = resto.replace("’", "'").split()
         while palabras and palabras[-1].lower() in _UNIONES:
             palabras.pop()
@@ -196,20 +221,61 @@ def _sin_padre(texto: str, *padres: str | None) -> str | None:
             palabras.pop(0)
         if palabras and palabras[-1].lower().endswith("d'"):
             palabras[-1] = palabras[-1][:-2]
-        parte = " ".join(p for p in palabras if p)
+        parte = _suelto(" ".join(p for p in palabras if p))
         return parte[:1].upper() + parte[1:] if parte else None
     return None
+
+
+# Las particulas que el lector de pantalla quita de lo leido antes de buscarlo (las
+# mismas que PALABRAS_VACIAS de captura/ocr.py; aqui no se importa para no dar vueltas).
+_VACIAS_DEL_LECTOR = frozenset({
+    "de", "del", "la", "el", "los", "las", "of", "the", "du", "des", "le", "les", "l",
+    "der", "die", "das", "dem", "den", "von", "fur", "do", "da", "dos", "o", "a", "di", "il", "lo", "gli",
+})
+
+
+def _se_lee_igual(completo: str, compuesto: str) -> bool:
+    """Si el lector, al leer `completo` en pantalla ("Chasis de Ash Prime"), da de lleno
+    con el nombre que el indice compone juntando padre y pieza ("Ash Prime Chasis").
+
+    El lector quita las particulas de lo leido (menos la primera palabra y lo que va
+    detras de "de") y compara sin importar el orden, pero el nombre compuesto las lleva
+    todas: "Motor del Mazo del Lobo" no da con "Mazo del Lobo Motor". Cuando no se leen
+    igual, el nombre completo se guarda aparte (tabla items_alias) para que case exacto.
+    """
+    palabras = normalizar(completo).split()
+    leido = palabras[:1] + [
+        p for i, p in enumerate(palabras[1:], 1)
+        if p not in _VACIAS_DEL_LECTOR or palabras[i - 1] in ("de", "du", "des", "von")
+    ]
+    return sorted(leido) == sorted(normalizar(compuesto).split())
 
 
 class ImportadorItems:
     """Vuelca warframe-items en las tablas items / nodos / reliquia_recompensas."""
 
-    def __init__(self, con: sqlite3.Connection, i18n: dict, idiomas_extra: dict[str, dict] | None = None):
+    def __init__(self, con: sqlite3.Connection, i18n: dict, idiomas_extra: dict[str, dict] | None = None,
+                 oficiales: dict[str, dict[str, str]] | None = None):
         self.con = con
         self.i18n = i18n
         # Nombres en otros idiomas (fr, de, pt, it, pl): {idioma: {unique_name: {"name": ...}}}.
         # Van a la tabla items_nombres, aparte de nombre_en/nombre_es que no se tocan.
         self.idiomas_extra = idiomas_extra or {}
+        # Nombres tal como los publica DE (nombres_oficiales.py): {idioma: {unique_name:
+        # nombre}}. Donde los hay mandan sobre los de WFCD; sin ellos todo va como antes.
+        self.oficiales = oficiales or {}
+        # De donde ha salido el nombre de cada objeto, por idioma, para saber cuantos NO
+        # son el oficial: {"fr": {"oficial": 880, "wfcd": 16000, "glosario": 3, "sin": 40}}.
+        self.origen_nombres: dict[str, dict[str, int]] = {}
+        # Piezas ya importadas: item_id -> si llevan el nombre de su padre (True), el de
+        # otro objeto (False: "Volt Neuroptics" dentro de la receta de Chroma) o no se sabe.
+        self.pieza_de_su_padre: dict[int, bool | None] = {}
+        # Palabras con las que el juego nombra las piezas en cada idioma extra, y en cuantos
+        # objetos distintos sale cada una: {"it": {"Canna": {id, id...}}}.
+        self.palabras_de_pieza: dict[str, dict[str, set[int]]] = {}
+        self._hay_tabla_alias = bool(con.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'items_alias'"
+        ).fetchone())
         # El catalogo no traduce los nombres de las piezas ("Systems", "Barrel"):
         # se completan con el glosario para que la busqueda en espanol las encuentre.
         self.componentes_es = {
@@ -302,18 +368,55 @@ class ImportadorItems:
 
     # -- utilidades -----------------------------------------------------
 
-    def _es(self, unique_name: str) -> tuple[str | None, str | None]:
-        trad = self.i18n.get(unique_name) or {}
-        return _nombre(trad.get("name")), _texto(trad.get("description"))
+    def _oficial(self, unique_name: str, idioma: str) -> str | None:
+        """El nombre que publica DE para ese objeto en ese idioma, si se tiene."""
+        return _nombre((self.oficiales.get(idioma) or {}).get(unique_name)) or None
 
-    def _extra(self, unique_name: str) -> dict[str, str]:
-        """Nombre de este objeto en cada idioma de IDIOMAS_EXTRA que lo traiga."""
+    def _wfcd(self, unique_name: str, idioma: str) -> str | None:
+        """El nombre que trae WFCD en ese idioma (castellano o uno de los extra)."""
+        datos = self.i18n if idioma == "es" else self.idiomas_extra.get(idioma) or {}
+        entrada = datos.get(unique_name)
+        return (_nombre(entrada.get("name")) or None) if isinstance(entrada, dict) else None
+
+    def _idiomas(self) -> list[str]:
+        """Los idiomas con tabla propia (items_nombres): todos menos castellano e ingles."""
+        return [i for i in dict.fromkeys([*self.idiomas_extra, *self.oficiales]) if i not in ("es", "en")]
+
+    def _contar(self, idioma: str, origen: str) -> None:
+        cuenta = self.origen_nombres.setdefault(idioma, {})
+        cuenta[origen] = cuenta.get(origen, 0) + 1
+
+    def _mejor(self, unique_name: str, idioma: str, anteriores: list | None = None) -> str | None:
+        """El nombre de un objeto en un idioma: el de DE si se tiene; si no, el de WFCD.
+        Si los dos existen y no dicen lo mismo, el de WFCD se apunta en `anteriores`."""
+        oficial, wfcd = self._oficial(unique_name, idioma), self._wfcd(unique_name, idioma)
+        self._contar(idioma, "oficial" if oficial else "wfcd" if wfcd else "sin")
+        if oficial and wfcd and anteriores is not None and normalizar(oficial) != normalizar(wfcd):
+            anteriores.append((idioma, wfcd))
+        return oficial or wfcd
+
+    def _es(self, unique_name: str) -> tuple[str | None, str | None]:
+        trad = self.i18n.get(unique_name)
+        trad = trad if isinstance(trad, dict) else {}
+        return self._mejor(unique_name, "es"), _texto(trad.get("description"))
+
+    def _extra(self, unique_name: str, anteriores: list | None = None) -> dict[str, str]:
+        """Nombre de este objeto en cada idioma extra que lo traiga."""
         salida = {}
-        for idioma, datos in self.idiomas_extra.items():
-            nombre = _nombre((datos.get(unique_name) or {}).get("name"))
+        for idioma in self._idiomas():
+            nombre = self._mejor(unique_name, idioma, anteriores)
             if nombre:
                 salida[idioma] = nombre
         return salida
+
+    def _guardar_alias(self, item_id: int, idioma: str, nombre: str, origen: str) -> None:
+        """Otro nombre del objeto (tabla items_alias): "oficial" es como lo pinta el juego
+        cuando no sale de juntar padre y pieza; "anterior", el que tenia el indice antes."""
+        if self._hay_tabla_alias and nombre:
+            self.con.execute(
+                "INSERT OR IGNORE INTO items_alias (item_id, idioma, nombre, origen) VALUES (?, ?, ?, ?)",
+                (item_id, idioma, nombre, origen),
+            )
 
     def _guardar_nombres_idioma(self, item_id: int, nombres: dict[str, str]) -> None:
         self.nombres_extra_por_item[item_id] = nombres
@@ -377,8 +480,8 @@ class ImportadorItems:
         categorias_vistas: set[str] = set()
         for obj in _lista(objetos):
             unico = _texto(obj.get("uniqueName"))
-            nombre = _nombre(obj.get("name"))
-            if not unico or not nombre:
+            nombre_wfcd = _nombre(obj.get("name"))
+            if not unico or not nombre_wfcd:
                 continue
             categoria = _texto(obj.get("category")) or ruta.stem
             categorias_vistas.add(categoria)
@@ -391,7 +494,19 @@ class ImportadorItems:
                 cuenta += 1
                 continue
 
-            nombre_es, desc_es = self._es(unico)
+            # El nombre en ingles de WFCD es el del juego con las mayusculas cambiadas y,
+            # en algunos, la etiqueta quitada sin dejar el espacio ("KinemantikA/V
+            # Receiver"); si DE da el suyo, es ese. El de WFCD sigue valiendo para casar
+            # las tablas de drops y para buscar.
+            anteriores: list[tuple[str, str]] = []
+            oficial_en = self._oficial(unico, "en")
+            nombre = oficial_en or nombre_wfcd
+            self._contar("en", "oficial" if oficial_en else "wfcd")
+            if normalizar(nombre) != normalizar(nombre_wfcd):
+                anteriores.append(("en", nombre_wfcd))
+            trad = self.i18n.get(unico)
+            desc_es = _texto(trad.get("description")) if isinstance(trad, dict) else None
+            nombre_es = self._mejor(unico, "es", anteriores)
             item_id = self._insertar(
                 {
                     "unique_name": unico,
@@ -414,7 +529,11 @@ class ImportadorItems:
             if es_variante_menor(unico):
                 self.variantes_menores.add(item_id)
             self._registrar_alias(nombre, item_id)
-            self._guardar_nombres_idioma(item_id, self._extra(unico))
+            if nombre_wfcd != nombre:
+                self._registrar_alias(nombre_wfcd, item_id)
+            self._guardar_nombres_idioma(item_id, self._extra(unico, anteriores))
+            for idioma, anterior in anteriores:
+                self._guardar_alias(item_id, idioma, anterior, "anterior")
             # Estadisticas, efecto por rango y habilidades: solo para la ficha.
             detalles.guardar(self.con, item_id, detalles.extraer(obj, categoria, self.i18n.get(unico)))
             cuenta += 1
@@ -434,6 +553,94 @@ class ImportadorItems:
             log.warning("Categorias nuevas en %s (se importan igual): %s", ruta.name, sorted(nuevas))
         return cuenta
 
+    def _nombres_de_pieza(self, unico: str, nombre: str, padre_id: int, padre_en: str,
+                          padre_es: str | None, del_catalogo: bool, compartida: bool) -> dict:
+        """Como se llama una pieza en cada idioma, dentro de la receta de ese padre.
+
+        El juego pinta el nombre entero ("Chasis de Ash Prime", "Ash Prime - Châssis",
+        "Ash Prime: Powłoka") y el indice guarda solo la parte de la pieza ("Chasis",
+        "Châssis", "Powłoka"), porque la busqueda, el lector y la interfaz le anteponen
+        el padre. El nombre entero sale de DE (`oficiales`) y, en castellano, tambien de
+        WFCD; en los demas idiomas WFCD lo trae ya sin el objeto ("- Châssis"), que es
+        justo la parte. Solo si no hay ni lo uno ni lo otro se usa el glosario propio,
+        que no siempre dice lo que el juego ("Neuroptique" por "Neuroptiques").
+
+        Devuelve {"es": parte, "extra": {idioma: parte}, "alias": [(idioma, nombre,
+        origen)], "del_padre": True/False/None, "completo_en": nombre entero en ingles}.
+        """
+        padre_en_idioma = {"en": padre_en, "es": padre_es, **self.nombres_extra_por_item.get(padre_id, {})}
+        idiomas = self._idiomas()
+        completos: dict[str, str] = {}
+        for idioma in ("en", "es", *idiomas):
+            completo = self._oficial(unico, idioma)
+            if not completo and idioma == "es" and del_catalogo:
+                completo = self._wfcd(unico, "es")  # en castellano WFCD lo deja entero
+            if completo:
+                completos[idioma] = completo
+
+        def nombra(idioma: str) -> bool | None:
+            if idioma not in completos:
+                return None
+            return self._nombra_al_padre(completos[idioma], padre_en, padre_en_idioma.get(idioma))
+
+        # Si la pieza lleva el nombre de este padre. No lo lleva la de otro objeto que
+        # tambien entra en esta receta ("Volt Neuroptics" en la de Chroma) ni la que tiene
+        # nombre propio ("War Blade" de Broken War, "Decurion Barrel" de Dual Decurion).
+        vistos = [v for v in (nombra("es"), nombra("en")) if v is not None]
+        del_padre = True if any(vistos) else False if vistos else None
+        propio = del_padre is False and not compartida
+
+        partes: dict[str, str | None] = {}
+        alias: list[tuple[str, str, str]] = []
+        for idioma in ("es", *idiomas):
+            wfcd = self._wfcd(unico, idioma)
+            texto = completos.get(idioma) or wfcd
+            padre_l = padre_en_idioma.get(idioma)
+            parte = None
+            if texto and self._nombra_al_padre(texto, padre_en, padre_l):
+                parte = _sin_padre(texto, padre_l, padre_en)
+            elif texto and (not del_catalogo or propio):
+                parte = texto
+            elif idioma != "es" and wfcd and wfcd != completos.get(idioma) and del_padre is not False:
+                parte = _suelto(wfcd)  # WFCD ya le quito el objeto: "- Neuroptiques"
+            origen = "oficial" if self._oficial(unico, idioma) else "wfcd"
+            glosario = self.componentes_es.get(nombre) if idioma == "es" else (
+                self.componentes_extra.get(idioma) or {}).get(nombre)
+            if not parte and glosario:
+                parte, origen = glosario, "glosario"
+            elif (parte and glosario and idioma != "es" and del_catalogo
+                  and normalizar(parte) != normalizar(glosario)):
+                # Lo que el indice decia hasta ahora: se sigue reconociendo y buscando.
+                alias.append((idioma, f"{padre_l or padre_es or padre_en} {glosario}", "anterior"))
+            self._contar(idioma, origen if parte else "sin")
+            partes[idioma] = parte
+            if parte and idioma != "es" and del_catalogo and del_padre and origen != "glosario":
+                self.palabras_de_pieza.setdefault(idioma, {}).setdefault(parte, set()).add(padre_id)
+            if propio and parte and origen != "glosario":
+                completos.setdefault(idioma, parte)  # con nombre propio, la parte ES el nombre entero
+        self._contar("en", "oficial" if "en" in completos else "wfcd")
+        if propio:
+            completos.setdefault("en", nombre)
+
+        # El nombre entero, cuando el lector no daria con el juntando padre y pieza. Solo
+        # el de una pieza de verdad con su nombre de verdad: una palabra suelta ("Chasis")
+        # como nombre de un objeto concreto haria casar cualquier "Chasis" con el.
+        if del_catalogo and not (compartida and del_padre is False):
+            for idioma, completo in completos.items():
+                if len(normalizar(completo).split()) < 2:
+                    continue
+                if idioma == "en":
+                    compuesto = f"{padre_en} {nombre}"
+                elif idioma == "es":
+                    compuesto = f"{padre_es} {partes['es']}" if padre_es and partes["es"] else partes["es"]
+                else:
+                    compuesto = (f"{padre_en_idioma.get(idioma) or padre_es or padre_en} {partes[idioma]}"
+                                 if partes[idioma] else None)
+                if not compuesto or not _se_lee_igual(completo, compuesto):
+                    alias.append((idioma, completo, "oficial"))
+        return {"es": partes.pop("es"), "extra": {i: p for i, p in partes.items() if p}, "alias": alias,
+                "del_padre": del_padre, "completo_en": self._oficial(unico, "en")}
+
     def _importar_componente(
         self, comp: dict, padre_id: int, padre_en: str, padre_es: str | None, categoria: str
     ) -> None:
@@ -441,7 +648,8 @@ class ImportadorItems:
         nombre = _nombre(comp.get("name"))
         if not unico or not nombre:
             return
-        nombre_es, desc_es = self._es(unico)
+        trad = self.i18n.get(unico)
+        desc_es = _texto(trad.get("description")) if isinstance(trad, dict) else None
         # Desde el formato nuevo WFCD traduce tambien las piezas con el nombre entero que
         # pinta el juego ("Pala superior de Daikyu Prime"). La pieza lleva solo su parte
         # porque la busqueda, el OCR y la interfaz le anteponen el padre, asi que se le
@@ -449,11 +657,9 @@ class ImportadorItems:
         # ("Extremidad superior", "Agarre"), que no es lo que dice el juego: el OCR leia
         # "Pala Superior De Daikyu Prime" y no lo reconocia.
         del_catalogo = unico in self.catalogo_piezas
-        if nombre_es and self._nombra_al_padre(nombre_es, padre_en, padre_es):
-            nombre_es = _sin_padre(nombre_es, padre_es, padre_en)
-        elif nombre_es and del_catalogo:
-            nombre_es = None
-        nombre_es = nombre_es or self.componentes_es.get(nombre)
+        padres = comp.get("parentUniqueNames")
+        compartida = isinstance(padres, list) and len(padres) > 1
+        nombres = self._nombres_de_pieza(unico, nombre, padre_id, padre_en, padre_es, del_catalogo, compartida)
         recetas = self.recetas_por_ingrediente.setdefault(unico, set())
         primera_vez = not recetas
         recetas.add(padre_id)
@@ -463,7 +669,7 @@ class ImportadorItems:
             {
                 "unique_name": unico,
                 "nombre_en": nombre,
-                "nombre_es": nombre_es,
+                "nombre_es": nombres["es"],
                 "descripcion_es": desc_es,
                 "categoria": categoria,
                 "tipo": "Componente",
@@ -475,34 +681,53 @@ class ImportadorItems:
                 "ducados": _entero(comp.get("ducats") or comp.get("primeSellingPrice")),
             }
         )
+        # Un objeto con ficha propia que ademas es ingrediente (el Fragmento de inyector de
+        # antisuero, Broken War para War) conserva sus nombres: los de pieza son solo la
+        # parte ("Fragment") y pisaban el entero en los idiomas de items_nombres.
+        es_pieza = self.con.execute("SELECT padre_id FROM items WHERE id = ?", (item_id,)).fetchone()[0] is not None
+        guardar_nombres = primera_vez and es_pieza
         if primera_vez:
             self.componentes_por_nombre[nombre].append(item_id)
+            self.pieza_de_su_padre[item_id] = nombres["del_padre"]
+        elif (compartida and del_catalogo and nombres["del_padre"]
+              and self.pieza_de_su_padre.get(item_id) is False):
+            # La pieza se vio antes en la receta de otro objeto y se quedo colgando de el:
+            # las Neuropticas de Volt salian como pieza de Chroma y la Hoja de Wrath como
+            # "Pride Hoja". Su padre es el objeto del que lleva el nombre.
+            cambiada = self.con.execute(
+                "UPDATE items SET padre_id = ?, nombre_es = ?, es_prime = ?, categoria = ?"
+                " WHERE id = ? AND padre_id IS NOT NULL AND tipo = 'Componente'",
+                (padre_id, nombres["es"], int("Prime" in padre_en), categoria, item_id),
+            ).rowcount
+            if cambiada:
+                self.con.execute("DELETE FROM items_nombres WHERE item_id = ?", (item_id,))
+                if self._hay_tabla_alias:
+                    self.con.execute("DELETE FROM items_alias WHERE item_id = ?", (item_id,))
+                self.pieza_de_su_padre[item_id] = True
+                guardar_nombres = True
         # La receta se apunta aparte: si luego el ingrediente pasa a recurso pierde el padre.
         self.con.execute(
             "INSERT OR REPLACE INTO recetas (padre_id, item_id, cantidad) VALUES (?, ?, ?)",
             (padre_id, item_id, _entero(comp.get("itemCount"))),
         )
-        # Nombre en fr/de/pt/it/pl: primero el de WFCD si lo trae (raro en piezas),
-        # si no el del glosario de componentes de ese idioma ("Chassis" -> "Châssis").
-        padre_idioma = self.nombres_extra_por_item.get(padre_id, {})
-        nombres_idioma = {}
-        for idioma, texto in self._extra(unico).items():
-            if self._nombra_al_padre(texto, padre_en, padre_idioma.get(idioma)):
-                parte = _sin_padre(texto, padre_idioma.get(idioma), padre_en)
-                if parte:
-                    nombres_idioma[idioma] = parte
-            elif not del_catalogo:
-                nombres_idioma[idioma] = texto
-        for idioma, palabras in self.componentes_extra.items():
-            if idioma not in nombres_idioma and palabras.get(nombre):
-                nombres_idioma[idioma] = palabras[nombre]
-        self._guardar_nombres_idioma(item_id, nombres_idioma)
-        # Alias con los que drop-data nombra las piezas: "Ash Prime Chassis Blueprint".
-        self._registrar_alias(f"{padre_en} {nombre}", item_id)
-        if not nombre.lower().endswith("blueprint"):
-            # Con el componente "Blueprint" saldria "Equinox Blueprint Blueprint", y a ese
-            # alias se le pegaban por parecido las piezas de Equinox que no existen aqui.
-            self._registrar_alias(f"{padre_en} {nombre} Blueprint", item_id)
+        if guardar_nombres:
+            self._guardar_nombres_idioma(item_id, nombres["extra"])
+            for idioma, texto, origen in nombres["alias"]:
+                self._guardar_alias(item_id, idioma, texto, origen)
+        # Alias con los que drop-data nombra las piezas: "Ash Prime Chassis Blueprint". El
+        # nombre entero de DE va primero; el compuesto solo si la pieza es de este padre
+        # ("Wrath Blade" es de Wrath aunque tambien entre en la receta de Pride: con el
+        # compuesto, "Wrath Blade" acababa apuntando a la hoja de Pride).
+        if nombres["completo_en"]:
+            self._registrar_alias(nombres["completo_en"], item_id)
+            if not nombres["completo_en"].lower().endswith("blueprint"):
+                self._registrar_alias(f"{nombres['completo_en']} Blueprint", item_id)
+        if nombres["del_padre"] is not False or not del_catalogo:
+            self._registrar_alias(f"{padre_en} {nombre}", item_id)
+            if not nombre.lower().endswith("blueprint"):
+                # Con el componente "Blueprint" saldria "Equinox Blueprint Blueprint", y a ese
+                # alias se le pegaban por parecido las piezas de Equinox que no existen aqui.
+                self._registrar_alias(f"{padre_en} {nombre} Blueprint", item_id)
 
         if not primera_vez:
             # El catalogo repite la misma lista de drops en cada receta que pide el
@@ -550,6 +775,28 @@ class ImportadorItems:
             cambiados += 1
         return cambiados
 
+    def registrar_palabras_de_pieza(self, minimo: int = 2) -> int:
+        """Apunta en `glosario_idiomas` las palabras con que el juego nombra las piezas en
+        cada idioma ("Canna", "Castello", "Lufa", "Neuroptiques"...).
+
+        El lector de pantalla saca de ahi las palabras que no identifican a ningun objeto
+        por si solas (las de pieza de cada idioma). Antes solo conocia las del glosario
+        propio, que en italiano y polaco no existe: con "Lama" como palabra cualquiera,
+        un "Llama Prime" mal leido se parecia lo bastante a "Gram Prime Lama". Solo
+        entran las que salen en `minimo` objetos o mas: una pieza unica no es generica.
+        Las del glosario propio no se tocan (van con otra clave). Devuelve cuantas.
+        """
+        apuntadas = 0
+        for idioma, palabras in self.palabras_de_pieza.items():
+            for parte, padres in palabras.items():
+                if len(padres) >= minimo:
+                    apuntadas += self.con.execute(
+                        "INSERT OR IGNORE INTO glosario_idiomas (dominio, idioma, en, valor)"
+                        " VALUES ('componente', ?, ?, ?)",
+                        (idioma, f"~{parte}", parte),
+                    ).rowcount
+        return apuntadas
+
     def registrar_piezas_con_nombre_propio(self) -> int:
         """Alias a secas para las piezas cuyo nombre ya identifica al objeto.
 
@@ -587,11 +834,25 @@ class ImportadorItems:
 
         item_id = self.reliquias.get(clave)
         if item_id is None:
+            # El nombre del juego en cada idioma, que viene en cada variante ("Reliquia
+            # Réquiem I", "Relique Lith A1", "Lith-Relikt: A1"). Solo se acepta si nombra
+            # esta misma reliquia (lleva su codigo); en castellano, ademas, el compuesto
+            # de siempre se conserva si el del juego dijera otra cosa.
+            variante = _texto(obj.get("uniqueName")) or ""
+            codigo = normalizar(canonico.split()[-1])
+            nombre_es = f"Reliquia {canonico}"
+            es_juego = self._mejor(variante, "es")
+            if es_juego and normalizar(es_juego) == normalizar(nombre_es):
+                nombre_es = es_juego
+            en_otros = {
+                idioma: texto for idioma, texto in self._extra(variante).items()
+                if codigo in normalizar(texto).split()
+            }
             item_id = self._insertar(
                 {
                     "unique_name": f"RELIQUIA/{canonico}",
                     "nombre_en": f"{canonico} Relic",
-                    "nombre_es": f"Reliquia {canonico}",
+                    "nombre_es": nombre_es,
                     "categoria": "Relics",
                     "tipo": "Relic",
                     "comerciable": _bandera(obj.get("tradable")) or 0,
@@ -604,6 +865,9 @@ class ImportadorItems:
             self.reliquias[clave] = item_id
             self._registrar_alias(f"{canonico} Relic", item_id)
             self._registrar_alias(canonico, item_id)
+            self._guardar_nombres_idioma(item_id, en_otros)
+            if es_juego and normalizar(es_juego) != normalizar(nombre_es) and codigo in normalizar(es_juego).split():
+                self._guardar_alias(item_id, "es", es_juego, "oficial")
         elif vaulted is not None:
             self.con.execute(
                 "UPDATE items SET vaulted = COALESCE(vaulted, ?) WHERE id = ?",

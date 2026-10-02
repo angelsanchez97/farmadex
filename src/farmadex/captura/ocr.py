@@ -865,6 +865,41 @@ def _orden_libre(clave: str) -> str:
     """La clave con las palabras ordenadas: 'chasis caliban prime' == 'caliban prime chasis'."""
     return " ".join(sorted(clave.split()))
 
+RE_PRIME_ROTO = re.compile(r"^p.{1,4}e$")
+
+
+def _parece_prime(trozo: str) -> bool:
+    """Si el trozo puede ser un "prime" mal leido o cortado: "pnke", "prme", "pri", "pm"."""
+    if not 2 <= len(trozo) <= 6:
+        return False
+    if len(trozo) >= 4 and Levenshtein.distance(trozo, "prime") <= 2:
+        return True  # "prims", "rrime", "raime", "primc"
+    if trozo[0] != "p":
+        return False
+    if RE_PRIME_ROTO.match(trozo):
+        return True
+    resto = iter("prime")
+    return all(letra in resto for letra in trozo)  # sus letras salen de "prime", en orden
+
+
+def _lleva_prime_roto(texto: str, clave: str) -> bool:
+    """Si en lo leido hay un trozo que no es del nombre `clave` y parece un "Prime" mal
+    leido, suelto ("Ember Pnke") o pegado detras de una palabra del nombre ("EberPnke")."""
+    palabras = [p for p in clave.split() if p != "prime"]
+    partido = re.sub(r"(?<=[a-zà-ÿ])(?=[A-Z])", " ", texto or "")  # "EberPnke" -> "Eber Pnke"
+    for trozo in normalizar(partido).split() + normalizar(texto or "").split():
+        if trozo in palabras:
+            continue
+        if _parece_prime(trozo) and all(fuzz.ratio(trozo, p) < 80 for p in palabras):
+            return True
+        for corte in range(2, 7):
+            cabeza, cola = trozo[:-corte], trozo[-corte:]
+            if len(cabeza) >= 3 and _parece_prime(cola) and any(
+                    fuzz.ratio(cabeza, p) >= 75 or (len(p) >= 3 and fuzz.ratio(cabeza[-len(p):], p) >= 75) for p in palabras):
+                return True
+    return False
+
+
 def preparar(imagen):
     """Deja la captura como la quiere el OCR: gris, con contraste y contigua.
 
@@ -1076,7 +1111,9 @@ class Casador:
         self.genericas = set(GENERICAS)
         # "Schéma" es como pone el juego en frances el plano en la pantalla de recompensas
         # ("Lex Prime (Schéma)", captura real de 2025); el glosario solo trae "Plan".
-        self.palabras_plano = ["plano", "blueprint", "schema"]
+        # Y en portugues "(Diagrama)" ("Guandao Prime (Diagrama)", 86 capturas reales): sin
+        # ella el plano se parecia a la "Lama" italiana de la misma arma.
+        self.palabras_plano = ["plano", "blueprint", "schema", "diagrama"]
         for idioma, en, valor in con.execute(
             "SELECT idioma, en, valor FROM glosario_idiomas WHERE dominio = 'componente'"
         ):
@@ -1088,18 +1125,21 @@ class Casador:
                 self.palabras_plano.append(palabra)
 
         self.candidatos: dict[str, tuple[int, str]] = {}
+        # En que idiomas se llama asi cada clave ("es", "en", "fr"...): para no mezclar el
+        # nombre de un idioma con los de otro (captura/huecos_build.py).
+        self.idiomas_de_clave: dict[str, set[str]] = {}
         alias: dict[str, tuple[int, str]] = {}
         for iid, nombre_en, nombre_es, padre_en, padre_es, categoria, tipo, unique_name, padre_id in filas:
             if filtro is not None and not filtro(categoria, tipo, unique_name):
                 continue
-            pares = [(nombre_es, padre_es), (nombre_en, padre_en)]
+            pares = [(nombre_es, padre_es, "es"), (nombre_en, padre_en, "en")]
             extra_item = nombres_idioma.get(iid, {})
             extra_padre = nombres_idioma.get(padre_id, {}) if padre_id else {}
             for idioma, nombre_i in extra_item.items():
                 # Sin nombre del padre en ese idioma, el nombre en espanol o ingles vale
                 # igual: los nombres propios (Ash Prime, Braton Prime...) no cambian.
-                pares.append((nombre_i, extra_padre.get(idioma) or padre_es or padre_en))
-            for nombre, padre in pares:
+                pares.append((nombre_i, extra_padre.get(idioma) or padre_es or padre_en, idioma))
+            for nombre, padre, idioma in pares:
                 if not nombre:
                     continue
                 etiqueta = f"{padre} {nombre}" if padre else nombre
@@ -1109,12 +1149,36 @@ class Casador:
                     if not variante:
                         continue
                     self.candidatos.setdefault(variante, (iid, etiqueta))
+                    self.idiomas_de_clave.setdefault(variante, set()).add(idioma)
                     # El juego escribe "Plano"/"Blueprint"/etc. al final; tambien se busca sin el.
                     sin_plano = variante
                     for palabra in self.palabras_plano:
                         sin_plano = sin_plano.removesuffix(f" {palabra}")
                     if sin_plano != variante:
                         alias.setdefault(sin_plano, (iid, etiqueta))
+        # Los otros nombres de cada objeto (tabla items_alias de datos/items.py): el entero
+        # con que lo pinta el juego cuando no sale de juntar padre y pieza ("Hoja de War",
+        # "Motor del Mazo del Lobo") y los que el indice tenia antes. Van detras de los
+        # de arriba y no los pisan. Un indice sin la tabla se lee igual.
+        try:
+            otros = con.execute(
+                f"""
+                SELECT a.item_id, a.nombre, i.categoria, i.tipo, i.unique_name
+                  FROM items_alias a JOIN items i ON i.id = a.item_id
+                 WHERE i.categoria IN ({marcas})
+                 ORDER BY (a.origen != 'oficial'), a.rowid
+                """,
+                tuple(categorias),
+            ).fetchall()
+        except sqlite3.Error:
+            otros = []
+        for iid, nombre, categoria, tipo, unique_name in otros:
+            if filtro is not None and not filtro(categoria, tipo, unique_name):
+                continue
+            etiqueta = " ".join(RE_ETIQUETAS.sub(" ", nombre or "").split())
+            for variante in _con_sinonimos(normalizar(etiqueta)):
+                if variante:
+                    self.candidatos.setdefault(variante, (iid, etiqueta))
         # Los alias van detras: "Cycron" es el arma, no "Cycron Plano". Se
         # guardan aparte para cuando lo leido SI traia "Plano" al final.
         self.alias = alias
@@ -1451,6 +1515,18 @@ class Casador:
             # estaba a una letra de "Pride Handle" y lo abria. Ningun objeto sin "Prime" en
             # el nombre se escribe con "prime" en pantalla.
             return nada
+        hermana = self._hermana_prime(mejor_clave)
+        if hermana is not None and mejor_puntos < 100.0 and "prime" not in compacta:
+            # El mismo objeto existe con y sin "Prime" ("Ember Neuroptiques" y "Ember Prime
+            # Neuroptiques") y lo leido no dice "prime" con todas sus letras: solo vale para
+            # la variante que le toca. "EberPnke Neuroptiques" (un "Ember Prime" mal leido,
+            # captura real en frances) casaba con la pieza de la Ember sin Prime, y dar la
+            # que no es cambia el precio y la reliquia. Con un "Prime" roto en lo leido no se
+            # da la de sin Prime; sin rastro de "Prime", no se da la Prime.
+            roto = _lleva_prime_roto(texto, mejor_clave)
+            if roto != ("prime" in mejor_clave.split()):
+                log.debug("Ambiguo %r: %s o %s (con y sin Prime)", texto, mejor_clave, hermana)
+                return nada
         for puntos, otra in puntuadas[1:]:
             if objeto(otra)[0] == mejor_id:
                 continue
@@ -1470,6 +1546,27 @@ class Casador:
             break
         iid, etiqueta = objeto(mejor_clave)
         return iid, etiqueta, float(mejor_puntos)
+
+    def _hermana_prime(self, clave: str) -> str | None:
+        """La clave del mismo nombre con "prime" si esta no lo lleva, o sin el si lo lleva
+        (y es otro objeto); None si no hay tal. Se calcula una vez por casador."""
+        hermanas = self.__dict__.get("_hermanas_prime")
+        if hermanas is None:
+            hermanas = {}
+            todas = dict(self.alias)
+            todas.update(self.candidatos)
+            por_orden = {_orden_libre(k): k for k in todas}
+            for con_prime in todas:
+                palabras = con_prime.split()
+                if "prime" not in palabras:
+                    continue
+                palabras.remove("prime")
+                sin_prime = por_orden.get(_orden_libre(" ".join(palabras)))
+                if sin_prime is not None and todas[sin_prime][0] != todas[con_prime][0]:
+                    hermanas[con_prime] = sin_prime
+                    hermanas.setdefault(sin_prime, con_prime)
+            self._hermanas_prime = hermanas
+        return hermanas.get(clave)
 
     def _ordenadas_de(self, atributo: str) -> list[str]:
         """La lista `atributo` (claves o claves_alias) con las palabras de cada nombre

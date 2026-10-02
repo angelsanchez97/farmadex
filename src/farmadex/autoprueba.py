@@ -1353,9 +1353,11 @@ class Autoprueba:
                 en_pantalla |= self.ids_por_nombre(n)
         salida = {"partes": {}, "inventados": [], "faltan": []}
         equipo = getattr(build, "equipo", None)
+        # "equipo_no_legible": el rotulo esta tapado de verdad (la camara del streamer, una
+        # tarjeta): no se exige el equipo, pero uno equivocado sigue siendo inventado.
         esperado = self.ids_por_nombre(info.get("equipo", "")) if info.get("equipo") else set()
         salida["equipo_ok"] = bool(equipo is not None and getattr(equipo, "item_id", None) in esperado) \
-            if esperado else None
+            if esperado and not info.get("equipo_no_legible") else None
         if esperado and equipo is not None and getattr(equipo, "item_id", None) not in esperado:
             # Un equipo que no es el de la pantalla es un dato inventado, como un mod que no esta.
             salida["inventados"].append(f"equipo: {getattr(equipo, 'nombre', '?')}")
@@ -1377,6 +1379,13 @@ class Autoprueba:
                     salida["inventados"].append(f"{p}: {getattr(r, 'texto_ocr', '')!r} -> {getattr(r, 'nombre', '')!r}")
         salida["aciertos"] = sum(a for a, _t in salida["partes"].values())
         salida["total"] = sum(t for _a, t in salida["partes"].values())
+        # La unidad que importa al usuario: la LECTURA COMPLETA. Una build cuenta como buena
+        # solo si salen el equipo, todos los mods equipados y los arcanos, sin ninguno de
+        # mas. La coleccion de abajo se mide aparte (no es la build).
+        salida["no_leidos"] = len(getattr(build, "no_leidos", []) or [])
+        inventados_build = [i for i in salida["inventados"] if not i.startswith("coleccion")]
+        faltan_build = [x for x in salida["faltan"] if not x.startswith("coleccion")]
+        salida["completa"] = (salida["equipo_ok"] is not False and not inventados_build and not faltan_build)
         return salida
 
     def flujo_build(self) -> None:
@@ -1411,6 +1420,12 @@ class Autoprueba:
                        sum(1 for f in legibles if f.get("equipo_ok") is not None)],
             "inventados": sum(len(f.get("inventados", [])) for f in filas),
             "sin_leer": sum(1 for f in filas if f["ms"] is None),
+            # Builds completas (equipo, todos los mods y arcanos, nada de mas) entre las legibles.
+            "completas": sum(1 for f in legibles if f.get("completa")),
+            "legibles": len([f for f in filas if not f["no_legible"]]),
+            "incompletas": [f["fichero"] for f in legibles if not f.get("completa")]
+            + [f["fichero"] for f in filas if not f["no_legible"] and "aciertos" not in f],
+            "no_leidos": sum(f.get("no_leidos", 0) for f in filas),
         })
 
     # agrietado -----------------------------------------------------------------------------------
@@ -2425,6 +2440,11 @@ class Autoprueba:
         b = f.get("build", {})
         if b.get("tiempos", {}).get("max", 0) > CRITERIOS["build_ms"]:
             falla(f"build max {b['tiempos']['max']} ms > {CRITERIOS['build_ms']}")
+        if b.get("incompletas"):
+            # Una build con un mod de menos (o de mas) es una build inutil: cada pantalla
+            # legible tiene que salir entera.
+            falla(f"build: {len(b['incompletas'])} de {b.get('legibles', 0)} pantallas legibles sin la build completa"
+                  f" ({', '.join(b['incompletas'][:6])})")
         for nombre in ("buscar", "modo_juego"):
             d = f.get(nombre, {})
             if d.get("congelada", {}).get("max", 0) > CRITERIOS["tecla_ms"]:
@@ -2484,6 +2504,9 @@ class Autoprueba:
         for nombre in ("cursor", "build", "agrietado", "hover"):
             d = f.get(nombre, {})
             extra = f" equipo {d['equipo'][0]}/{d['equipo'][1]}" if nombre == "build" and d.get("equipo") else ""
+            if nombre == "build" and d.get("legibles") is not None:
+                extra += (f", builds completas {d.get('completas')}/{d.get('legibles')}"
+                          f", huecos ocupados sin leer {d.get('no_leidos', 0)}")
             l.append(f"{nombre}: {d.get('aciertos')}/{d.get('total')}{extra}, inventados {d.get('inventados')}; "
                      f"{tiempos(d.get('tiempos'))}{'  ' + d['nota'] if d.get('nota') and not d.get('total') else ''}")
         d = f.get("vista_precio", {})

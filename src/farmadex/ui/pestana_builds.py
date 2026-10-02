@@ -697,6 +697,12 @@ class PestanaBuilds(QWidget):
         if build.coleccion:
             resumen += "; " + t("{n} más en la colección", n=len(build.coleccion))
         texto = t("Leído: {resumen}. Pulsa cualquiera para ver de dónde sale.", resumen=resumen)
+        no_leidos = [h for h in getattr(build, "no_leidos", []) or [] if getattr(h, "motivo", "") != "agrietado"]
+        if no_leidos:
+            # Una build con un mod de menos no sirve: se dice en cuanto se lee, no se esconde.
+            texto += " " + (t("OJO: hay {n} huecos ocupados que no he podido leer (están marcados en la rejilla).",
+                              n=len(no_leidos)) if len(no_leidos) > 1 else
+                            t("OJO: hay un hueco ocupado que no he podido leer (está marcado en la rejilla)."))
         if build.equipo is None and not self.equipo_manual:
             if self.botones_sugerencia:
                 texto += " " + t("No se leyó bien el nombre del equipo: elige abajo cuál es, o búscalo a mano.")
@@ -755,10 +761,19 @@ class PestanaBuilds(QWidget):
 
     def _pintar_rejilla(self, build: Build) -> None:
         ancho, alto = getattr(build, "ancho", 0), getattr(build, "alto", 0)
-        puntos = [disposicion_build.punto_de(r.caja, ancho, alto, self._tipo_de_mod(r.item_id))
-                  for r in build.equipados]
-        puntos_arcanos = [disposicion_build.punto_de(r.caja, ancho, alto, "arcano") for r in build.arcanos]
-        self.colocacion = disposicion_build.colocar(self.clase_de_disposicion(), puntos, puntos_arcanos)
+        colocacion = getattr(build, "colocacion", None)
+        no_leidos: dict[str, str] = {}
+        if colocacion is not None and getattr(colocacion, "segura", False) and not self.equipo_manual:
+            # La colocacion que hizo el lector (con la validacion cruzada de los huecos): la
+            # misma rejilla con la que marco los huecos que se ven ocupados y no se leyeron.
+            self.colocacion = colocacion
+            no_leidos = {h.clave: (f"agrietado: {h.texto}" if getattr(h, "motivo", "") == "agrietado" else h.texto)
+                         for h in getattr(build, "no_leidos", []) or []}
+        else:
+            puntos = [disposicion_build.punto_de(r.caja, ancho, alto, self._tipo_de_mod(r.item_id))
+                      for r in build.equipados]
+            puntos_arcanos = [disposicion_build.punto_de(r.caja, ancho, alto, "arcano") for r in build.arcanos]
+            self.colocacion = disposicion_build.colocar(self.clase_de_disposicion(), puntos, puntos_arcanos)
         rangos = None
         cartas_mods, cartas_arcanos = [], []
         for lista, salida, es_arcano in ((build.equipados, cartas_mods, False), (build.arcanos, cartas_arcanos, True)):
@@ -773,7 +788,7 @@ class PestanaBuilds(QWidget):
                     self._fila_aumento(nombre, lineas)
                 salida.append(DatosCarta(int(r.item_id), nombre, self._rareza(r.item_id), None, r.puntuacion,
                                          es_arcano, ayuda))
-        self.rejilla.poner(self.colocacion, cartas_mods, cartas_arcanos)
+        self.rejilla.poner(self.colocacion, cartas_mods, cartas_arcanos, no_leidos)
         for lista in (build.equipados, build.arcanos):
             for r in lista:
                 carta = self.rejilla.carta_de(r.item_id)

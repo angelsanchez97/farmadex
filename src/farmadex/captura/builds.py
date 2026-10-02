@@ -175,6 +175,13 @@ class Build:
     # se sabe en que hueco de la pantalla va cada mod (datos/disposicion_build.py).
     ancho: int = 0
     alto: int = 0
+    # Validacion cruzada (captura/huecos_build.py): los huecos de la rejilla que se ven
+    # ocupados pero de los que no salio ningun mod, para pintarlos como "no he podido leer
+    # este mod" en vez de dejarlos vacios; la colocacion de lo leido en los huecos del
+    # equipo (None si el equipo no tiene plantilla); y cuantos huecos se vieron ocupados.
+    no_leidos: list = field(default_factory=list)
+    colocacion: object = None
+    huecos_vistos: int = 0
 
     @property
     def vacia(self) -> bool:
@@ -187,7 +194,9 @@ def _filtro_build(categoria: str, tipo: str | None, unique_name: str) -> bool:
     Las piezas de receta (chasis, canon...) tienen padre y el Casador ya las etiqueta
     con el; aqui no interesan, ni los agrietados genericos ("Rifle Riven Mod").
     """
-    if "/Recipes/" in unique_name or "Component" in unique_name:
+    # Solo el ultimo tramo de la ruta: las armas de MOA viven en ".../MoaPetComponents/
+    # TazronWeapon" y se quedaban fuera, y "TAZICOR" acababa casando con otra cosa.
+    if "/Recipes/" in unique_name or "Component" in unique_name.rsplit("/", 1)[-1]:
         return False
     if tipo and "Riven" in tipo:
         return False
@@ -332,7 +341,7 @@ RE_RANGO_PEGADO = re.compile(r"(?<=[A-Za-z])(?:\s|[\[\(=|])*\d[\s\dOIl|=\-\]\[)(
 # "ZEPHYR PRIME NIVEAU" (el numero cortado). El rango puede salir con letras por cifras:
 # "LIMBO PRIME RANGO 3O".
 RE_SIN_RANGO = re.compile(
-    rf"(?i)^(?:UNRANKED|SIN\s*RANGO)\s*|\s*(?:{_PALABRA_RANGO})\s*(?:\d[\dOIl|]*|Z[EÉ]RO)?\s*$")
+    rf"(?i)^(?:UNRANKED|SIN\s*RANGO|RANGA\s*ZERO)\s*|\s*(?:{_PALABRA_RANGO})\s*(?:\d[\dOIl|]*|Z[EÉ]RO)?\s*$")
 
 
 # El rango sin su corchete de abrir: "INAROS PRIME 30]", "INAROS PRIME 3O)".
@@ -393,8 +402,39 @@ def _con_fichas_quitadas(intentos: list[str]) -> list[str]:
     return intentos
 
 
+RE_ARMA_DE_LICH = re.compile(r"(?i)\b(KUVA|TENET|CODA)\s+\S")
+RE_ARMA_DE_LICH_ES = re.compile(r"(?i)^(\S+\s+(?:KUVA|TENET|CODA))\s+DE\s+\S")
+RE_ARMA_DE_LICH_PEGADA = re.compile(r"(?i)^([A-Z]{3,}(?:KUVA|TENET|CODA))DE[A-Z]{3,}")
+
+
+def nombres_de_arma_de_lich(nombre: str) -> list[str]:
+    """El nombre del arma dentro del rotulo de un arma de lich, que lleva pegado el nombre
+    del lich: "SITT VORGRO KUVA ZARR RANG 34" (captura real en aleman: el equipo empieza en
+    KUVA/TENET/CODA), "NUKOR KUVA DE EKK RABRAS RANGO 40" (en castellano el lich va detras
+    de "DE") o todo pegado por el OCR, "CHAKKHURRKUVADEPOGONTMAHIFFNIVEAU40" (en frances).
+    Lo que sale esta acotado por los dos lados (la barra y el lich): cuenta como entero."""
+    salida: list[str] = []
+    m = RE_ARMA_DE_LICH.search(nombre)
+    if m and m.start() > 0:
+        salida.append(nombre[m.start():])
+    m = RE_ARMA_DE_LICH_ES.match(nombre)
+    if m:
+        salida.append(m.group(1))
+    m = RE_ARMA_DE_LICH_PEGADA.match(nombre)
+    if m and m.group(1) not in salida:
+        salida.append(m.group(1))
+    return salida
+
+
 def _nombres_de_equipo_base(nombre: str) -> list[str]:
     intentos = [nombre]
+    intentos += [n for n in nombres_de_arma_de_lich(nombre) if n not in intentos]
+    # El laurel de la maestria detras del rango leido como una letra: "TAZICOR RANGO 30 L"
+    # (captura real, interfaz antigua). Sin esa ficha, el rango de detras se quita como siempre.
+    palabras = nombre.split()
+    if len(palabras) >= 3 and RE_FICHA_TRAS_RANGO.match(palabras[-1]) and RE_CIFRAS_DE_RANGO.match(palabras[-2]):
+        nombre = " ".join(palabras[:-1])
+        intentos.append(nombre)
     sin_cola = RE_RANGO_SIN_ABRIR.sub("", nombre).strip()
     if sin_cola and sin_cola != nombre and not re.search(r"[\[\(【（［]", nombre):
         intentos.append(sin_cola)
@@ -402,6 +442,12 @@ def _nombres_de_equipo_base(nombre: str) -> list[str]:
     limpio = RE_SIN_RANGO.sub("", nombre).strip()
     if limpio and limpio != nombre:
         intentos.append(limpio)
+        # Sin rango no hay numero detras del nombre, y el laurel de la maestria sale pegado
+        # como letras: "UNRANKED NUNCHASA PSS" (captura real). Tambien sin esa ficha.
+        palabras = limpio.split()
+        if RE_SIN_TOPE_DE_RANGO.match(nombre) and len(palabras) >= 2 and re.fullmatch(r"[A-Za-z|!]{1,3}", palabras[-1]) \
+                and len(palabras[-2]) >= 4:
+            intentos.append(" ".join(palabras[:-1]))
         nombre = limpio
     corte = re.split(r"[\[\(【（［]", nombre, maxsplit=1)[0].strip()
     if corte and corte != nombre:
@@ -419,7 +465,28 @@ def _nombres_de_equipo_base(nombre: str) -> list[str]:
         # Solo si la letra suelta puede ser el borde del corchete: "HAALVU I[22]".
         if len(palabras) > 1 and palabras[-1] in ("I", "l", "|", "1"):
             intentos.append(" ".join(palabras[:-1]))
+        # El rango entero leido como letras: "HAALVU LUJ" por "HAALVU [30]" (captura real a
+        # 4K). Solo fichas hechas de las letras en que se convierten los corchetes y las
+        # cifras, y sin vocal de verdad salvo la U del "[3O]".
+        elif len(palabras) > 1 and RE_RANGO_COMO_LETRAS.match(palabras[-1]):
+            intentos.append(" ".join(palabras[:-1]))
     return intentos
+
+
+RE_RANGO_COMO_LETRAS = re.compile(r"^[LlIi1|JjUuCc\[\]()]{2,3}$")
+RE_FICHA_TRAS_RANGO = re.compile(r"^[A-Za-z|!]{1,2}$")
+RE_CIFRAS_DE_RANGO = re.compile(r"^[\dOIl]{1,2}$")
+
+
+def es_rotulo_buscar(texto: str) -> bool:
+    """Si la linea es el rotulo de la caja de busqueda ("BUSCAR...", "|BUSCAR."). El juego lo
+    escribe en mayusculas; "Buscar" con minusculas es el mod de companero Scavenge en
+    castellano (captura real de un kubrow: se tiraba como si fuera la caja y faltaba un mod)."""
+    texto = texto.strip()
+    if not RE_BUSCAR.match(texto):
+        return False
+    letras = [c for c in texto if c.isalpha()]
+    return all(c.isupper() for c in letras)
 
 
 def linea_buscar(lineas: list[Leido], ancho: int) -> Leido | None:
@@ -429,7 +496,7 @@ def linea_buscar(lineas: list[Leido], ancho: int) -> Leido | None:
     en el centro), y si se tomaba ese toda la coleccion contaba como equipada. Si no hay
     ninguno a la izquierda se usa el ultimo, como antes.
     """
-    candidatas = [l for l in lineas if RE_BUSCAR.match(l.texto.strip())]
+    candidatas = [l for l in lineas if es_rotulo_buscar(l.texto)]
     izquierda = [l for l in candidatas if l.x < ancho * 0.35]
     if izquierda:
         return min(izquierda, key=lambda l: l.y)
@@ -521,10 +588,19 @@ def limite_panel(lineas: list[Leido], capacidad: Leido | None, ancho: int) -> fl
     empezaban antes y se tiraban como si fueran del panel (capturas reales a 1440p y 4K).
     """
     if capacidad is not None:
-        fila = [l for l in lineas if (l is capacidad or _misma_fila(l, capacidad))
-                and RE_NUMEROS_CAPACIDAD.search(l.texto) and l.x < ancho * 0.45]
-        if fila:
-            borde = max(l.x + l.ancho for l in fila)
+        bordes = []
+        for l in lineas:
+            if not (l is capacidad or _misma_fila(l, capacidad)) or l.x >= ancho * 0.45:
+                continue
+            m = RE_NUMEROS_CAPACIDAD.search(l.texto)
+            if m is None:
+                continue
+            # El borde de los NUMEROS, no de la linea: en la interfaz anterior el OCR pega
+            # "4/74" con el rotulo "RANG-BONI" de al lado ("4/74 RANG-BONI") y el panel se
+            # alargaba hasta comerse la primera columna de tarjetas (captura real en aleman).
+            bordes.append(l.x + l.ancho * m.end() / max(1, len(l.texto)))
+        if bordes:
+            borde = max(bordes)
             if ancho * 0.12 < borde < ancho * 0.4:
                 return borde + ancho * 0.01
     return ancho * 0.25
@@ -537,7 +613,14 @@ def _en_panel(caja, limite: float) -> bool:
 
 
 # Los huecos vacios rotulados: "EMPTY ARCANE SLOT", "RANURA DE ARCANO VACIA"...
-RE_HUECO_VACIO = re.compile(r"(?i)EMPTY|\bVAC[IÍ][AO]\b|\bVIDE\b|\bLEER\b|\bVAZI[AO]\b|\bVUOT[AO]\b|PUSTE\s*GNIAZDO")
+RE_HUECO_VACIO = re.compile(r"(?i)EMPTY|\bVAC[IÍ][AO]\b|\bVIDE\b|\bLEER\b|\bVAZI[AO]\b|\bVUOT[AO]\b|PUSTE\s*GNIAZDO"
+                            # La ranura de arcano bloqueada ("Requires Secondary Arcane Adapter",
+                            # "Benotigt Sekundar Arkana-Adapter"): tampoco lleva nada.
+                            # Palabras enteras: "Adaptation" / "Adaptacion" es un mod y casaba aqui.
+                            r"|ADAPT(?:ER|ADOR|ATEUR)|ADATTATORE"
+                            # Y el hueco de exilus sin adaptador: "Requires Exilus Adapter",
+                            # "Wymaga Adapter Exilus", "Requiere...", "Benotigt...", "Necessite...".
+                            r"|\bREQUIRES?\b|\bREQUIERE\b|\bWYMAGA\b|\bBEN[OÖ]TIGT\b|\bN[EÉ]CESSITE\b|\bRICHIEDE\b|\bREQUER\b")
 RE_RANGO_DELANTE = re.compile(r"^[\^\-~=?C(]?\d{1,2}\W?[A-Za-z]?\W?\s+(?=[A-ZÁÉÍÓÚÑ])")
 RE_CORTADO_DELANTE = re.compile(r"^[a-zñ][a-zñáéíóú']{1,4}\s")
 # Lo mismo con las palabras pegadas por el OCR: "rnedFeverStrike" (de "Primed Fever Strike").
@@ -603,6 +686,12 @@ def separar_build(
         y_buscar = corte_por_filas(reconocidos, categorias, capacidad, panel, alto)
         if y_buscar is not None:
             build.separador = "huecos"
+        elif _solo_arriba(reconocidos, categorias, panel, alto):
+            # No hay coleccion a la vista (la pantalla esta recortada por debajo de las
+            # tarjetas, un montaje de video) y todos los mods caen donde solo va lo equipado
+            # (por encima del 62 % del alto; la coleccion empieza siempre despues del 65 %).
+            build.separador = "arriba"
+            y_buscar = int((alto or 1080) * 0.62)
         else:
             sin_separador = True
             y_buscar = -1  # todo por debajo: a la coleccion
@@ -613,7 +702,7 @@ def separar_build(
     for r in sorted(reconocidos, key=lambda r: (r.caja[1], r.caja[0])):
         categoria = categorias.get(r.item_id, "")
         texto = r.texto_ocr.strip()
-        if RE_BUSCAR.match(texto) or es_cabecera(texto):
+        if es_rotulo_buscar(texto) or es_cabecera(texto):
             continue
         if _en_fila_de_configuraciones(r.caja, capacidad):
             continue  # el nombre de una configuracion ("Alcance"), no un mod
@@ -630,7 +719,11 @@ def separar_build(
             continue
         if categoria == "Arcanes":
             # El juego no deja llevar el mismo arcano dos veces: el segundo es el titulo
-            # de su ayuda abierta ("FORTIFICADOR SECUNDARIO").
+            # de su ayuda abierta ("FORTIFICADOR SECUNDARIO"). El titulo va en mayusculas y
+            # el nombre bajo el icono no: el titulo nunca vale (si no, se quedaba con la
+            # posicion de la ayuda, en medio de los mods, y la rejilla no cuadraba).
+            if _todo_mayusculas(texto):
+                continue
             if r.item_id not in vistos_arcanos:
                 vistos_arcanos.add(r.item_id)
                 build.arcanos.append(r)
@@ -647,8 +740,11 @@ def separar_build(
                 # varias copias): el repetido es su ayuda o la tarjeta ampliada.
                 vistos_equipados.add(r.item_id)
                 build.equipados.append(r)
-        elif build.equipo is None and linea_cabecera is None:
-            # Sin cabecera legible, el primer objeto que no es mod hace de equipo.
+        elif (build.equipo is None and linea_cabecera is None and r.puntuacion >= 100
+              and (alto is None or r.caja[1] < alto * 0.15)):
+            # Sin cabecera legible, el primer objeto que no es mod hace de equipo: solo si
+            # es su nombre exacto y esta arriba, donde va la cabecera. "mesPrime" (la cola
+            # de un "Pies firmes Prime" tapado, en medio de las tarjetas) daba Mesa Prime.
             build.equipo = r
     for linea in lineas:
         # Sin el rango de la tarjeta pegado delante ("16Y Fortalezatransitoria").
@@ -686,6 +782,15 @@ AVISO_SIN_SEPARADOR = ("No se ve dónde acaban tus mods equipados (la barra de b
                        "la pantalla y vuelve a leer.")
 # El juego lleva 8 huecos de mod mas aura y exilus: por encima de 10 no es lo equipado.
 MAXIMO_EQUIPADOS = 10
+
+
+def _solo_arriba(reconocidos: list[Reconocido], categorias: dict[int, str], panel: float, alto: int | None) -> bool:
+    """Si todos los mods leidos (fuera del panel) estan en la zona de lo equipado y no son
+    mas de los que caben."""
+    if not alto:
+        return False
+    mods = [r for r in reconocidos if categorias.get(r.item_id) == "Mods" and not _en_panel(r.caja, panel)]
+    return 0 < len(mods) <= MAXIMO_EQUIPADOS and all(r.caja[1] + r.caja[3] < alto * 0.62 for r in mods)
 
 
 def corte_por_filas(reconocidos: list[Reconocido], categorias: dict[int, str], capacidad: Leido | None,
@@ -820,6 +925,7 @@ class LectorBuild(LectorBase):
     def __init__(self, motor_ocr: str = "rapidocr", parent=None):
         super().__init__(motor_ocr, CATEGORIAS_BUILD, parent)
         self._categorias: dict[int, str] = {}
+        self._tipos_hueco = None
 
     @Slot()
     def iniciar(self) -> None:
@@ -838,6 +944,9 @@ class LectorBuild(LectorBase):
             self._categorias = dict(
                 con.execute(f"SELECT id, categoria FROM items WHERE categoria IN ({marcas})", CATEGORIAS_BUILD)
             )
+            from .huecos_build import cargar_tipos_de_hueco
+
+            self._tipos_hueco = cargar_tipos_de_hueco(con)
         finally:
             con.close()
         pantalla.declarar_dpi()
@@ -870,17 +979,19 @@ class LectorBuild(LectorBase):
             return
         capturado = time.perf_counter()
         try:
-            build = leer_build(imagen, self.motor, self.casador, self._categorias)
+            build = leer_build(imagen, self.motor, self.casador, self._categorias, self._tipos_hueco)
         except ErrorMotorOCR as e:
             self._avisar_motor(str(e))
             self.leida.emit(Build())
             return
         build.tiempos["captura"] = capturado - inicio
         build.milisegundos = int((time.perf_counter() - inicio) * 1000)
-        log.info("Build leida en %d ms (%s): equipo=%s, %d equipados, %d en coleccion, %d arcanos, %d sin identificar",
+        log.info("Build leida en %d ms (%s): equipo=%s, %d equipados, %d en coleccion, %d arcanos, %d sin identificar,"
+                 " %d huecos ocupados sin leer",
                  build.milisegundos, resumen_etapas(build.tiempos),
                  build.equipo.nombre if build.equipo else build.equipo_texto or "?",
-                 len(build.equipados), len(build.coleccion), len(build.arcanos), len(build.sin_identificar))
+                 len(build.equipados), len(build.coleccion), len(build.arcanos), len(build.sin_identificar),
+                 len(build.no_leidos))
         if build.aviso:
             self.estado.emit(t(build.aviso))
         elif build.vacia:
@@ -893,7 +1004,7 @@ class LectorBuild(LectorBase):
 def resumen_etapas(tiempos: dict) -> str:
     """"captura 20, preparar 3, detector 60, ... ms; imagen 2560x1440 buscada a 1440x810, 80 cajas"."""
     etapas = [f"{etapa} {tiempos[etapa] * 1000:.0f}" for etapa in
-              ("captura", "preparar", "detector", "reconocedor", "casado", "reparto") if etapa in tiempos]
+              ("captura", "preparar", "detector", "reconocedor", "casado", "reparto", "huecos") if etapa in tiempos]
     texto = ", ".join(etapas) + " ms" if etapas else "sin tiempos"
     if tiempos.get("entrada"):
         texto += f"; imagen {tiempos['entrada']}"
@@ -906,12 +1017,14 @@ def resumen_etapas(tiempos: dict) -> str:
     return texto
 
 
-def leer_build(imagen, motor, casador: Casador, categorias: dict[int, str]) -> Build:
+def leer_build(imagen, motor, casador: Casador, categorias: dict[int, str], tipos_hueco=None) -> Build:
     """OCR de la captura entera y reparto en equipo, mods y arcanos.
 
     El texto se busca en la captura reducida (`alto_de_deteccion`) y se lee a tamano
     real (los nombres de las tarjetas miden ~20 px a 1080p). Deja en `build.tiempos`
-    lo que costo cada etapa.
+    lo que costo cada etapa. `tipos_hueco` (huecos_build.TiposDeHueco) dice que mods son
+    auras o posturas y el tipo de cada equipo, para la validacion cruzada de los huecos;
+    sin el se valida igual, pero solo con la categoria del equipo.
     """
     # La confianza se filtra ANTES de unir filas: un garabato de baja confianza pegado a
     # la cabecera ("UPGRADES/EXCALIBUR[30] 美") se la llevaba por delante al unirse.
@@ -920,6 +1033,7 @@ def leer_build(imagen, motor, casador: Casador, categorias: dict[int, str]) -> B
     tiempos = dict(getattr(motor, "tiempos", None) or {})
     inicio = time.perf_counter()
     reconocidos = casar_lineas(lineas, casador, UMBRAL_MODS, subbloques=True)
+    reconocidos += _casar_limpios(lineas, reconocidos, casador, categorias)
     reconocidos += _tarjetas_ampliadas(lineas, reconocidos, casador, categorias)
     reconocidos = _nombres_a_dos_lineas(lineas, reconocidos, casador, categorias)
     nombre_equipo, linea = cabecera(lineas)
@@ -949,10 +1063,32 @@ def leer_build(imagen, motor, casador: Casador, categorias: dict[int, str]) -> B
         build.equipo_texto = texto_releido
     tiempos["casado"] = casado - inicio
     tiempos["reparto"] = time.perf_counter() - casado
-    build.tiempos = tiempos
     build.lineas = lineas
     build.alto, build.ancho = int(imagen.shape[0]), int(imagen.shape[1])
+    # Validacion cruzada: los huecos que se ven ocupados y de los que no salio ningun mod se
+    # releen aparte y, si aun asi no se leen, se dicen (nunca se dejan vacios en silencio).
+    repartido = time.perf_counter()
+    try:
+        from .huecos_build import completar_huecos
+
+        completar_huecos(imagen, build, motor, casador, categorias, tipos_hueco, UMBRAL_MODS, limpiar_nombre_tarjeta)
+    except ErrorMotorOCR:
+        raise
+    except Exception:  # noqa: BLE001 - la validacion nunca tumba la lectura
+        log.exception("Fallo en la validacion cruzada de los huecos")
     build.idioma = idioma_de_cabecera(linea.texto) if linea is not None else ""
+    try:
+        # Un nombre que es parte de otro mas largo, en una tarjeta que puede estar tapada, no
+        # se afirma: se relee y, si sigue sin saberse, sale como dudoso.
+        from .huecos_build import apartar_dudosos
+
+        apartar_dudosos(imagen, build, motor, casador, categorias, UMBRAL_MODS, limpiar_nombre_tarjeta)
+    except ErrorMotorOCR:
+        raise
+    except Exception:  # noqa: BLE001 - la comprobacion nunca tumba la lectura
+        log.exception("Fallo al comprobar los nombres que son parte de otro")
+    tiempos["huecos"] = time.perf_counter() - repartido
+    build.tiempos = tiempos
     if not build.equipados and not build.coleccion and not build.arcanos and parece_cirilico(lineas):
         # El OCR no lee cirilico: lo que sale son letras latinas parecidas
         # ("BMECTWMOCTb" por "ВМЕСТИМОСТЬ"). No se casa nada (bien: no inventa), pero
@@ -969,7 +1105,7 @@ AVISO_CIRILICO = ("No se puede leer: el juego está en un idioma con otras letra
 # Lo que deja el OCR (hecho para letras latinas) al leer ruso: la "ь" sale como "b"
 # detras de mayusculas ("BMECTWMOCTb", "CekpeTbl", "MbiWneHwe", "HenpepbIBHocTb").
 # Medido en capturas reales de YouTube en ruso a 1080p, 1440p y 4K.
-RE_CIRILICO_LEIDO = re.compile(r"[A-Z]b|[A-Za-z]b[A-Z]|[A-Z]b[il]|bI")
+RE_CIRILICO_LEIDO = re.compile(r"[A-Z]b\b|[A-Za-z]b[A-Z]|[A-Z]b[il]\b|bI")
 
 
 def parece_cirilico(lineas: list[Leido]) -> bool:
@@ -998,17 +1134,30 @@ def _casar_equipo(nombre_equipo: str, linea: Leido | None, casador: Casador,
     caja = (linea.x, linea.y, linea.ancho, linea.alto) if linea is not None else (0, 0, 0, 0)
     intentos = _nombres_de_equipo(nombre_equipo)
     pelados = _intentos_pelados(intentos)
+    # Lo sacado del rotulo de un arma de lich esta acotado por el lich: entero aunque el
+    # rango no se haya leido ("CHAKKHURRKUVADEPOGONTMAHIFFNIVEAU4OLT").
+    de_lich = set(nombres_de_arma_de_lich(nombre_equipo))
     for nombre in intentos:
+        entero_i = entero or nombre in de_lich
         item_id, etiqueta, puntos = casador.casar(nombre, UMBRAL_MODS)
         if not item_id or categorias.get(item_id) in ("Mods", "Arcanes", None):
             continue
-        if not _es_el_nombre(nombre, casador, item_id, con_espacios=not entero):
+        if not _es_el_nombre(nombre, casador, item_id, con_espacios=not entero_i):
             continue
         # Sin los dos topes, o quitandole fichas sueltas, el nombre pudo quedar cortado: si
         # es el principio o el final del de otro equipo, no se sabe cual de los dos es.
-        if (not entero or nombre in pelados) and _tiene_hermanos(item_id, casador, categorias):
+        if (not entero_i or nombre in pelados) and _tiene_hermanos(item_id, casador, categorias):
             continue
         return Reconocido(nombre, item_id, etiqueta, 100.0, caja)
+    # Nombre cortado por el juego con puntos suspensivos ("NISSAIA MUR TENET ARCA P... [40]":
+    # el arma de lich con el nombre del lich delante no cabe en la cabecera): vale si lo que
+    # queda es el principio de UN solo equipo del catalogo.
+    for nombre in intentos:
+        if "..." in nombre or "…" in nombre:
+            hallado = _equipo_por_prefijo(nombre, casador, categorias)
+            if hallado is not None:
+                item_id, etiqueta = hallado
+                return Reconocido(nombre, item_id, etiqueta, 97.0, caja)
     if not entero:
         return None  # sin topes solo vale el nombre exacto: nada de parecidos
     for nombre in intentos:
@@ -1017,6 +1166,26 @@ def _casar_equipo(nombre_equipo: str, linea: Leido | None, casador: Casador,
             continue
         item_id, etiqueta, puntos = hallado
         return Reconocido(nombre, item_id, etiqueta, puntos, caja)
+    return None
+
+
+MINIMO_PREFIJO_EQUIPO = 8
+
+
+def _equipo_por_prefijo(nombre: str, casador: Casador, categorias: dict[int, str]) -> tuple[int, str] | None:
+    """(id, etiqueta) del unico equipo cuyo nombre empieza por lo leido antes de los puntos
+    suspensivos; None si no hay ninguno o hay varios."""
+    prefijo = normalizar(re.split(r"\.\.\.|…", nombre, maxsplit=1)[0]).replace(" ", "")
+    if len(prefijo) < MINIMO_PREFIJO_EQUIPO:
+        return None
+    hallados: dict[int, str] = {}
+    for clave, (item_id, etiqueta) in casador.candidatos.items():
+        if categorias.get(item_id) in ("Mods", "Arcanes", None):
+            continue
+        if clave.replace(" ", "").startswith(prefijo):
+            hallados.setdefault(item_id, etiqueta)
+    if len(hallados) == 1:
+        return next(iter(hallados.items()))
     return None
 
 
@@ -1443,6 +1612,77 @@ def _tarjetas_ampliadas(lineas: list[Leido], reconocidos: list[Reconocido], casa
 
 UMBRAL_AMPLIADA = 90
 
+# Restos que el OCR pega a los nombres de las tarjetas: el rango de arriba ("16Y "), un
+# borde o un destello leido como signo ("Caparazon de'Saxum"), y detras una ficha de una o
+# dos letras o cifras que es el icono de polaridad o el borde de la tarjeta ("Saxum 1",
+# "Saxum J", "Saxum !"). Con ellos el casado se quedaba en un 88 % ("parecido 88 %") o por
+# debajo del umbral, y el mod desaparecia (captura real del usuario, Grendel Prime).
+RE_SIGNOS_DENTRO = re.compile(r"[\'\"`´‘’“”|]")
+RE_FICHA_DETRAS = re.compile(r"\s+[\dOIl|!J\]\)\[\(\-=]{1,2}$")
+RE_FICHA_DELANTE = re.compile(r"^(?:[\dOIl|!J\]\)\[\(\-=]{1,3}\s+){1,2}(?=[^\W\d_])")
+
+
+def limpiar_nombre_tarjeta(texto: str) -> list[str]:
+    """Las variantes de lo leido en una tarjeta sin los restos que no son nombre, de la
+    menos a la mas limpia (sin el texto original). Vacio si no hay nada que limpiar."""
+    salida: list[str] = []
+    texto = texto.strip()
+    base = RE_RANGO_DELANTE.sub("", texto)
+
+    def anadir(t: str, quitado_delante: bool) -> None:
+        t = " ".join(t.split())
+        # Quitar algo de delante y quedarse con una sola palabra es peligroso: "1 Fury" era
+        # un "Primed Fury" tapado por la camara del streamer ("d Fury"), no un "Fury"
+        # (captura real). Con dos palabras o mas el nombre que queda es el que es.
+        if quitado_delante and len(t.split()) < 2:
+            return
+        if t and t != texto and t not in salida and len(re.sub(r"[^A-Za-zÀ-ɏ]", "", t)) >= 4:
+            salida.append(t)
+
+    anadir(base, base != texto)
+    sin_signos = RE_SIGNOS_DENTRO.sub(" ", base)
+    anadir(sin_signos, base != texto)
+    sin_delante = RE_FICHA_DELANTE.sub("", sin_signos)
+    anadir(sin_delante, sin_delante != texto and sin_delante != sin_signos or base != texto)
+    sin_detras = RE_FICHA_DETRAS.sub("", sin_delante)
+    anadir(sin_detras, sin_delante != sin_signos or base != texto)
+    anadir(RE_FICHA_DETRAS.sub("", sin_detras), sin_delante != sin_signos or base != texto)
+    return salida
+
+
+def _casar_limpios(lineas: list[Leido], reconocidos: list[Reconocido], casador: Casador,
+                   categorias: dict[int, str]) -> list[Reconocido]:
+    """Segunda pasada sobre las lineas que no casaron: sin los restos del rango y los signos
+    que el OCR pega al nombre (`limpiar_nombre_tarjeta`). Solo mods y arcanos, y con el
+    mismo umbral que la primera pasada: no es relajar el casado, es casar lo mismo limpio."""
+    cubiertas = [r.caja for r in reconocidos]
+
+    def cubierta(l: Leido) -> bool:
+        cx, cy = l.x + l.ancho / 2, l.y + l.alto / 2
+        return any(x <= cx <= x + a and y <= cy <= y + h for x, y, a, h in cubiertas)
+
+    salida = []
+    for l in lineas:
+        if cubierta(l) or _todo_mayusculas(l.texto) or _es_frase(RE_RANGO_DELANTE.sub("", l.texto.strip())):
+            continue
+        for intento in limpiar_nombre_tarjeta(l.texto):
+            item_id, etiqueta, puntos = casador.casar(intento, UMBRAL_MODS)
+            if item_id and categorias.get(item_id) in ("Mods", "Arcanes"):
+                salida.append(Reconocido(l.texto, item_id, etiqueta, puntos, (l.x, l.y, l.ancho, l.alto)))
+                break
+    # Lo que caso con restos ("parecido 88 %" por "Caparazon de'Saxum 1"): si limpio es el
+    # mismo mod con mas seguridad, se apunta la seguridad buena. El usuario desconfia de un
+    # "parecido 88 %" en un mod que esta escrito tal cual en la pantalla.
+    for r in reconocidos:
+        if r.puntuacion >= 100 or categorias.get(r.item_id) not in ("Mods", "Arcanes"):
+            continue
+        for intento in limpiar_nombre_tarjeta(r.texto_ocr):
+            item_id, _etiqueta, puntos = casador.casar(intento, UMBRAL_MODS)
+            if item_id == r.item_id and puntos > r.puntuacion:
+                r.puntuacion = puntos
+                break
+    return salida
+
 
 def _media_linea(texto: str) -> str | None:
     """Lo que puede ser media linea del nombre de una tarjeta ("Mroczna", "Przejsciowe"),
@@ -1531,6 +1771,12 @@ def _nombres_a_dos_lineas(lineas: list[Leido], reconocidos: list[Reconocido], ca
         explica = item_id != r.item_id or puntos >= 95
         if item_id and categorias.get(item_id) == "Mods" and explica:
             salida.append(Reconocido(texto, item_id, etiqueta, puntos, _caja_de(arriba, abajo)))
+        elif r.puntuacion >= 100 and _parece_descripcion(vecina.texto):
+            # La vecina es la primera linea de la descripcion de la tarjeta ampliada
+            # ("Sentinel prevents Status", "Almorir, revive"), no media palabra de un nombre:
+            # el nombre exacto de arriba ("Negate", "Cordon", "Reactivar") vale tal cual.
+            # Capturas reales de companeros con la tarjeta bajo el cursor: se tiraba el mod.
+            salida.append(r)
         else:
             log.debug("Nombre a medias, no se da por bueno: %r junto a %r", r.texto_ocr, vecina.texto)
     for arriba in libres:
@@ -1546,6 +1792,13 @@ def _nombres_a_dos_lineas(lineas: list[Leido], reconocidos: list[Reconocido], ca
             gastadas.update((id(arriba), id(abajo)))
             salida.append(Reconocido(texto, item_id, etiqueta, puntos, _caja_de(arriba, abajo)))
     return salida
+
+
+def _parece_descripcion(texto: str) -> bool:
+    """Una frase de descripcion y no un trozo de nombre: tres palabras o mas, o signos de
+    puntuacion por dentro ("Almorir, revive")."""
+    limpio = _media_linea(texto) or texto
+    return len(limpio.split()) >= 3 or bool(re.search(r"[,.;:]\s*\S", limpio))
 
 
 def _caja_de(*lineas_caja: Leido) -> tuple[int, int, int, int]:
