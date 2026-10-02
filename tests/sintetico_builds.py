@@ -76,6 +76,13 @@ def _tarjeta_mod(d: ImageDraw.ImageDraw, x0: int, y0: int, ancho: int, alto: int
     d.rectangle((x0, y0 + alto - 6 * k, x0 + ancho, y0 + alto), fill=(60, 62, 74, 255))
 
 
+def _hueco_vacio(d: ImageDraw.ImageDraw, x0: int, y0: int, ancho: int, alto: int, k: float) -> None:
+    """El hueco sin mod del juego: recuadro gris translucido con el simbolo de polaridad."""
+    d.rectangle((x0, y0, x0 + ancho, y0 + alto), fill=(150, 150, 160, 90))
+    cx, cy, r = x0 + ancho / 2, y0 + alto * 0.45, 14 * k
+    d.ellipse((cx - r, cy - r, cx + r, cy + r), outline=(190, 190, 200, 120), width=max(1, int(2 * k)))
+
+
 def pintar_arsenal(
     equipo: str,
     equipados: list[str],
@@ -121,13 +128,27 @@ def pintar_arsenal(
     d.text((1060 * k, 124 * k), "CONFIG B", fill=SUAVE, font=f_ui)
     d.text((1210 * k, 124 * k), "CONFIG C", fill=SUAVE, font=f_ui)
 
-    # Tarjetas equipadas: aura arriba y dos filas de cuatro.
+    # Tarjetas equipadas: aura arriba y dos filas de cuatro. Los huecos sin mod llevan el
+    # recuadro translucido del juego (con el exilus a la derecha del aura): un hueco vacio
+    # nunca es fondo desnudo. Un nombre vacio ("") deja el hueco vacio; un nombre que
+    # empieza por "#" pinta la tarjeta con el nombre tapado (una ilustracion sin letras).
     ancho_t, alto_t = int(226 * k), int(112 * k)
     posiciones = [(846 * k, 204 * k)] + [
         ((600 + 244 * col) * k, (340 + 136 * fila) * k) for fila in range(2) for col in range(4)
     ]
-    for (x0, y0), nombre in zip(posiciones, equipados):
-        _tarjeta_mod(d, int(x0), int(y0), ancho_t, alto_t, nombre, f_nombre, gen, k)
+    nombres = list(equipados) + [""] * (len(posiciones) - len(equipados))
+    for (x0, y0), nombre in zip(posiciones, nombres):
+        if not nombre:
+            _hueco_vacio(d, int(x0), int(y0), ancho_t, alto_t, k)
+        elif nombre.startswith("#"):
+            # Tapada por la descripcion de otra tarjeta ampliada: letra pequena con cifras.
+            _tarjeta_mod(d, int(x0), int(y0), ancho_t, alto_t, "", f_nombre, gen, k)
+            f_desc = fuente(int(15 * k))
+            for n, linea in enumerate(("+60% Electricity", "+60% Status Chance", "RIFLE")):
+                d.text((x0 + ancho_t / 2, y0 + alto_t * (0.45 + 0.18 * n)), linea, fill=SUAVE, font=f_desc, anchor="mm")
+        else:
+            _tarjeta_mod(d, int(x0), int(y0), ancho_t, alto_t, nombre, f_nombre, gen, k)
+    _hueco_vacio(d, int((846 + 244) * k), int(204 * k), ancho_t, alto_t, k)  # exilus
 
     # Caja de busqueda y filtros.
     d.rectangle((96 * k, 632 * k, 520 * k, 664 * k), fill=(14, 16, 22, 220))

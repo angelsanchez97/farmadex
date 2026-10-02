@@ -347,3 +347,29 @@ def test_cabecera_real_del_jugador_con_el_ocr(catalogo, motor_real, fichero, esp
 def test_resto_de_cabecera_para_la_lectura_sola(texto, es):
     assert B.es_resto_de_cabecera(texto) is es
     assert V.es_cabecera_mejoras([_linea(texto)]) is es
+
+
+# -- armas de lich, nombres cortados y restos tras el rango (capturas reales del banco de 2026-10) --
+
+@pytest.mark.parametrize("texto, esperado", [
+    # El nombre del lich delante (aleman), detras con "DE" (castellano) y todo pegado (frances).
+    ("UPGRADES/SITT VORGRO KUVA BRAMMA RANG 34", "Kuva Bramma"),
+    ("MEJORAS/BRAMMA KUVA DE EKK RABRAS RANGO 40", "Kuva Bramma"),
+    ("AMELIORATIONS/BRAMMAKUVADEPOGONTMAHIFFNIVEAU4OLT", "Kuva Bramma"),
+    # Cortado por el juego con puntos suspensivos: vale si solo un equipo empieza asi.
+    ("UPGRADES/NISSAIA MUR TENET ARCA P... [40]", "Tenet Arca Plasmor"),
+    # El laurel de la maestria detras del rango leido como una letra.
+    ("MEJORAS: ATOMOS RANGO 30 L", "Atomos"),
+    # El rango entero leido como letras.
+    ("UPGRADES/QORVEX LUJ", "Qorvex"),
+])
+def test_equipo_de_lich_cortado_o_con_restos(catalogo, texto, esperado):
+    # La etiqueta puede ser la castellana ("Bramma Kuva"): se compara sin orden de palabras.
+    assert sorted((_de_cabecera(texto, catalogo) or "").split()) == sorted(esperado.split())
+
+
+def test_un_prefijo_con_varios_equipos_no_identifica(catalogo):
+    # "PRISMA SK..." podria ser Prisma Skana o cualquier otro Prisma: con un solo candidato
+    # vale, con "SK..." demasiado corto no. "BU..." (Bubonico / Bubonico Coda) tampoco.
+    assert _de_cabecera("UPGRADES/PRISMA SKAN... [30]", catalogo) == "Prisma Skana"
+    assert _de_cabecera("UPGRADES/BUBO... [30]", catalogo) is None

@@ -237,12 +237,26 @@ def test_expired_true_si_se_respeta_y_los_tipos_raros_no(desfasado, traductor):
     assert len(tormenta) == 1 and not tormenta[0].acero  # deducida del nodo de Railjack
 
 
-def test_active_nulo_en_baro_se_deduce_de_las_fechas(desfasado, traductor):
+def _reloj_fijo(monkeypatch, momento):
+    """Clava el reloj del modulo worldstate en `momento` (el programa no cambia: solo ve otra hora)."""
+
+    class _Reloj(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return momento.astimezone(tz) if tz else momento.replace(tzinfo=None)
+
+    monkeypatch.setattr(worldstate, "datetime", _Reloj)
+
+
+def test_active_nulo_en_baro_se_deduce_de_las_fechas(desfasado, traductor, monkeypatch):
+    # el fixture es del 22/09/2026 y Baro llegaba el 2 de octubre: con el reloj de verdad el test
+    # dejaba de valer el dia que llega
+    _reloj_fijo(monkeypatch, datetime(2026, 9, 22, 19, 35, tzinfo=timezone.utc))
     assert desfasado["voidTrader"]["active"] is None
     baro = worldstate.analizar_baro(desfasado["voidTrader"], traductor)
     assert baro is not None and not baro.activo  # llega el 2 de octubre
 
-    ahora = datetime.now(timezone.utc)
+    ahora = datetime(2026, 9, 22, 19, 35, tzinfo=timezone.utc)
     v = dict(desfasado["voidTrader"])
     v["activation"] = (ahora - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
     v["expiry"] = (ahora + timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%S.000Z")

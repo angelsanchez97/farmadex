@@ -1,5 +1,12 @@
 {
   "_comentario": "Farmadex UI texts. Key = the Spanish text used in the code; value = the translation. {braces} are placeholders and must stay as they are. Delete a line to fall back to Spanish.",
+  "Un mod agrietado (riven). Léelo con el atajo de agrietados para ver sus estadísticas.": "A Riven mod. Read it with the Riven shortcut to see its stats.",
+  "OJO: hay {n} huecos ocupados que no he podido leer (están marcados en la rejilla).": "WARNING: {n} occupied slots could not be read (they are marked in the grid).",
+  "OJO: hay un hueco ocupado que no he podido leer (está marcado en la rejilla).": "WARNING: one occupied slot could not be read (it is marked in the grid).",
+  "No he podido leer este mod": "Could not read this mod",
+  "No he podido leer este arcano": "Could not read this arcane",
+  "En la pantalla hay un mod en este hueco, pero no se ha podido leer su nombre (tapado, ampliado o con una letra que no se entiende). Vuelve a leer con la pantalla despejada.": "There is a mod in this slot on screen, but its name could not be read (covered, expanded or in a font that can't be made out). Read again with the screen clear.",
+  "Leído: {texto}": "Read: {texto}",
   "{n} mods equipados": "{n} mods equipped",
   "{n} más en la colección": "{n} more in the collection",
   "¿Es {nombre}?": "Is it {nombre}?",

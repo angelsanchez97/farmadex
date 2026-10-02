@@ -17,7 +17,7 @@ from .descargas import (
     CATALOGO_PIEZAS, CATEGORIAS_ESENCIALES, CATEGORIAS_ITEMS, IDIOMAS_EXTRA, Descargador,
     FuenteCambiada,
 )
-from . import glifos, nodos, tabla_oficial
+from . import glifos, nodos, nombres_oficiales, tabla_oficial
 from .drops import UMBRAL_SIN_CASAR, ImportadorDrops
 from .items import ImportadorItems, es_variante_menor, normalizar
 
@@ -37,7 +37,12 @@ log = obtener("indice")
 # 9: formato nuevo de WFCD (2026-09-24): piezas por referencia a Components.json y
 #    traducciones por idioma. El indice queda igual, pero los que tengan uno construido con
 #    un volcado a medias (la descarga fallaba con un 404) lo rehacen entero.
-VERSION_ESQUEMA = "15"
+VERSION_ESQUEMA = "16"
+# 16: nombres de las piezas como los pinta el juego en cada idioma (antes salian de un
+#     glosario propio: "Neuroptique" por "Neuroptiques", y en italiano y polaco no habia),
+#     nombres de las reliquias en frances, aleman, portugues, italiano y polaco, piezas
+#     compartidas colgando del objeto del que llevan el nombre, y tabla items_alias (otros
+#     nombres de un objeto). Solo AÑADE una tabla; sube para que el indice se rehaga.
 # 15: misma estructura que la 14; cambia el contenido (Requiem fuera de boveda, piezas con
 #     su padre de verdad, eventos sin repetir, sabotajes con su modo, premios repetidos de
 #     una reliquia sumados). Sube para que cada indice se rehaga una vez con los arreglos.
@@ -55,7 +60,7 @@ VERSION_ESQUEMA = "15"
 # se sigue trabajando en vez de enseñar "Error preparando los datos". Al cambiar la
 # ESTRUCTURA de las tablas, dejar aqui solo la version nueva.
 # 14 solo AÑADE las tablas recetas y detalles; quien las lee tolera que falten.
-ESQUEMAS_COMPATIBLES = {"8", "9", "10", "11", "12", "13", "14", "15"}
+ESQUEMAS_COMPATIBLES = {"8", "9", "10", "11", "12", "13", "14", "15", "16"}
 
 # Piezas de receta que pueden quedarse sin completar (referencias a objetos que no estan en
 # ningun catalogo) antes de dar el volcado por roto. Con el de hoy son un punado de
@@ -423,6 +428,20 @@ def poblar_busqueda(con: sqlite3.Connection) -> int:
         for texto, idioma in textos:
             if texto:
                 lote.append((texto, iid, idioma, categoria))
+    # Los otros nombres (items_alias): el entero del juego y el que el indice tenia antes.
+    # Ya van completos, sin anteponerles el padre.
+    try:
+        otros = con.execute(
+            "SELECT a.nombre, a.item_id, a.idioma, i.categoria FROM items_alias a JOIN items i ON i.id = a.item_id"
+        ).fetchall()
+    except sqlite3.Error:  # un indice de antes, sin la tabla
+        otros = []
+    ya = {(texto, iid) for texto, iid, _idioma, _categoria in lote}
+    for nombre, iid, idioma, categoria in otros:
+        texto = normalizar(nombre)
+        if texto and (texto, iid) not in ya:
+            ya.add((texto, iid))
+            lote.append((texto, iid, idioma, categoria))
     con.executemany(
         "INSERT INTO busqueda (texto, item_id, idioma, categoria) VALUES (?, ?, ?, ?)", lote
     )
@@ -643,7 +662,9 @@ def construir(progreso=None, forzar: bool = False) -> dict:
             if ruta.exists():
                 idiomas_extra[idioma] = json.loads(ruta.read_text(encoding="utf-8"))
 
-        importador = ImportadorItems(con, i18n, idiomas_extra)
+        # Los nombres que publica DE, si se han podido bajar; sin ellos, los de WFCD.
+        oficiales = nombres_oficiales.cargar(DIR_DATOS / nombres_oficiales.NOMBRE_CARPETA)
+        importador = ImportadorItems(con, i18n, idiomas_extra, oficiales)
         piezas = _leer_json(DIR_DATOS / f"{CATALOGO_PIEZAS}.json")
         if isinstance(piezas, list):
             # Formato nuevo: las recetas solo nombran sus piezas y hay que completarlas.
@@ -666,6 +687,7 @@ def construir(progreso=None, forzar: bool = False) -> dict:
         log.info(
             "Piezas con alias propio: %d", importador.registrar_piezas_con_nombre_propio()
         )
+        log.info("Palabras de pieza del juego por idioma: %d", importador.registrar_palabras_de_pieza())
         con.commit()
 
         avisar("Enlazando reliquias", 0, 0)
@@ -739,6 +761,9 @@ def construir(progreso=None, forzar: bool = False) -> dict:
                 ("drops_modified", estado.drops_modified),
                 # Fecha de la tabla oficial de DE si sus misiones sustituyeron a las de WFCD.
                 ("oficial_fecha", fecha_oficial),
+                # De donde sale cada nombre, por idioma: cuantos son el de DE, cuantos el
+                # de WFCD y cuantos de las piezas siguen saliendo del glosario propio.
+                ("nombres_origen", json.dumps(importador.origen_nombres, sort_keys=True)),
                 ("construido_en", time.strftime("%Y-%m-%dT%H:%M:%S")),
             ],
         )

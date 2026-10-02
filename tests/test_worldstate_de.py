@@ -70,8 +70,15 @@ def test_el_crudo_se_convierte_a_la_forma_de_warframestat(crudo, traductor):
     assert 0 < invasion["completion"] < 100
 
 
-def test_el_resultado_pasa_por_analizar_y_sale_traducido(crudo, traductor):
+def test_el_resultado_pasa_por_analizar_y_sale_traducido(crudo, traductor, monkeypatch):
     ahora = datetime.fromtimestamp(crudo["Time"], timezone.utc)
+
+    class _Reloj(datetime):  # reloj clavado en la hora del fixture: Baro no depende del dia en que se pase el test
+        @classmethod
+        def now(cls, tz=None):
+            return ahora.astimezone(tz) if tz else ahora.replace(tzinfo=None)
+
+    monkeypatch.setattr(worldstate, "datetime", _Reloj)
     mundo = worldstate.analizar(worldstate_de.normalizar(crudo, traductor, ahora=ahora), traductor)
 
     assert mundo.momento == ahora

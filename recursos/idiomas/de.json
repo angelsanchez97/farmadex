@@ -1,5 +1,12 @@
 {
   "_comentario": "Farmadex-Oberflächentexte. Schlüssel = spanischer Text aus dem Code; Wert = Übersetzung. {Klammern} sind Platzhalter und bleiben unverändert. Eine Zeile löschen = zurück zum Spanischen.",
+  "Un mod agrietado (riven). Léelo con el atajo de agrietados para ver sus estadísticas.": "Eine Riven-Mod. Lies sie mit dem Riven-Kürzel, um ihre Werte zu sehen.",
+  "OJO: hay {n} huecos ocupados que no he podido leer (están marcados en la rejilla).": "ACHTUNG: {n} belegte Slots konnten nicht gelesen werden (im Raster markiert).",
+  "OJO: hay un hueco ocupado que no he podido leer (está marcado en la rejilla).": "ACHTUNG: ein belegter Slot konnte nicht gelesen werden (im Raster markiert).",
+  "No he podido leer este mod": "Diese Mod konnte nicht gelesen werden",
+  "No he podido leer este arcano": "Dieses Arkana konnte nicht gelesen werden",
+  "En la pantalla hay un mod en este hueco, pero no se ha podido leer su nombre (tapado, ampliado o con una letra que no se entiende). Vuelve a leer con la pantalla despejada.": "Auf dem Bildschirm steckt in diesem Slot eine Mod, aber ihr Name konnte nicht gelesen werden (verdeckt, vergrößert oder in einer unleserlichen Schrift). Lies erneut mit freiem Bildschirm.",
+  "Leído: {texto}": "Gelesen: {texto}",
   "{n} mods equipados": "{n} Mods ausgerüstet",
   "{n} más en la colección": "{n} weitere in der Sammlung",
   "¿Es {nombre}?": "Ist es {nombre}?",
