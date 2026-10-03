@@ -56,11 +56,74 @@ def test_con_el_raton_en_el_dibujo_se_mira_mas_abajo(monkeypatch):
     monkeypatch.setattr(cursor.pantalla, "capturar", lambda r: capturas.append(r) or object())
     nombre = SimpleNamespace(caja=(260, 160, 200, 20), puntuacion=100, item_id=9, nombre="Fang Prime Plano",
                              texto_ocr="Plano De Fang Prime")
-    monkeypatch.setattr(lector, "_leer_protegido", lambda imagen, umbral: [] if len(capturas) == 1 else [nombre])
+    linea = _l("Plano De Fang Prime", 260, 160, 200, 20)
+    monkeypatch.setattr(lector, "_leer_lineas_protegido",
+                        lambda imagen: ([], []) if len(capturas) == 1 else ([nombre], [linea]))
     abiertos = []
     lector.encontrado.connect(lambda i, n: abiertos.append(i))
     lector.leer_solicitud(0)
     assert abiertos == [9] and len(capturas) == 2 and capturas[1].alto > capturas[0].alto
+
+
+def _rec(texto, caja, item_id, nombre):
+    return SimpleNamespace(caja=caja, puntuacion=95, item_id=item_id, nombre=nombre, texto_ocr=texto)
+
+
+def test_a_medias_si_falta_una_linea_del_bloque_o_toca_el_borde():
+    arriba = _l("Plano De Neuropticas De", 200, 60, 220, 22)
+    abajo = _l("Zephyr Prime", 250, 86, 120, 22)
+    solo_arriba = _rec("Plano De Neuropticas De", (200, 60, 220, 22), 1, "Jade Neurópticas")
+    entero = _rec("Plano De Neuropticas De Zephyr Prime", (200, 60, 220, 48), 2, "Zephyr Prime Neurópticas")
+    assert cursor.a_medias(solo_arriba, [arriba, abajo], 170)
+    assert not cursor.a_medias(entero, [arriba, abajo], 170)
+    # La segunda linea fuera del recuadro: lo casado toca el borde de abajo.
+    pegado = _rec("Plano De Neuropticas De", (200, 145, 220, 22), 1, "Jade Neurópticas")
+    assert cursor.a_medias(pegado, [_l("Plano De Neuropticas De", 200, 145, 220, 22)], 170)
+    # Una linea sola, con sitio arriba y abajo: no es dudosa.
+    suelta = _rec("Forma", (250, 70, 80, 22), 3, "Forma")
+    assert not cursor.a_medias(suelta, [_l("Forma", 250, 70, 80, 22)], 170)
+
+
+def _lector_con_miradas(monkeypatch, miradas):
+    from farmadex.captura.cursor import LectorCursor
+
+    lector = LectorCursor()
+    monkeypatch.setattr(lector, "_preparado", lambda: True)
+    monkeypatch.setattr(cursor.pantalla, "region_juego", lambda: Region(0, 0, 1920, 1080))
+    monkeypatch.setattr(cursor.pantalla, "_posicion_cursor", lambda: (960, 356))
+    monkeypatch.setattr(cursor.pantalla, "region_alrededor_del_cursor", lambda w, h, limite=None: Region(650, 271, w, h))
+    capturas = []
+    monkeypatch.setattr(cursor.pantalla, "capturar", lambda r: capturas.append(r) or object())
+    monkeypatch.setattr(lector, "_leer_lineas_protegido", lambda imagen: miradas[min(len(capturas), len(miradas)) - 1])
+    abiertos, estados = [], []
+    lector.encontrado.connect(lambda i, n: abiertos.append(n))
+    lector.estado.connect(estados.append)
+    lector.leer_solicitud(0)
+    return abiertos, estados, capturas
+
+
+def test_nombre_a_dos_lineas_cortado_se_relee_mas_abajo(monkeypatch):
+    """Banco: con el raton en el dibujo, "Plano DeNeuropticasDe" (sin "Zephyr Prime", que
+    caia fuera del recuadro) abria "Jade Neurópticas"."""
+    cortado = _l("Plano De Neuropticas De", 200, 146, 220, 22)
+    primera = ([_rec(cortado.texto, (200, 146, 220, 22), 1, "Jade Neurópticas")], [cortado])
+    l1, l2 = _l("Plano De Neuropticas De", 200, 146, 220, 22), _l("Zephyr Prime", 250, 172, 120, 22)
+    segunda = ([_rec("Plano De Neuropticas De Zephyr Prime", (200, 146, 220, 48), 2, "Zephyr Prime Neurópticas")], [l1, l2])
+    abiertos, _, capturas = _lector_con_miradas(monkeypatch, [primera, segunda])
+    assert abiertos == ["Zephyr Prime Neurópticas"] and len(capturas) == 2
+
+
+def test_lo_que_sigue_a_medias_se_dice_y_no_se_abre(monkeypatch):
+    """Banco: "Plano De Sistemas De" mal leido + "HildrynPrime" daba el warframe entero."""
+    l1, l2 = _l("Plano De Slstemas De", 200, 60, 220, 22), _l("HildrynPrime", 250, 86, 120, 22)
+    mirada = ([_rec("HildrynPrime", (250, 86, 120, 22), 5, "Hildryn Prime")], [l1, l2])
+    abiertos, estados, _ = _lector_con_miradas(monkeypatch, [mirada, mirada])
+    assert abiertos == [] and any("HildrynPrime" in e for e in estados)
+
+
+def test_plano_de_pegado_se_despega():
+    assert cursor.despegar("Plano DeForma") == "Plano De Forma"
+    assert cursor.despegar("Forma") == "Forma"
 
 
 # -- tabla de reliquia al pasar el raton ----------------------------------------------------
@@ -218,3 +281,15 @@ def test_tres_tarjetas_en_ruso_salen_las_tres_sin_identificar(con):
     grupos = rapidas.repartir(lineas, ventana, region, None)
     fila = rapidas.casar_fila(lineas, rapidas.CasadorEscalonado(Casador(con, CATEGORIAS_RECOMPENSA)), 4, grupos)
     assert [r.item_id for r in fila] == [rapidas.SIN_IDENTIFICAR] * 3
+
+
+def test_con_las_piezas_conocidas_solo_se_duda_del_objeto_entero_o_del_trozo_que_acaba_en_de():
+    nombre = _l("Plano De Fang Prime", 200, 60, 200, 22)
+    jugador = _l("Llama_Prime", 230, 86, 120, 22)  # el nombre del jugador justo debajo
+    pieza = _rec("Plano De Fang Prime", (200, 60, 200, 22), 7, "Fang Prime Plano")
+    assert not cursor.a_medias(pieza, [nombre, jugador], 170, padres={5})
+    l1, l2 = _l("Plano De Slstemas De", 200, 60, 220, 22), _l("HildrynPrime", 250, 86, 120, 22)
+    entero = _rec("HildrynPrime", (250, 86, 120, 22), 5, "Hildryn Prime")
+    assert cursor.a_medias(entero, [l1, l2], 170, padres={5})
+    trozo = _rec("Plano De Neuropticas De", (200, 146, 220, 22), 1, "Jade Neurópticas")
+    assert cursor.a_medias(trozo, [_l("Plano De Neuropticas De", 200, 146, 220, 22)], 170, padres={5})

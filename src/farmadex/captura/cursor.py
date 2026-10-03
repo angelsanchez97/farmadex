@@ -19,7 +19,8 @@ from PySide6.QtCore import QTimer, Signal, Slot
 from ..idiomas import t
 from ..registro_log import obtener
 from . import pantalla
-from .ocr import resumen_tiempos
+from .ocr import ErrorMotorOCR, agrupar_bloques, casar_lineas, leer_lineas, resumen_tiempos
+from .recompensas_rapidas import RE_DE_PEGADO, RE_DE_PEGADO_ANTES
 from .reliquias import LectorBase
 
 log = obtener("cursor")
@@ -69,6 +70,90 @@ def alineados(encontrados, punto, ancho_region: int) -> list:
     return sorted(cercanos, key=lambda r: (distancia(r), -r.puntuacion))
 
 
+def despegar(texto: str) -> str:
+    """"Plano DeForma" -> "Plano De Forma": el OCR pega la preposicion y asi no casaba nada."""
+    return RE_DE_PEGADO.sub(r"\1 ", RE_DE_PEGADO_ANTES.sub(r" \1", texto))
+
+
+def leer_recuadro(imagen, motor, casador, umbral: int = 85, lado_minimo: int | None = LADO_MINIMO):
+    """(reconocidos, lineas) del recuadro: lo que casa y todas las lineas leidas."""
+    lineas = leer_lineas(imagen, motor, 0.4, lado_minimo)
+    for linea in lineas:
+        linea.texto = despegar(linea.texto)
+    return casar_lineas(lineas, casador, umbral), lineas
+
+
+def _dentro(linea, caja) -> bool:
+    x, y, w, h = caja
+    cx, cy = linea.x + linea.ancho / 2, linea.y + linea.alto / 2
+    return x <= cx <= x + w and y <= cy <= y + h
+
+
+# Un trozo de nombre que acaba en preposicion ("Plano De Neuropticas De") esta cortado.
+RE_ACABA_EN_ENLACE = re.compile(r"(?i)(?:\b(?:de|del|des|du|der|di|da|do|dos|das|von|of)|[:\-])\s*$")
+
+
+def a_medias(reconocido, lineas, alto_region: int, padres: set | None = None) -> bool:
+    """Si lo casado puede ser solo un trozo del nombre que senala el raton.
+
+    Los nombres largos van en dos lineas ("Plano De Neuropticas De" / "Zephyr Prime").
+    Con una sola linea leida, el catalogo encontraba otra cosa: "Jade Neuropticas",
+    "Chasse", o el objeto entero ("Caliban Prime") en vez de la pieza. Es dudoso si
+    el bloque de lineas en el que esta tiene lineas que no entraron en el casado, o si
+    toca el borde de arriba o de abajo del recuadro (la otra linea puede estar fuera).
+    Con `padres` (ids de los objetos que tienen piezas) solo se duda de un objeto entero
+    o de un texto que acaba en preposicion; sin ellos, de todo lo que pueda estar cortado.
+    """
+    caja = reconocido.caja
+    if padres is not None and reconocido.item_id not in padres and not RE_ACABA_EN_ENLACE.search(reconocido.texto_ocr or ""):
+        # Un nombre completo de pieza (o de algo sin piezas) no se confunde por faltarle una
+        # linea: lo peligroso es el objeto entero ("Caliban Prime") o un trozo que acaba en "De".
+        return False
+    propias = [l for l in lineas if _dentro(l, caja)]
+    alto_linea = max([l.alto for l in propias] or [caja[3]])
+    if caja[1] < 0.6 * alto_linea or caja[1] + caja[3] > alto_region - 0.8 * alto_linea:
+        return True
+    for bloque in agrupar_bloques(list(lineas)):
+        if any(l in propias for l in bloque) and any(l not in propias for l in bloque):
+            return True
+    return False
+
+
+def elegir_bajo_cursor(capturar, region, juego, punto_de, leer, padres: set | None = None):
+    """Lo que senala el raton: (mejor | None, ordenados, texto_dudoso | None).
+
+    `capturar(Region)` da la imagen, `punto_de(Region)` donde esta el raton en ella y
+    `leer(imagen)` -> (reconocidos, lineas) o None si el motor fallo. Primera mirada
+    con el recuadro normal; si no hay nada alineado con el raton o lo alineado puede
+    estar a medias (`a_medias`), segunda mirada con el recuadro estirado hacia abajo.
+    Lo que siga a medias no se da por bueno: se devuelve su texto como dudoso.
+    """
+    imagen = capturar(region)
+    if imagen is None:
+        return None, [], None
+    leido = leer(imagen)
+    if leido is None:
+        return None, [], None
+    encontrados, lineas = leido
+    ordenados = alineados(encontrados, punto_de(region), region.ancho)
+    dudoso = ordenados and a_medias(ordenados[0], lineas, region.alto, padres)
+    if not ordenados or dudoso:
+        region_baja = region_mas_baja(region, juego)
+        imagen = capturar(region_baja) if region_baja.alto > region.alto else None
+        leido = leer(imagen) if imagen is not None else None
+        if leido is not None:
+            otros, lineas_b = leido
+            ordenados_b = alineados(otros, punto_de(region_baja), region_baja.ancho)
+            log.info("Bajo el cursor, segunda mirada mas abajo: %d encontrados, %d alineados", len(otros), len(ordenados_b))
+            if ordenados_b and not a_medias(ordenados_b[0], lineas_b, region_baja.alto, padres):
+                return ordenados_b[0], ordenados_b, None
+            if ordenados_b or not ordenados:
+                ordenados, dudoso = ordenados_b, bool(ordenados_b)
+    if ordenados and dudoso:
+        return None, ordenados, ordenados[0].texto_ocr
+    return (ordenados[0] if ordenados else None), ordenados, None
+
+
 def tamano_recuadro(alto_juego: int | None) -> tuple[int, int]:
     """(ancho, alto) del recuadro para un juego de ese alto (1080p si no se sabe)."""
     escala = max(0.5, (alto_juego or 1080) / 1080.0)
@@ -89,6 +174,7 @@ class LectorCursor(LectorBase):
         # un resultado, para no abrir la ficha de algo que ya no se esta mirando.
         self.ultima_pedida = 0
         self.lado_minimo = LADO_MINIMO  # lo usa LectorBase._leer_protegido
+        self._ids_padres: set | None = None
 
     @Slot()
     def leer_ahora(self) -> None:
@@ -110,6 +196,31 @@ class LectorCursor(LectorBase):
             self._ocupado = False
             self.terminado.emit(numero)
 
+    def _padres(self) -> set | None:
+        """Ids de los objetos que tienen piezas (armas y warframes enteros); None si no hay indice."""
+        if self._ids_padres is None:
+            try:
+                from ..datos import indice
+
+                con = indice.conectar()
+                try:
+                    self._ids_padres = {f[0] for f in con.execute(
+                        "SELECT DISTINCT padre_id FROM items WHERE padre_id IS NOT NULL")}
+                finally:
+                    con.close()
+            except Exception:  # noqa: BLE001 - sin indice: se duda de todo lo que pueda estar cortado
+                log.debug("Sin indice para saber que objetos tienen piezas", exc_info=True)
+                return None
+        return self._ids_padres
+
+    def _leer_lineas_protegido(self, imagen):
+        """`leer_recuadro` sin que nada se propague: None si el motor no esta disponible."""
+        try:
+            return leer_recuadro(imagen, self.motor, self.casador, 85, self.lado_minimo)
+        except ErrorMotorOCR as e:
+            self._avisar_motor(str(e))
+            return None
+
     def _vieja(self, numero: int) -> bool:
         return bool(numero) and numero < self.ultima_pedida
 
@@ -130,48 +241,39 @@ class LectorCursor(LectorBase):
                 alto_juego = None
         ancho_r, alto_r = tamano_recuadro(alto_juego)
         region = pantalla.region_alrededor_del_cursor(ancho_r, alto_r, limite=juego)
-        imagen = pantalla.capturar(region)
-        if imagen is None:
+        fallo = []
+
+        def capturar(r):
+            imagen = pantalla.capturar(r)
+            if imagen is None and not fallo:
+                fallo.append(r)
+            return imagen
+
+        mejor, ordenados, dudoso = elegir_bajo_cursor(capturar, region, juego, punto_del_raton, self._leer_lineas_protegido,
+                                                     self._padres())
+        fin = time.perf_counter()
+        tiempos = getattr(self.motor, "tiempos", None) or {}
+        log.info("Lectura bajo el cursor en %.0f ms (%s): %s", (fin - inicio) * 1000, resumen_tiempos(tiempos),
+                 repr(mejor.nombre) if mejor else "nada")
+        if fallo and not ordenados:
             self.estado.emit(t("No se pudo capturar la pantalla"))
             self.candidatos.emit([])
             return
-        capturado = time.perf_counter()
-        encontrados = self._leer_protegido(imagen, umbral=85)
-        fin = time.perf_counter()
-        tiempos = getattr(self.motor, "tiempos", None) or {}
-        ocr = tiempos.get("total", 0.0)
-        log.info("Lectura bajo el cursor en %.0f ms (captura %.0f ms, %s, casado %.0f ms): %d encontrados",
-                 (fin - inicio) * 1000, (capturado - inicio) * 1000, resumen_tiempos(tiempos),
-                 max(0.0, fin - capturado - ocr) * 1000, len(encontrados or []))
-        if encontrados is None:
+        if dudoso:
+            # Leido pero a medias: se dice lo leido en vez de abrir la ficha de otra cosa.
+            log.info("Bajo el cursor: %r puede ser solo un trozo del nombre (%s): no se da por bueno",
+                     dudoso, ", ".join(repr(r.nombre) for r in ordenados[:3]))
+            self.estado.emit(t("Leído: {texto} (sin reconocer)", texto=dudoso))
             self.candidatos.emit([])
             return
-
-        # El que este mas cerca del raton es el que senala. El raton no siempre esta en el
-        # centro del recuadro: junto al borde del juego el recuadro se desplaza hacia dentro.
-        punto = punto_del_raton(region)
-
-        # Solo cuenta lo que esta encima o debajo del raton: si el nombre que senala no se
-        # ha podido leer, el vecino de al lado no es la respuesta (abria la ficha de otra
-        # pieza de la pantalla de recompensas).
-        ordenados = alineados(encontrados, punto, region.ancho)
-        if not ordenados:
-            # Con el raton sobre el dibujo de una tarjeta el nombre queda mas abajo:
-            # segunda mirada con el recuadro estirado hacia abajo.
-            region_baja = region_mas_baja(region, juego)
-            imagen = pantalla.capturar(region_baja) if region_baja.alto > region.alto else None
-            if imagen is not None:
-                otros = self._leer_protegido(imagen, umbral=85) or []
-                ordenados = alineados(otros, punto_del_raton(region_baja), region_baja.ancho)
-                log.info("Bajo el cursor, segunda mirada mas abajo: %d encontrados, %d alineados",
-                         len(otros), len(ordenados))
-        if not ordenados:
-            log.info("Bajo el cursor: nada alineado con el raton (%s)",
-                     ", ".join(repr(r.nombre) for r in encontrados))
+        if mejor is None:
+            if self.motor.fallo:  # ya se aviso del motor
+                self.candidatos.emit([])
+                return
+            log.info("Bajo el cursor: nada alineado con el raton")
             self.estado.emit(t("No se reconoció nada bajo el cursor"))
             self.candidatos.emit([])
             return
-        mejor = ordenados[0]
         if self._vieja(numero):
             # Mientras se leia se volvio a pulsar el atajo: manda la lectura nueva.
             log.info("Lectura bajo el cursor %d descartada: ya hay otra pedida (%r)", numero, mejor.nombre)
