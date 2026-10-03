@@ -171,7 +171,7 @@ def test_el_resultado_de_una_lectura_vieja_no_abre_la_ficha(monkeypatch):
     monkeypatch.setattr(cursor.pantalla, "region_alrededor_del_cursor", lambda *a, limite=None: region)
     monkeypatch.setattr(cursor.pantalla, "capturar", lambda r: object())
     hallado = SimpleNamespace(caja=(40, 40, 20, 20), puntuacion=95, item_id=7, nombre="Ash Prime", texto_ocr="ASH")
-    monkeypatch.setattr(lector, "_leer_protegido", lambda imagen, umbral: [hallado])
+    monkeypatch.setattr(lector, "_leer_lineas_protegido", lambda imagen: ([hallado], []))
     abiertos, terminados = [], []
     lector.encontrado.connect(lambda i, n: abiertos.append(i))
     lector.terminado.connect(terminados.append)
@@ -199,7 +199,7 @@ def _leer_con(monkeypatch, hallados, cursor_xy, region):
     monkeypatch.setattr(cursor.pantalla, "region_alrededor_del_cursor", lambda *a, limite=None: region)
     monkeypatch.setattr(cursor.pantalla, "capturar", lambda r: object())
     monkeypatch.setattr(cursor.pantalla, "_posicion_cursor", lambda: cursor_xy)
-    monkeypatch.setattr(lector, "_leer_protegido", lambda imagen, umbral: hallados)
+    monkeypatch.setattr(lector, "_leer_lineas_protegido", lambda imagen: (hallados, []))
     abiertos = []
     lector.encontrado.connect(lambda i, n: abiertos.append(i))
     lector.leer_solicitud(0)

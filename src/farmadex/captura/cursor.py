@@ -198,7 +198,7 @@ class LectorCursor(LectorBase):
 
     def _padres(self) -> set | None:
         """Ids de los objetos que tienen piezas (armas y warframes enteros); None si no hay indice."""
-        if self._ids_padres is None:
+        if getattr(self, "_ids_padres", None) is None:
             try:
                 from ..datos import indice
 
@@ -252,7 +252,7 @@ class LectorCursor(LectorBase):
         mejor, ordenados, dudoso = elegir_bajo_cursor(capturar, region, juego, punto_del_raton, self._leer_lineas_protegido,
                                                      self._padres())
         fin = time.perf_counter()
-        tiempos = getattr(self.motor, "tiempos", None) or {}
+        tiempos = getattr(getattr(self, "motor", None), "tiempos", None) or {}
         log.info("Lectura bajo el cursor en %.0f ms (%s): %s", (fin - inicio) * 1000, resumen_tiempos(tiempos),
                  repr(mejor.nombre) if mejor else "nada")
         if fallo and not ordenados:
