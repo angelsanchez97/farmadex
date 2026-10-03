@@ -524,3 +524,26 @@ def test_controlador_panel_de_agrietado_sin_red(qapp):
         assert not c.caja_riven.isVisible()
     finally:
         c.cerrar()
+
+
+def test_el_vigia_se_precalienta_antes_de_la_primera_vista(monkeypatch):
+    """La primera tarjeta de agrietado de la sesion no paga la carga del casador ni la del lector."""
+    hechos = []
+    v = vista.VigiaVistas("rapidocr", precio=False, rivens=True, builds=False)
+    monkeypatch.setattr(v, "preparar", lambda: hechos.append("preparar") or True)
+    monkeypatch.setattr(v, "_lector_riven", lambda: hechos.append("lector"))
+    v._precalentar()
+    assert hechos == ["preparar", "lector"]
+    # Sin agrietados activos no se carga su lector; sin indice no se hace nada (se preparara al leer).
+    hechos.clear()
+    v.activo_rivens = False
+    v._precalentar()
+    assert hechos == ["preparar"]
+    hechos.clear()
+    v.activo_rivens = True
+    monkeypatch.setattr(v, "preparar", lambda: hechos.append("preparar") and False)
+    v._precalentar()
+    assert hechos == ["preparar"]
+    # Un fallo al adelantar trabajo no rompe nada.
+    monkeypatch.setattr(v, "preparar", lambda: 1 / 0)
+    v._precalentar()

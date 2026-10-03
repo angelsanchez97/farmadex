@@ -46,6 +46,7 @@ from . import pantalla
 log = obtener("vista")
 
 TIC_MS = 50
+PRECALENTAR_MS = 3000  # tras arrancar el vigia: que no compita con el arranque de la ventana
 SONDEO_MS = 50  # franjas de pantalla (build y agrietado)
 QUIETO_S = 0.12  # raton quieto este tiempo = esta mirando algo
 TOLERANCIA_PX = 4
@@ -579,6 +580,19 @@ class VigiaVistas(QObject):
         self._temporizador.start()
         log.info("Vigia de vistas en marcha (precio=%s, agrietados=%s, builds=%s)",
                  self.activo_precio, self.activo_rivens, self.activo_builds)
+        QTimer.singleShot(PRECALENTAR_MS, self._precalentar)
+
+    @Slot()
+    def _precalentar(self) -> None:
+        """Deja listos el casador, el motor y el lector de agrietados antes de la primera vista.
+
+        Si no, la primera tarjeta que se ve en la sesion paga esa carga (casi un segundo en un PC normal).
+        Sin indice todavia no hace nada: se preparara al leer, como siempre."""
+        try:
+            if self.preparar() and self.activo_rivens:
+                self._lector_riven()
+        except Exception:  # noqa: BLE001 - es solo adelantar trabajo: al leer se reintenta
+            log.debug("El vigia no pudo precalentarse", exc_info=True)
 
     @Slot()
     def parar(self) -> None:

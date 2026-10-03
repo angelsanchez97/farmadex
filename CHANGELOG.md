@@ -43,6 +43,8 @@ una reliquia, y agrietados leídos de arriba abajo. Cuando algo no se puede leer
   encima de la tarjeta ya no se pegan al nombre del arma.
 - Si solo se ve el nombre del agrietado y no el del arma, Farmadex lo dice en vez de inventarse un arma.
 - Un agrietado sin desvelar se reconoce aunque solo muestre su tipo («Melee»).
+- La primera tarjeta que miras al empezar a jugar ya no tarda más que las demás: Farmadex se prepara
+  en cuanto arranca.
 
 **Recursos de fin de misión** (sigue apagado por defecto)
 - Una cantidad grande de créditos ya no pierde sus primeras cifras al quitar el icono.
