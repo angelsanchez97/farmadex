@@ -166,6 +166,8 @@ def leer_tarjeta(imagen, motor, lector: LectorTarjeta) -> TarjetaLeida:
         except ImportError:  # pragma: no cover - cv2 viene con rapidocr
             pass
     lineas = [l for l in unir_filas(motor.leer(imagen)) if l.confianza >= MINIMO_CONFIANZA]
+    # Ampliada mucho (tarjeta pequena en pantalla): las cifras se confunden y se verifican.
+    verificar = alto < ALTO_MINIMO_LECTURA / 1.5
 
     def releer(caja, escala: float):
         """Un trozo de la tarjeta ampliado y leido otra vez; las cajas vuelven a las
@@ -191,7 +193,7 @@ def leer_tarjeta(imagen, motor, lector: LectorTarjeta) -> TarjetaLeida:
                                 max(1, int(l.ancho / escala)), max(1, int(l.alto / escala)), l.confianza))
         return salida
 
-    return lector.leer(lineas, releer=releer, contador=lambda caja, caja_mr=None, maestria=None: leer_contador(imagen, motor, caja, caja_mr, maestria))
+    return lector.leer(lineas, releer=releer, verificar=verificar, contador=lambda caja, caja_mr=None, maestria=None: leer_contador(imagen, motor, caja, caja_mr, maestria))
 
 
 # Alto, en pixeles, al que se lleva la fila del pie para separar el icono de variar de sus cifras.

@@ -31,7 +31,7 @@ RE_STAT = re.compile(
 )
 # "MR 8", "MR=13", "MASTERY 9", "MASTERY品9", "RM 8", "MAESTRIA 12".
 # En frances pone "PM 11" (captura real de YouTube, 2025).
-RE_MR = re.compile(r"(?i)\b(?:MR|RM|PM|MASTERY|MAESTR[IÍ]A)\D{0,4}(\d{1,2})\b")
+RE_MR = re.compile(r"(?i)\b(?:MR|RM|PM|MASTERY|MAESTR[IÍ]A)\D{0,4}(\d{1,3})\b")
 RE_MR_SOLO = re.compile(r"(?i)^(?:MR|RM|PM|MASTERY|MAESTR[IÍ]A)\W*$")
 # El icono de variar se lee como "0" u "O" y detras van las veces: "011", "O4", "050".
 RE_VARIADO = re.compile(r"^[0O]\s?(\d{1,3})$")
@@ -49,7 +49,20 @@ AVISO_FUERA_DE_RANGO = "Hay valores que no caben en lo posible para esta arma"
 ESCALAS_RELECTURA = (2.5, 1.6, 1.0, 0.5, 3.5)
 # Ampliaciones del pie (maestria y veces variado): se leen todas y tienen que estar de acuerdo.
 ESCALAS_PIE = (3.0, 2.0)
+# Con la tarjeta pequena (ampliada para leerla) un "3" y un "8" se confunden: cada valor se
+# relee a estas ampliaciones y todas las lecturas tienen que dar lo mismo.
+ESCALAS_VERIFICACION = (0.75, 1.6)
 RE_VARIADO_AMPLIO = re.compile(r"^[0OoCcQGg@©¢]\s?(\d{1,3})$")
+
+
+def _maestria_de(cifras: str) -> int | None:
+    """La maestria de "MR 12", "MR012" o "MR611": el candado de "MR 🔒 12" se lee a veces como
+    una cifra mas ("0", "6", "1"). Un agrietado pide de 8 a 16, asi que no hay duda: si las
+    cifras no caben, se prueba sin la primera; si tampoco, no hay maestria."""
+    for texto in (cifras, cifras[1:]):
+        if texto and texto.isdigit() and MAESTRIA_MIN <= int(texto) <= MAESTRIA_MAX:
+            return int(texto)
+    return None
 
 
 def _rango_por_capacidad(capacidad: int) -> int | None:
@@ -60,6 +73,44 @@ def _rango_por_capacidad(capacidad: int) -> int | None:
     if 5 <= capacidad <= 9:
         return capacidad * 2 - 10
     return None
+
+
+TIPOS_VELADO = frozenset({
+    "melee", "rifle", "pistol", "shotgun", "kitgun", "zaw", "archgun", "companion", "primary", "secondary",
+    "cuerpo a cuerpo", "fusil", "pistola", "escopeta", "arma de archwing", "companero",
+})
+
+
+def _es_tipo_velado(cabecera: list[Leido], pie: list[Leido]) -> bool:
+    textos = [normalizar(l.texto) for l in cabecera if not RE_SOLO_DIGITOS.match(l.texto.strip())]
+    textos = [t.replace(" riven mod", "").replace(" riven", "").strip() for t in textos if t]
+    cero = any(re.search(r"(?i)\b(?:MR|RM|PM)\W*0(?!\d)", l.texto) for l in pie)
+    # Sin estadisticas y con solo el tipo de arma por rotulo no puede ser otra cosa; el "MR 0"
+    # lo confirma cuando se lee (en una tarjeta pequena a veces ni se ve).
+    return bool(textos) and len(textos) == 1 and textos[0] in TIPOS_VELADO and (cero or not pie)
+
+
+def _solo_rotulo(cabecera: list[Leido], cuerpo: list[Leido]) -> list[Leido]:
+    """De lo que hay encima de las estadisticas, el rotulo (arma y nombre, una o dos lineas
+    pegadas a la primera estadistica) y las cifras sueltas (la capacidad, arriba del todo).
+    Un texto de la interfaz que asoma por encima de la tarjeta ("UPGRADES", "SELECT A MOD TO
+    BEGIN FUSION") no es parte del nombre del arma."""
+    if not cabecera or not cuerpo:
+        return cabecera
+    x0 = min(l.x for l in cuerpo) - 2 * cuerpo[0].alto
+    x1 = max(l.x + l.ancho for l in cuerpo) + 2 * cuerpo[0].alto
+    textos = [l for l in cabecera if not RE_SOLO_DIGITOS.match(l.texto.strip()) and x0 <= l.x + l.ancho / 2 <= x1]
+    pegadas: list[Leido] = []
+    debajo = cuerpo[0]
+    for linea in sorted(textos, key=lambda l: l.y, reverse=True):
+        alto = max(linea.alto, debajo.alto)
+        if debajo.y - (linea.y + linea.alto) > 1.6 * alto:
+            break
+        pegadas.append(linea)
+        debajo = linea
+    if not pegadas:
+        return cabecera
+    return [l for l in cabecera if l in pegadas or RE_SOLO_DIGITOS.match(l.texto.strip())]
 
 
 def _misma_fila(linea: Leido, filas: list[Leido]) -> bool:
@@ -103,6 +154,8 @@ class EstadisticaLeida:
     signo_dudoso: bool = False  # el OCR no dio signo y se dedujo de la posicion/pixeles
     caja: tuple[int, int, int, int] | None = None  # x, y, ancho, alto de la linea en la captura
     fuera_de_rango: bool = False  # el valor no cabe en lo posible para esa arma: lectura mal
+    antigua: bool = False  # nombre de estadistica que el juego ya no usa: su valor no se compara
+    valor_dudoso: bool = False  # dos lecturas dieron cifras distintas: no se sabe cual es
 
     @property
     def entendida(self) -> bool:
@@ -168,10 +221,11 @@ class LectorTarjeta:
         self._atributos = grados.nombres_para_casar()
         self._claves_atributo = [c for c, _ in self._atributos]
         self._slug_por_clave = dict(self._atributos)
+        self._ultima_clave = ""
 
     # -- entrada --------------------------------------------------------------------
 
-    def leer(self, lineas: list[Leido], releer=None, contador=None) -> TarjetaLeida:
+    def leer(self, lineas: list[Leido], releer=None, contador=None, verificar: bool = False) -> TarjetaLeida:
         """`lineas` ya unidas por filas (ocr.unir_filas), de una sola tarjeta.
 
         `releer(caja, escala)`, si se da, vuelve a leer con el OCR un trozo de la captura
@@ -218,7 +272,12 @@ class LectorTarjeta:
             else:
                 cabecera.append(linea)
 
-        self._leer_cabecera(cabecera, tarjeta)
+        if not cuerpo and _es_tipo_velado(cabecera, pie):
+            # Sin desvelar: la tarjeta solo dice el tipo ("Melee", "Rifle") y "MR 0".
+            tarjeta.velado = True
+            tarjeta.avisos.append("Agrietado sin desvelar: no tiene estadisticas que leer.")
+            return tarjeta
+        self._leer_cabecera(_solo_rotulo(cabecera, cuerpo), tarjeta)
         self._leer_estadisticas(cuerpo, tarjeta)
         self._leer_pie(pie, tarjeta)
         avisos_de_lectura = list(tarjeta.avisos)
@@ -226,6 +285,8 @@ class LectorTarjeta:
         self._validar_capacidad(tarjeta)
         if releer is not None and not tarjeta.velado:
             self._releer_dudoso(tarjeta, releer, contador, avisos_de_lectura)
+            if verificar:
+                self._verificar_valores(tarjeta, releer, avisos_de_lectura)
         return tarjeta
 
     # -- relecturas ampliadas ----------------------------------------------------------------
@@ -272,7 +333,8 @@ class LectorTarjeta:
                     continue
                 nueva = self._interpretar_stat(texto, min([l.confianza for l in lineas] or [0.0]))
                 signo = RE_SIGNO.match(texto)
-                if nueva.entendida and (not e.entendida or e.fuera_de_rango):
+                # Una estadistica ya reconocida no cambia de nombre por releerla: solo el valor.
+                if nueva.entendida and (not e.entendida or (e.fuera_de_rango and nueva.slug == e.slug)):
                     # Solo vale si lo nuevo cabe en lo posible: una relectura peor no sustituye.
                     nueva.negativo = e.negativo if nueva.slug == e.slug else nueva.negativo
                     if self._en_rango(tarjeta, nueva) is not False:
@@ -292,6 +354,34 @@ class LectorTarjeta:
                 cambiado = cambiado or tarjeta.pie_dudoso
         if cambiado:
             # Los avisos de coherencia se rehacen; los de la lectura (arma sin reconocer...) siguen.
+            tarjeta.avisos = list(avisos_de_lectura)
+            self._comprobar(tarjeta)
+
+    def _verificar_valores(self, tarjeta: TarjetaLeida, releer, avisos_de_lectura=()) -> None:
+        """Cada valor releido a otras ampliaciones: si alguna lectura da otra cifra para la misma
+        estadistica, el valor queda en duda (nunca se elige uno por mayoria: en una tarjeta
+        borrosa la mayoria tambien se equivoca)."""
+        cambiado = False
+        for e in tarjeta.estadisticas:
+            if e.caja is None or not e.entendida:
+                continue
+            for escala in ESCALAS_VERIFICACION:
+                try:
+                    lineas = releer(e.caja, escala)
+                except Exception:  # noqa: BLE001
+                    log.exception("Fallo verificando una estadistica")
+                    continue
+                lineas = [l for l in lineas
+                          if e.caja[1] - 0.3 * l.alto <= l.y + l.alto / 2 <= e.caja[1] + e.caja[3] + 0.3 * l.alto]
+                texto = " ".join(l.texto.strip() for l in sorted(lineas, key=lambda l: (l.y, l.x)) if l.texto.strip())
+                if not texto:
+                    continue
+                otra = self._interpretar_stat(texto, 1.0)
+                if otra.valor is not None and (otra.slug == e.slug or otra.slug is None) and abs(otra.valor - e.valor) > 0.05:
+                    e.valor_dudoso = True
+                    cambiado = True
+                    break
+        if cambiado:
             tarjeta.avisos = list(avisos_de_lectura)
             self._comprobar(tarjeta)
 
@@ -370,7 +460,7 @@ class LectorTarjeta:
             m = RE_MR.search(texto)
             if m:
                 if maestria is None:
-                    maestria = int(m.group(1))
+                    maestria = _maestria_de(m.group(1))
                     caja_mr = (l.x, l.y, l.ancho, l.alto)
                 resto = texto[m.end():].replace(" ", "")
                 # Todo el pie en una sola caja: "MR 12 03".
@@ -423,6 +513,10 @@ class LectorTarjeta:
         junto = " ".join(textos)
         arma, nombre, puntos = self._separar_arma_y_nombre(junto)
         tarjeta.arma_texto = arma
+        # El nombre es una sola palabra con guion; al partirse en dos lineas el OCR deja
+        # "Hexa- critasus" o, si se come el guion, "Sci plecidra".
+        nombre = re.sub(r"\s*-\s*", "-", nombre.strip())
+        nombre = re.sub(r"\s+", "-", nombre)
         tarjeta.nombre = nombre
         tarjeta.nombre_slugs = grados.descomponer_nombre(nombre) if nombre else None
         if arma:
@@ -449,11 +543,14 @@ class LectorTarjeta:
         for i in range(1, len(palabras)):
             candidatos.append((" ".join(palabras[:i]), " ".join(palabras[i:])))
         for i, palabra in enumerate(palabras):
-            for corte in range(2, len(palabra) - 3):
+            for corte in range(2, len(palabra) - (1 if i < len(palabras) - 1 else 3)):
                 cabeza = " ".join(palabras[:i] + [palabra[:corte]])
                 cola = " ".join([palabra[corte:]] + palabras[i + 1:])
                 candidatos.append((cabeza, cola))
         for cabeza, cola in candidatos:
+            # El guion es del nombre del agrietado ("Acri-visicron"): el arma nunca va pegada a el.
+            if cola.lstrip().startswith(("-", "–")) or cabeza.rstrip().endswith(("-", "–")):
+                continue
             if grados.descomponer_nombre(cola) is None:
                 continue
             arma = self._casar_arma(cabeza)
@@ -462,6 +559,10 @@ class LectorTarjeta:
                 mejor = (puntos, cabeza, cola)
         if mejor is not None:
             return mejor[1], mejor[2], mejor[0]
+        # Solo el nombre del agrietado, sin arma (tapada o fuera del recorte): se da el nombre
+        # y el arma queda sin leer, nunca un arma parecida a un trozo del nombre.
+        if len(palabras) == 1 and grados.descomponer_nombre(texto) and not self._casar_arma(texto):
+            return "", texto, 0.0
         # Sin nombre reconocible: quiza el OCR lo perdio. El arma es lo que mas se parezca.
         return texto, "", 0.0
 
@@ -532,18 +633,26 @@ class LectorTarjeta:
             valor = float(valor_txt)
         except ValueError:
             return EstadisticaLeida(texto, None, None, False, 0.0)
+        # "+132.T%": el decimal no se leyo. Dar 132 seria inventar: se relee o se dice.
+        decimal_perdido = bool(re.match(r"^[.,]\s*[^\d\s%]", resto)) and "." not in valor_txt
         negativo = signo in ("-", "−", "–", "—")
         signo_dudoso = signo in ("", "f", "t")
         slug, puntos = self._casar_atributo(resto)
+        if decimal_perdido:
+            return EstadisticaLeida(texto, None, slug, negativo, confianza_ocr * 0.5, signo_dudoso)
         if slug is None:
             return EstadisticaLeida(texto, valor, None, negativo, confianza_ocr * 0.5, signo_dudoso)
         atributo = grados.POR_SLUG[slug]
+        if slug in grados.SIGNO_AL_REVES and signo in ("+", "-", "−", "–", "—"):
+            negativo = signo == "+"
         if atributo.solo_positivo and negativo:
             # Frio, calor, electricidad, toxina y atravesar nunca son negativos: el "-" es
             # un guion de la tarjeta o una mancha, no un signo.
             negativo = False
             signo_dudoso = True
-        return EstadisticaLeida(texto, valor, slug, negativo, confianza_ocr * (puntos / 100.0), signo_dudoso)
+        estadistica = EstadisticaLeida(texto, valor, slug, negativo, confianza_ocr * (puntos / 100.0), signo_dudoso)
+        estadistica.antigua = self._ultima_clave in grados.NOMBRES_ANTIGUOS
+        return estadistica
 
     def _interpretar_multiplicador(self, texto: str, m: re.Match, confianza_ocr: float) -> EstadisticaLeida:
         """"x1,4 points de Dégâts aux Infestés" (tarjeta real en frances, 2025): el dano a
@@ -575,6 +684,7 @@ class LectorTarjeta:
         if len(clave) > 4:
             variantes.append(clave[1:])
         mejor_slug, mejor_puntos = None, 0.0
+        self._ultima_clave = ""
         for variante in variantes:
             compacta = variante.replace(" ", "")
             for candidata in self._claves_atributo:
@@ -584,9 +694,25 @@ class LectorTarjeta:
                 )
                 if puntos > mejor_puntos:
                     mejor_slug, mejor_puntos = self._slug_por_clave[candidata], puntos
+                    self._ultima_clave = candidata
         if mejor_puntos < UMBRAL_ATRIBUTO:
             return None, mejor_puntos
+        if self._empata_con_otra(variantes, mejor_slug, mejor_puntos):
+            # "Channeling" a secas cabe igual en "Channeling Damage" y en "Channeling
+            # Efficiency": con dos estadisticas igual de parecidas, no se elige ninguna.
+            return None, mejor_puntos
         return mejor_slug, mejor_puntos
+
+    def _empata_con_otra(self, variantes, slug, puntos) -> bool:
+        for variante in variantes:
+            compacta = variante.replace(" ", "")
+            for candidata in self._claves_atributo:
+                if self._slug_por_clave[candidata] == slug:
+                    continue
+                otro = max(fuzz.ratio(compacta, candidata.replace(" ", "")), fuzz.token_set_ratio(variante, candidata) - 6)
+                if otro >= puntos - 0.5:
+                    return True
+        return False
 
     # -- pie: maestria y veces variado ---------------------------------------------------
 
@@ -606,7 +732,7 @@ class LectorTarjeta:
                 tarjeta.caja_mr = (linea.x, linea.y, linea.ancho, linea.alto)
             m = RE_MR.search(texto)
             if m:
-                tarjeta.maestria = int(m.group(1))
+                tarjeta.maestria = _maestria_de(m.group(1))
                 continue
             m = RE_VARIADO.match(texto.replace(" ", ""))
             if m and tarjeta.variado is None:
@@ -684,6 +810,10 @@ class LectorTarjeta:
         dudosos = [e for e in stats if e.signo_dudoso and e.entendida]
         if dudosos:
             tarjeta.avisos.append("No se vio bien el signo de alguna estadistica: revisa cual es la negativa.")
+        inseguros = [e for e in stats if e.valor_dudoso]
+        if inseguros:
+            tarjeta.avisos.append("No se leyo seguro el valor de: " + "; ".join(f'"{e.texto}"' for e in inseguros)
+                                  + ". Revisalo en la tarjeta.")
         if tarjeta.pie_dudoso:
             tarjeta.avisos.append("No se leyo bien la maestria o las veces que se ha variado: revisalas.")
         self._comprobar_rangos(tarjeta)
@@ -691,7 +821,7 @@ class LectorTarjeta:
     def _en_rango(self, tarjeta: TarjetaLeida, e: EstadisticaLeida) -> bool | None:
         """Si el valor de `e` cabe en lo posible para el arma de la tarjeta; None si no se sabe."""
         arma = self._claves.get(normalizar(tarjeta.arma_nombre)) if tarjeta.arma_nombre else None
-        if arma is None or arma.disposicion is None or not arma.clase or not e.entendida:
+        if arma is None or arma.disposicion is None or not arma.clase or not e.entendida or e.antigua:
             return None
         stats = [s for s in tarjeta.estadisticas if s.entendida]
         positivos = sum(1 for s in stats if not s.negativo)
@@ -777,7 +907,10 @@ def _parece_stat(texto: str) -> bool:
     if not m:
         return False
     resto = m.group("resto") or ""
-    # Un numero solo ("18", "011") no es una estadistica: hace falta texto detras.
+    # Un numero solo ("18", "011") no es una estadistica: hace falta texto detras. Sin signo
+    # ni unidad, unas pocas letras ("18VME": la capacidad y un trozo de la interfaz) tampoco.
+    if not m.group("signo") and not m.group("unidad") and len(re.sub(r"[^A-Za-zÁÉÍÓÚÑáéíóúñ]", "", resto)) < 5:
+        return False
     return bool(re.search(r"[A-Za-zÁÉÍÓÚÑáéíóúñ]{3,}", resto)) or bool(m.group("unidad") in ("%", "96"))
 
 
