@@ -1,5 +1,52 @@
 # Cambios
 
+## 0.6.13
+
+Seguimos con la precisión: builds más completas, recompensas de reliquia que solo pueden dar lo que da
+una reliquia, y agrietados leídos de arriba abajo. Cuando algo no se puede leer, Farmadex te lo dice.
+
+**Builds**
+- La ventana ya no se queda un momento parada al enseñar la primera build de la sesión.
+- Builds de compañeros (centinelas, kubrows, kavats, moas...) y de sus armas, y armas exaltadas
+  (Vientos del desierto, garras de Ash, Dex Pixia...): ahora se sabe dónde va cada hueco, así que si
+  una tarjeta ampliada o una ayuda tapa un mod, se avisa en vez de faltar sin más.
+- Una tarjeta que llevas cogida con el ratón ya no sale como si estuviera puesta: sale aparte, con un
+  «¿puesta?».
+- Un hueco tapado por el dibujo de una tarjeta ampliada, o por la ayuda abierta de un arcano, ya no se
+  da por vacío: se avisa como «no he podido leer».
+- Si una tarjeta ampliada tapa dos huecos de la misma columna y no se puede saber en cuál está, el mod
+  sale como puesto pero sin hueco, en vez de colocarlo en uno que podía no ser el suyo.
+- El nombre de una configuración escrito debajo del título ya no se confunde con una ayuda abierta.
+- Los rótulos de los huecos vacíos de arcano y exilus («Requires ... Adapter») se reconocen en todos
+  los idiomas y ayudan a saber dónde va cada mod cuando hay pocos puestos.
+
+**Reliquias**
+- La pantalla de recompensas solo puede dar cosas que salen de reliquias. Antes, un nombre leído
+  cortado podía acabar en un mod o un recurso que no tenía nada que ver.
+- Ninguna tarjeta desaparece sin avisar: si no se puede leer (por ejemplo, con el juego en ruso, que
+  Farmadex todavía no sabe leer), sale como «sin identificar» en su sitio.
+- Objeto bajo el cursor: si el nombre va en dos líneas y solo se leía una, Farmadex vuelve a mirar
+  para leerlo entero, y si aun así no está seguro te dice lo que ha leído en vez de abrir la ficha de
+  otro objeto. Los avisos de bonificación de debajo de las tarjetas ya no se toman por el objeto.
+- Juego en alemán: los planos («Blaupause») se reconocen y un arma ya no se confunde con otra de
+  nombre casi igual (Akbronco no es Bronco). «Plano De Forma» se reconoce aunque salga pegado.
+- Al ver el precio de un objeto, un texto de la interfaz como «BUSCAR...» ya no se toma por un nombre.
+
+**Agrietados (rivens)**
+- La maestría y las veces que se ha variado se leen casi siempre, también con el candado delante
+  («MR 🔒 12»), y un «↻ 6» ya no se confunde con un «56». Si dos lecturas no coinciden, te avisa.
+- Cada valor se comprueba contra lo que esa arma puede tener; si no cuadra, se vuelve a leer, y si
+  sigue sin cuadrar o la cifra no se ve bien, queda marcado para que lo mires tú en vez de inventarlo.
+- Las tarjetas antiguas con «Channeling Damage» o «Melee Combo Efficiency» se reconocen bien.
+- El retroceso se interpreta como en el juego: un «-%» de retroceso es una mejora.
+- El nombre sale entero aunque el juego lo parta en dos líneas, y los textos de la interfaz que asoman
+  encima de la tarjeta ya no se pegan al nombre del arma.
+- Si solo se ve el nombre del agrietado y no el del arma, Farmadex lo dice en vez de inventarse un arma.
+- Un agrietado sin desvelar se reconoce aunque solo muestre su tipo («Melee»).
+
+**Recursos de fin de misión** (sigue apagado por defecto)
+- Una cantidad grande de créditos ya no pierde sus primeras cifras al quitar el icono.
+
 ## 0.6.12
 
 Una versión dedicada a la precisión: que una build leída esté entera, y que cuando algo no se
