@@ -249,7 +249,11 @@ def test_la_tarjeta_cortada_no_casa_con_un_mod(con):
         ("/p/LexPrime", "Lex Prime", "Lex Prime", "Secondary", None, None),
         ("/p/LexPrime/B", "Barrel", "Cañón", "Secondary", "/p/LexPrime", 45),
         ("/p/LexPrime/R", "Receiver", "Receptor", "Secondary", "/p/LexPrime", 15),
+        ("/rel/LithL1", "Lith L1 Relic", "Reliquia Lith L1", "Relics", None, None),
     ])
+    con.execute("INSERT INTO reliquia_recompensas VALUES (?, 'Intact', ?, 'Common', 25.0)",
+                (ids["/rel/LithL1"], ids["/p/LexPrime/R"]))
+    con.commit()
     catalogo = Casador(con, CATEGORIAS_RECOMPENSA)
     assert catalogo.casar("Canon DeLe", 80)[0] == ids["/m/Cannonade"]  # el catalogo entero si se confunde
     piezas = rapidas.catalogo_de_piezas(catalogo, con)

@@ -111,6 +111,11 @@ def catalogo_de_piezas(casador: Casador, con: sqlite3.Connection) -> Casador:
     "Plano DeFang Prime" casaba exacto con el arma "Fang Prime" en vez de con
     su plano. Fuera del ultimo escalon, ese fallo ya no tiene por donde entrar.
     """
+    if not ids_reliquias(con):
+        # Indice sin tabla de reliquias (viejo o de pruebas): no se sabe que puede salir, solo
+        # se quitan los objetos enteros.
+        padres = {f[0] for f in con.execute("SELECT DISTINCT padre_id FROM items WHERE padre_id IS NOT NULL")}
+        return casador.restringido({v[0] for v in casador.candidatos.values()} - padres)
     return casador.restringido({v[0] for v in casador.candidatos.values()} & ids_posibles_de_reliquia(con))
 
 
