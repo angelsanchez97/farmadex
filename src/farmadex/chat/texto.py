@@ -172,8 +172,11 @@ def _quitar(texto: str, tramos: list[tuple[int, int]]) -> str:
 # -- un nombre -----------------------------------------------------------------------------
 
 
-def _riven(texto: str, res: Resolutor, difuso: bool = False) -> Riven | None:
-    """'Rubico Critacan' / 'Tiberon Manti-armacron' -> arma + estadisticas; None si no lo es."""
+def _riven(texto: str, res: Resolutor, difuso: bool = False, tolerante: bool = False) -> Riven | None:
+    """'Rubico Critacan' / 'Tiberon Manti-armacron' -> arma + estadisticas; None si no lo es.
+
+    Con `tolerante`, el arma se admite con una o dos letras tapadas por el raton ("Cernc").
+    """
     from ..agrietados.grados import descomponer_nombre
 
     palabras = normalizar(texto).split()
@@ -181,7 +184,7 @@ def _riven(texto: str, res: Resolutor, difuso: bool = False) -> Riven | None:
         return None
     arma = res.arma_al_principio(palabras)
     if arma is None and difuso:
-        arma = res.arma_parecida(palabras)
+        arma = res.arma_parecida(palabras, umbral=72 if tolerante else None)
     if arma is None:
         return None
     nombre_arma, largo = arma
@@ -280,7 +283,26 @@ def interpretar_enlace(texto_ocr: str, res: Resolutor) -> Entrada | None:
             entrada = interpretar(prueba, Modificadores(), res, difuso=difuso, texto=prueba, enlace=True)
             if entrada.reconocido:
                 return entrada
+    # El raton tapa una o dos letras del enlace que esta leyendo ("[Saryn P me]", "[Cernc
+    # Magna-gelican]"; fotogramas reales de 2025: el juego dibuja su propio cursor y sale en
+    # la captura). Un ultimo intento mas tolerante, solo para enlaces y solo si no hay otro
+    # objeto casi igual de parecido (eso lo mira el resolutor).
+    for prueba in pruebas:
+        obj = res.buscar_difuso(prueba, umbral=UMBRAL_ENLACE_TAPADO)
+        if obj is not None:
+            entrada = Entrada(texto=prueba, enlace=True, objeto=obj)
+            _con_set(entrada, res)
+            if not obj.es_mod_o_arcano:
+                entrada.rango, entrada.rango_max = None, False
+            return entrada
+        riven = _riven(prueba, res, difuso=True, tolerante=True)
+        if riven is not None:
+            return Entrada(texto=prueba, enlace=True, riven=riven)
     return None
+
+
+# Parecido minimo con el raton tapando letras (el normal es 88): "saryn p me" / "saryn prime" da 86.
+UMBRAL_ENLACE_TAPADO = 80.0
 
 
 # -- listas ---------------------------------------------------------------------------------

@@ -157,9 +157,10 @@ ATRIBUTOS: tuple[Atributo, ...] = (
     Atributo("combo_duration", "Combo Duration", "Duración de combo", "Tempi", "Nem",
              _b(melee=8.1), unidad="s", alias=("Duración del combo",)),
     Atributo("channeling_damage", "Initial Combo", "Combo inicial", "Para", "Um",
-             _b(melee=24.5), unidad=""),
+             _b(melee=24.5), unidad="", alias=("Channeling Damage",)),
     Atributo("channeling_efficiency", "Heavy Attack Efficiency", "Eficiencia de ataque pesado",
-             "Forti", "Us", _b(melee=73.44), alias=("Eficiencia de ataques pesados",)),
+             "Forti", "Us", _b(melee=73.44), alias=("Eficiencia de ataques pesados", "Channeling Efficiency",
+                                                     "Melee Combo Efficiency", "Combo Efficiency")),
     Atributo("finisher_damage", "Finisher Damage", "Daño de remate", "Exi", "Cta",
              _b(melee=119.7), alias=("Daño de remates", "Daño de finalizador")),
     Atributo("critical_chance_on_slide_attack", "Critical Chance for Slide Attack",
@@ -174,6 +175,19 @@ ATRIBUTOS: tuple[Atributo, ...] = (
 
 POR_SLUG: dict[str, Atributo] = {a.slug: a for a in ATRIBUTOS}
 PREFIJOS: dict[str, str] = {a.prefijo.lower(): a.slug for a in ATRIBUTOS}
+# Nombres de estadisticas que el juego ya no usa, pero que siguen en las tarjetas viejas: el
+# agrietado no cambia de texto al renombrarse la estadistica ("Channeling Damage" es hoy
+# "Initial Combo" y se media en %, no en golpes de combo; "Melee Combo Efficiency" es la
+# eficiencia de ataque pesado). Se reconocen, pero su valor no se compara con lo de hoy.
+NOMBRES_ANTIGUOS: frozenset[str] = frozenset({
+    "channeling damage", "channeling efficiency", "melee combo efficiency", "combo efficiency",
+})
+# Prefijo de "Channeling Damage" en las tarjetas viejas ("Pangolin Sword Torido",
+# "Gram Acri-torido", capturas reales de 2017).
+PREFIJOS.setdefault("tori", "channeling_damage")
+# En la tarjeta, una MEJORA de retroceso se escribe "-140.1% Weapon Recoil" y el negativo
+# (la maldicion) "+9.1% Weapon Recoil": el signo va al reves que en las demas.
+SIGNO_AL_REVES: frozenset[str] = frozenset({"recoil"})
 SUFIJOS: dict[str, str] = {a.sufijo.lower(): a.slug for a in ATRIBUTOS}
 
 
@@ -183,7 +197,7 @@ SUFIJOS: dict[str, str] = {a.sufijo.lower(): a.slug for a in ATRIBUTOS}
 ALIAS_IDIOMAS: dict[str, tuple[str, ...]] = {
     'base_damage_/_melee_damage': ('Dégâts', 'Schaden', 'Obrażeniae',),
     'multishot': ('Tir Multiple', 'Mehrfachschuss', 'Wielostrzał',),
-    'critical_chance': ('Chance Critique', 'Krit. Chance', 'Szansa na Trafienie Krytyczne',),
+    'critical_chance': ('Chance Critique', 'Krit. Chance', 'Szansa na Trafienie Krytyczne', 'Chances de Critique',),
     'critical_damage': ('Dégâts Critique', 'Krit. Schaden', 'Obrażenia Krytycznee',),
     'status_chance': ('Chance de Statut', 'Statuschance', 'Szansa Statusu',),
     'status_duration': ('Durée de Statut', 'Statusdauer', 'Czas Trwania Statusu',),

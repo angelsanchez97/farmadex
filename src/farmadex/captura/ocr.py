@@ -751,6 +751,31 @@ class MotorOCR:
         self.tiempos["cajas"] = len(salida)
         return salida
 
+    def leer_linea(self, imagen) -> tuple[str, float]:
+        """Reconoce `imagen` como UNA linea de texto ya recortada, sin pasar por el detector.
+
+        Para trozos tan pequenos que el detector no los ve (una cifra suelta): devuelve
+        (texto, confianza). Con el OCR de Windows, que no tiene reconocedor aparte, se lee
+        como una tira normal.
+        """
+        if imagen is None:
+            return "", 0.0
+        preparada = preparar(imagen)
+        if preparada is None:
+            return "", 0.0
+        motor = self._cargar()
+        if motor == "winocr" or not hasattr(motor, "text_recognizer"):
+            leidos = unir_filas(self.leer_tira(imagen))
+            return " ".join(l.texto for l in leidos), min([l.confianza for l in leidos] or [0.0])
+        try:
+            textos, _ = motor.text_recognizer([preparada])
+        except Exception as e:  # noqa: BLE001 - onnxruntime lanza de todo
+            log.warning("El OCR fallo sobre una linea de %sx%s: %s", preparada.shape[1], preparada.shape[0], e)
+            return "", 0.0
+        if not textos:
+            return "", 0.0
+        return str(textos[0][0]).strip(), float(textos[0][1])
+
     def _leer_windows(self, imagen, repetir) -> list[Leido]:
         """OCR de Windows; si falla (sin paquete de idioma...), se apunta y se repite en local."""
         try:

@@ -72,7 +72,12 @@ MINIMO_CONFIANZA_NOMBRE = 0.60
 MINIMO_CONFIANZA_CIFRA = 0.50
 # La segunda lectura (el recorte de la cifra, sin buscar cajas) da confianzas mas bajas
 # con un solo digito: un "4" bien leido se queda en 0,50. Lo que protege es que coincidan.
-MINIMO_CONFIANZA_SEGUNDA = 0.45
+MINIMO_CONFIANZA_SEGUNDA = 0.25
+# Con un solo digito el reconocedor da aun menos (un "7" o un "2" bien leidos se quedan en
+# 0,21-0,30 en capturas reales de 1080p): vale si las DOS relecturas (dos escalas) dicen lo
+# mismo que la primera, o una sola con 0,4.
+MINIMO_CONFIANZA_UN_DIGITO = 0.2
+CONFIANZA_UN_DIGITO_SOLA = 0.4
 # Parecido minimo de un nombre que no casa letra a letra, y ventaja sobre el segundo.
 MINIMO_PARECIDO = 92.0
 VENTAJA_PARECIDO = 6.0
@@ -150,14 +155,19 @@ class Nombres:
             if len(clave) >= 3:
                 self.por_clave.setdefault(clave, set()).add(unique_name)
 
-    def casar(self, texto: str) -> str | None:
-        """El unique_name del recurso que se llama asi, o None si hay duda."""
+    def casar(self, texto: str, buscados: set[str] | None = None) -> str | None:
+        """El unique_name del recurso que se llama asi, o None si hay duda.
+
+        Un mismo nombre puede ser varios objetos del indice ("Salvage" es el recurso y
+        cuatro premios de tutorial; "Kuva", el recurso y el de la tienda): si solo uno de
+        ellos esta entre los `buscados`, es ese.
+        """
         clave = normalizar(texto)
         if len(clave) < 3:
             return None
         exactos = self.por_clave.get(clave)
         if exactos:
-            return next(iter(exactos)) if len(exactos) == 1 else None
+            return self._unico(exactos, buscados)
         if len(clave) < 6:
             return None  # en nombres cortos una letra cambiada ya es otro recurso
         from rapidfuzz import fuzz, process
@@ -167,13 +177,23 @@ class Nombres:
         if not mejores or mejores[0][1] < MINIMO_PARECIDO:
             return None
         ganadores = self.por_clave[mejores[0][0]]
-        if len(ganadores) != 1:
+        ganador = self._unico(ganadores, buscados)
+        if ganador is None:
             return None
-        ganador = next(iter(ganadores))
         for otra, puntos, _ in mejores[1:]:
             if puntos > mejores[0][1] - VENTAJA_PARECIDO and self.por_clave[otra] != ganadores:
                 return None  # hay otro recurso casi igual de parecido
         return ganador
+
+    @staticmethod
+    def _unico(candidatos: set[str], buscados: set[str] | None) -> str | None:
+        if len(candidatos) == 1:
+            return next(iter(candidatos))
+        if buscados:
+            entre = candidatos & buscados
+            if len(entre) == 1:
+                return next(iter(entre))
+        return None
 
 
 # -- interpretar las lineas del OCR ---------------------------------------------------
@@ -234,7 +254,7 @@ def interpretar(lineas: list[Leido], alto_ventana: int, nombres: Nombres,
     candidatos = [b for b in _bloques_de_nombre(textos)]
     for bloque in candidatos:
         texto = " ".join(l.texto for l in bloque)
-        unico = nombres.casar(texto)
+        unico = nombres.casar(texto, buscados)
         if unico is None or unico not in buscados:
             continue
         x, y, ancho, alto = _caja(bloque)
@@ -285,7 +305,7 @@ def _tramos_de_tinta(columna_con_tinta) -> list[tuple[int, int]]:
     return tramos
 
 
-def recorte_sin_icono(imagen, cifra: Leido):
+def recorte_sin_icono(imagen, cifra: Leido, cortar: bool = True):
     """El trozo de imagen con la cifra, ya sin el icono redondo de delante si lo hay.
 
     El icono es el primer "caracter" y es tan ancho como alto; una cifra es la mitad
@@ -296,12 +316,16 @@ def recorte_sin_icono(imagen, cifra: Leido):
 
     alto_img, ancho_img = imagen.shape[:2]
     margen = max(2, cifra.alto // 5)
-    x0, y0 = max(0, cifra.x - margen), max(0, cifra.y - margen)
+    # Por la izquierda se coge mas: la caja del OCR corta a veces el icono por la mitad y
+    # entonces no se reconocia como icono (medido: "42" releido como "942").
+    x0, y0 = max(0, cifra.x - max(margen, int(cifra.alto * 0.7))), max(0, cifra.y - margen)
     x1 = min(ancho_img, cifra.x + cifra.ancho + margen)
     y1 = min(alto_img, cifra.y + cifra.alto + margen)
     recorte = imagen[y0:y1, x0:x1]
     if recorte.size == 0:
         return None
+    if not cortar:
+        return recorte
     gris = recorte.max(axis=2).astype(np.int16) if recorte.ndim == 3 else recorte.astype(np.int16)
     claro, oscuro = int(np.percentile(gris, 98)), int(np.percentile(gris, 20))
     if claro - oscuro < 40:
@@ -317,8 +341,8 @@ def recorte_sin_icono(imagen, cifra: Leido):
     return recorte
 
 
-def _reconocer_recorte(motor, recorte) -> tuple[str, float]:
-    """El texto de un recorte pequeno, llevado a 48 px de alto y leido sin buscar cajas.
+def _reconocer_recorte(motor, recorte, alto: int = 48) -> tuple[str, float]:
+    """El texto de un recorte pequeno, llevado a `alto` px y leido sin buscar cajas.
 
     Medido sobre los recortes de las capturas reales: a 48 px, con un borde fino que
     repite el fondo, es como mejor lee el reconocedor las cifras sueltas.
@@ -328,7 +352,7 @@ def _reconocer_recorte(motor, recorte) -> tuple[str, float]:
 
     if recorte is None or recorte.size == 0 or recorte.shape[0] < 4 or recorte.shape[1] < 3:
         return "", 0.0
-    escala = 48 / recorte.shape[0]
+    escala = alto / recorte.shape[0]
     grande = cv2.resize(recorte, None, fx=escala, fy=escala, interpolation=cv2.INTER_CUBIC)
     borde = max(4, int(grande.shape[0] * 0.15))
     grande = cv2.copyMakeBorder(grande, borde, borde, borde, borde, cv2.BORDER_REPLICATE)
@@ -346,39 +370,67 @@ def _reconocer_recorte(motor, recorte) -> tuple[str, float]:
 
 
 def comprobar_cifra(imagen, placa: Placa, motor) -> None:
-    """Segunda lectura de la cifra de la placa; si no coincide con la primera, se anula."""
+    """Relecturas de la cifra de la placa (el recorte sin el icono, a dos escalas); si no
+    coinciden con la primera, se anula."""
     if placa.cantidad is None or placa.cifra is None:
         return
+    lecturas: list[tuple[str, float]] = []
     try:
         recorte = recorte_sin_icono(imagen, placa.cifra)
-        texto, confianza = _reconocer_recorte(motor, recorte) if recorte is not None else ("", 0.0)
+        if recorte is not None:
+            lecturas = [_reconocer_recorte(motor, recorte, 48), _reconocer_recorte(motor, recorte, 64)]
     except Exception:  # noqa: BLE001 - onnxruntime y cv2 lanzan de todo
         log.exception("No se pudo releer la cifra de %s", placa.unique_name)
-        texto, confianza = "", 0.0
-    segunda = cifra_de(texto) if confianza >= MINIMO_CONFIANZA_SEGUNDA else None
-    if segunda != placa.cantidad:
-        log.info("Cifra de %s sin confirmar: primera lectura %r, segunda %r (%.2f)",
-                 placa.unique_name, placa.cifra.texto, texto, confianza)
+    un_digito = placa.cantidad < 10
+    minimo = MINIMO_CONFIANZA_UN_DIGITO if un_digito else MINIMO_CONFIANZA_SEGUNDA
+    iguales = [c for t, c in lecturas if c >= minimo and cifra_de(t) == placa.cantidad]
+    confirmada = bool(iguales) and (not un_digito or len(iguales) >= 2 or max(iguales) >= CONFIANZA_UN_DIGITO_SOLA)
+    if not confirmada and not un_digito:
+        # Dos cifras pegadas ("22" de "229.254") parecen un icono por lo anchas y el corte se
+        # las come: "9254". Con varias cifras se prueba tambien sin cortar, y solo vale si las
+        # dos relecturas dan exactamente lo mismo que la primera (un icono leido como cifra,
+        # "942" por "42", no coincide nunca con la primera lectura, que ya lo habia dejado fuera).
+        try:
+            entero = recorte_sin_icono(imagen, placa.cifra, cortar=False)
+            otras = [_reconocer_recorte(motor, entero, 48), _reconocer_recorte(motor, entero, 64)] if entero is not None else []
+        except Exception:  # noqa: BLE001
+            log.exception("No se pudo releer entera la cifra de %s", placa.unique_name)
+            otras = []
+        if len(otras) == 2 and all(c >= minimo and cifra_de(t) == placa.cantidad for t, c in otras):
+            confirmada = True
+            lecturas += otras
+    if not confirmada:
+        log.info("Cifra de %s sin confirmar: primera lectura %r, relecturas %s",
+                 placa.unique_name, placa.cifra.texto, [(t, round(c, 2)) for t, c in lecturas])
         placa.cantidad, placa.motivo = None, CIFRA_DUDOSA
 
 
-def tramo_tipico(lineas: list[Leido], alto_ventana: int) -> float | None:
+def tramo_tipico(lineas: list[Leido], alto_ventana: int, nombres: Nombres | None = None) -> float | None:
     """Distancia tipica entre el techo de la cifra y el pie del nombre en esta pantalla.
 
-    Sale de todas las placas con cifra que se ven (sean o no de un recurso buscado): con
-    ella se sabe donde deberia estar la cifra de una placa en la que el OCR no la vio.
+    Sale de las placas con cifra que se ven: con ella se sabe donde deberia estar la cifra
+    de una placa en la que el OCR no la vio. Con `nombres`, primero las placas que son un
+    recurso (si hay al menos dos): el panel de la escuadra, a la izquierda, tiene cifras
+    sobre nombres de jugadores a otra distancia y en una captura real torcia la mediana
+    (95 px por 163) y tiraba las cifras buenas.
     """
     cifras = [l for l in lineas if es_caja_de_cifra(l.texto) and cifra_de(l.texto) is not None]
     textos = [l for l in lineas if not es_caja_de_cifra(l.texto) and l.confianza >= MINIMO_CONFIANZA_NOMBRE]
     tramos = []
+    de_recursos = []
     for bloque in _bloques_de_nombre(textos):
         x, y, ancho, alto = _caja(bloque)
         centro, pie = x + ancho / 2, y + alto
+        es_recurso = nombres is not None and nombres.casar(" ".join(l.texto for l in bloque)) is not None
         for c in cifras:
             tramo = pie - c.y
             if (ALTO_MIN * alto_ventana <= tramo <= ALTO_MAX * alto_ventana and c.y + c.alto <= y
                     and 0.30 <= (centro - c.x) / tramo <= 0.56):
                 tramos.append(tramo)
+                if es_recurso:
+                    de_recursos.append(tramo)
+    if len(de_recursos) >= 2:
+        tramos = de_recursos
     if not tramos:
         return None
     tramos.sort()
@@ -398,13 +450,52 @@ _ICONO_X, _ICONO_Y, _ICONO_HOLGURA = 0.465, 0.985, 0.06
 _ZONA_IZQ, _ZONA_ANCHO, _ZONA_ARRIBA, _ZONA_ALTO = 0.56, 0.62, 0.05, 0.24
 
 
-def buscar_cifra(imagen, placa: Placa, tramo: float, motor) -> None:
+def pantalla_con_iconos(imagen, lineas: list[Leido]) -> bool | None:
+    """Si en esta pantalla las cifras llevan delante el icono redondo (interfaz actual).
+
+    Se mira en la imagen, no en el texto del OCR (que unas veces lo lee como "0" o "?" y
+    otras lo salta): delante de la cifra, un trozo de tinta tan ancho como alto. En la
+    interfaz anterior la cifra va sola. None si no hay cifras en las que mirarlo.
+    """
+    import numpy as np
+
+    cifras = [l for l in lineas if es_caja_de_cifra(l.texto) and cifra_de(l.texto) is not None]
+    if not cifras:
+        return None
+    # Lo que dice el texto del OCR ya basta cuando lee el icono ("042", "?30", "①1,155").
+    if sum(1 for c in cifras if c.texto.strip()[0] not in "123456789") * 2 >= len(cifras):
+        return True
+    if imagen is None:
+        return None
+    con_icono = 0
+    for c in cifras[:8]:
+        margen = int(c.alto * 1.3)
+        y0, y1 = max(0, c.y - c.alto // 4), min(imagen.shape[0], c.y + c.alto + c.alto // 4)
+        x0, x1 = max(0, c.x - margen), min(imagen.shape[1], c.x + c.ancho)
+        zona = imagen[y0:y1, x0:x1]
+        if zona.size == 0:
+            continue
+        gris = zona.max(axis=2).astype(np.int16) if zona.ndim == 3 else zona.astype(np.int16)
+        claro, oscuro = int(np.percentile(gris, 98)), int(np.percentile(gris, 20))
+        if claro - oscuro < 40:
+            continue
+        tinta = gris > (oscuro + (claro - oscuro) * 0.55)
+        tramos = _tramos_de_tinta(tinta.sum(axis=0) >= max(1, tinta.shape[0] // 12))
+        if len(tramos) >= 2 and 0.72 * c.alto <= (tramos[0][1] - tramos[0][0]) <= 1.5 * c.alto:
+            con_icono += 1
+    return con_icono * 2 >= min(len(cifras), 8)
+
+
+def buscar_cifra(imagen, placa: Placa, tramo: float, motor, con_iconos: bool | None = None) -> None:
     """Para una placa sin cifra a la vista: mira de cerca el sitio donde iria.
 
-    - Si ahi hay una cifra (las de un digito se le escapan a la lectura de la pantalla
-      entera), se queda con ella; luego `comprobar_cifra` la confirma o la anula.
     - Si ahi esta el icono redondo y nada mas, la placa es de 1 unidad: el icono
       demuestra que se esta mirando el sitio correcto.
+    - Si ahi hay una cifra (las de un digito se le escapan a la lectura de la pantalla
+      entera), se queda con ella; luego `comprobar_cifra` la confirma o la anula.
+    - En la interfaz sin iconos (`con_iconos` False), si en el sitio de la cifra no hay
+      nada escrito, la placa es de 1 unidad (el juego no pone cifra a una unidad); y si
+      hay tinta pequena que el detector no vio, se lee como cifra.
     - En cualquier otro caso se queda como estaba ("sin cifra").
     """
     import cv2
@@ -419,6 +510,18 @@ def buscar_cifra(imagen, placa: Placa, tramo: float, motor) -> None:
     zona = imagen[y0:y1, x0:x1]
     if zona.size == 0 or zona.shape[0] < 8:
         return
+    # Que la zona entera este dentro de la captura: en el borde no se sabe que falta.
+    completa = (x1 - x0) >= _ZONA_ANCHO * tramo * 0.95 and (y1 - y0) >= _ZONA_ALTO * tramo * 0.95
+    tinta = _tinta_de_cifra(zona, tramo)
+    icono_en_su_sitio = False
+    if tinta is not None and tinta[4]:
+        tx, ty = tinta[0], tinta[1]
+        fuera_x = abs((centro - (x0 + tx)) / tramo - _ICONO_X)
+        fuera_y = abs((pie - (y0 + ty)) / tramo - _ICONO_Y)
+        icono_en_su_sitio = fuera_x <= _ICONO_HOLGURA and fuera_y <= _ICONO_HOLGURA
+        if icono_en_su_sitio and not tinta[5]:
+            placa.cantidad, placa.motivo, placa.cifra = 1, "", None  # solo el icono: 1 unidad
+            return
     escala = max(1.0, 96 / zona.shape[0])
     grande = cv2.resize(zona, None, fx=escala, fy=escala, interpolation=cv2.INTER_CUBIC)
     leidos = [l for l in motor.leer(np.ascontiguousarray(grande)) if es_caja_de_cifra(l.texto)]
@@ -430,24 +533,24 @@ def buscar_cifra(imagen, placa: Placa, tramo: float, motor) -> None:
         if l.confianza < MINIMO_CONFIANZA_CIFRA:
             placa.cantidad, placa.motivo = None, CIFRA_DUDOSA
         return
-    if leidos:
-        placa.motivo = CIFRA_DUDOSA
-        return
-    tinta = _tinta_de_cifra(zona, tramo)
     if tinta is None:
+        if leidos:
+            placa.motivo = CIFRA_DUDOSA
+        elif con_iconos is False and completa:
+            placa.cantidad, placa.motivo, placa.cifra = 1, "", None  # nada escrito: 1 unidad
         return
     tx, ty, tancho, talto, icono, resto = tinta
-    if not icono:
-        return  # sin el icono no hay prueba de que se este mirando donde va la cifra
-    fuera_x = abs((centro - (x0 + tx)) / tramo - _ICONO_X)
-    fuera_y = abs((pie - (y0 + ty)) / tramo - _ICONO_Y)
-    if fuera_x > _ICONO_HOLGURA or fuera_y > _ICONO_HOLGURA:
-        return  # hay algo redondo, pero no donde va el icono de esta placa
-    if not resto:
-        placa.cantidad, placa.motivo, placa.cifra = 1, "", None  # solo el icono: 1 unidad
-        return
-    # Icono y algo pegado detras: una cifra corta que el detector no vio. Se lee el recorte
-    # con el icono (primera lectura) y `comprobar_cifra` lo relee sin el (segunda).
+    if icono:
+        if not icono_en_su_sitio or not resto:
+            if leidos:
+                placa.motivo = CIFRA_DUDOSA
+            return  # hay algo redondo, pero no donde va el icono de esta placa
+    elif con_iconos is not False:
+        if leidos:
+            placa.motivo = CIFRA_DUDOSA
+        return  # en esta pantalla las cifras llevan icono: sin el no hay prueba de estar en el sitio
+    # Icono y algo pegado detras (o, sin iconos, tinta pequena): una cifra corta que el
+    # detector no vio. Se lee el recorte (primera lectura) y `comprobar_cifra` lo relee.
     margen = max(2, talto // 5)
     recorte = zona[max(0, ty - margen):ty + talto + margen, max(0, tx - margen):tx + tancho + margen]
     texto, confianza = _reconocer_recorte(motor, recorte)
@@ -501,8 +604,16 @@ def leer_imagen(imagen, motor, nombres: Nombres, buscados: set[str],
         return []
     lineas = motor.leer(imagen, alto_deteccion=alto_deteccion)
     placas = interpretar(lineas, imagen.shape[0], nombres, buscados)
-    tramo = tramo_tipico(lineas, imagen.shape[0]) if placas else None
+    tramo = tramo_tipico(lineas, imagen.shape[0], nombres) if placas else None
+    con_iconos = pantalla_con_iconos(imagen, lineas) if placas else None
+    # Para dar una placa sin nada escrito por 1 unidad hace falta que este en la rejilla: otra
+    # placa (con cifra) en su misma fila. Un nombre suelto que se parece a un recurso (el
+    # "CHERCHER..." del buscador se parecia a "Researcher") no la tiene.
+    filas_con_cifra = [p.cifra.y for p in placas if p.cifra is not None] + [
+        l.y for l in lineas if es_caja_de_cifra(l.texto) and cifra_de(l.texto) is not None]
     for placa in placas:
+        en_rejilla = bool(tramo) and any(
+            abs((placa.caja_nombre[1] + placa.caja_nombre[3] - tramo) - y) < 0.35 * tramo for y in filas_con_cifra)
         try:
             if placa.cifra is not None and placa.cantidad is not None and tramo:
                 # Todas las placas de una pantalla miden lo mismo: una cifra a otra distancia
@@ -511,7 +622,7 @@ def leer_imagen(imagen, motor, nombres: Nombres, buscados: set[str],
                 if abs((y + alto - placa.cifra.y) - tramo) > TOLERANCIA_TRAMO * tramo:
                     placa.cantidad, placa.motivo = None, CIFRA_DUDOSA
             if placa.motivo == SIN_CIFRA and tramo:
-                buscar_cifra(imagen, placa, tramo, motor)
+                buscar_cifra(imagen, placa, tramo, motor, con_iconos if en_rejilla else None)
         except Exception:  # noqa: BLE001 - onnxruntime y cv2 lanzan de todo
             log.exception("No se pudo mirar de cerca la placa de %s", placa.unique_name)
         comprobar_cifra(imagen, placa, motor)
