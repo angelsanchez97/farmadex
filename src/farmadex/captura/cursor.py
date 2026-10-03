@@ -20,7 +20,7 @@ from ..idiomas import t
 from ..registro_log import obtener
 from . import pantalla
 from .ocr import ErrorMotorOCR, agrupar_bloques, casar_lineas, leer_lineas, resumen_tiempos
-from .recompensas_rapidas import RE_DE_PEGADO, RE_DE_PEGADO_ANTES, palabra_de_otro_objeto, palabras_del_catalogo
+from .recompensas_rapidas import RE_CANTIDAD_DELANTE, RE_DE_PEGADO, RE_DE_PEGADO_ANTES, _palabras, palabra_de_otro_objeto, palabras_del_catalogo
 from .reliquias import LectorBase
 
 log = obtener("cursor")
@@ -72,7 +72,12 @@ def alineados(encontrados, punto, ancho_region: int) -> list:
 
 def despegar(texto: str) -> str:
     """"Plano DeForma" -> "Plano De Forma": el OCR pega la preposicion y asi no casaba nada."""
+    texto = RE_CANTIDAD_DELANTE.sub("", texto) or texto  # "2XForma Blueprint" (Forma doble)
+    texto = RE_PEGADO_MAYUSCULA.sub(" ", texto)  # "PlanoDeForma" -> "Plano De Forma"
     return RE_DE_PEGADO.sub(r"\1 ", RE_DE_PEGADO_ANTES.sub(r" \1", texto))
+
+
+RE_PEGADO_MAYUSCULA = re.compile(r"(?<=[a-zà-ÿ])(?=[A-ZÀ-Ý])")
 
 
 def leer_recuadro(imagen, motor, casador, umbral: int = 85, lado_minimo: int | None = LADO_MINIMO):
@@ -108,7 +113,9 @@ def a_medias(reconocido, lineas, alto_region: int, padres: set | None = None,
     caja = reconocido.caja
     if palabras and palabra_de_otro_objeto(reconocido.texto_ocr or "", reconocido.nombre or "", palabras):
         return True  # "Akbronco Prime" no es "Bronco Prime"
-    if padres is not None and reconocido.item_id not in padres and not RE_ACABA_EN_ENLACE.search(reconocido.texto_ocr or ""):
+    if (padres is not None and reconocido.item_id not in padres
+            and not RE_ACABA_EN_ENLACE.search(reconocido.texto_ocr or "")
+            and _palabras_cuadran(reconocido.texto_ocr or "", reconocido.nombre or "")):
         # Un nombre completo de pieza (o de algo sin piezas) no se confunde por faltarle una
         # linea: lo peligroso es el objeto entero ("Caliban Prime") o un trozo que acaba en "De".
         return False
@@ -120,6 +127,26 @@ def a_medias(reconocido, lineas, alto_region: int, padres: set | None = None,
         if any(l in propias for l in bloque) and any(l not in propias for l in bloque):
             return True
     return False
+
+
+PALABRAS_PLANO = {"blueprint", "plano", "schema", "diagrama", "blaupause", "bauplan", "plan", "progetto", "projeto", "plan"}
+
+
+def _palabras_cuadran(texto: str, nombre: str) -> bool:
+    """Si cada palabra leida (de 4 letras o mas) se parece a alguna del nombre casado.
+
+    "Empunadura De Paris" (sin el "Prime" de la linea de abajo) casaba "Xoris Empuñadura":
+    "paris" no esta en ese nombre, asi que el casado no explica lo leido.
+    """
+    from rapidfuzz import fuzz
+
+    del_nombre = _palabras(nombre)
+    if fuzz.ratio("".join(_palabras(texto)), "".join(del_nombre)) >= 90:  # "FANGPRIMEBLADE"
+        return True
+    for w in _palabras(texto):
+        if len(w) >= 4 and w not in PALABRAS_PLANO and not any(fuzz.ratio(w, n) >= 75 for n in del_nombre):
+            return False
+    return True
 
 
 def elegir_bajo_cursor(capturar, region, juego, punto_de, leer, padres: set | None = None,
@@ -147,7 +174,12 @@ def elegir_bajo_cursor(capturar, region, juego, punto_de, leer, padres: set | No
         leido = leer(imagen) if imagen is not None else None
         if leido is not None:
             otros, lineas_b = leido
-            ordenados_b = alineados(otros, punto_de(region_baja), region_baja.ancho)
+            punto_b = punto_de(region_baja)
+            # El nombre va justo debajo del dibujo: lo que queda mas lejos que el alto del
+            # recuadro normal es otra cosa ("Bonus del Camino de Acero", bajo las tarjetas,
+            # salia como el nodo "El Camino de Acero: Venus").
+            ordenados_b = [r for r in alineados(otros, punto_b, region_baja.ancho)
+                           if r.caja[1] + r.caja[3] / 2 - punto_b[1] <= region.alto]
             log.info("Bajo el cursor, segunda mirada mas abajo: %d encontrados, %d alineados", len(otros), len(ordenados_b))
             if ordenados_b and not a_medias(ordenados_b[0], lineas_b, region_baja.alto, padres, palabras):
                 return ordenados_b[0], ordenados_b, None

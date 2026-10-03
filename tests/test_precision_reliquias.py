@@ -124,6 +124,8 @@ def test_lo_que_sigue_a_medias_se_dice_y_no_se_abre(monkeypatch):
 def test_plano_de_pegado_se_despega():
     assert cursor.despegar("Plano DeForma") == "Plano De Forma"
     assert cursor.despegar("Forma") == "Forma"
+    assert cursor.despegar("PlanoDeForma") == "Plano De Forma"
+    assert cursor.despegar("2XForma Blueprint") == "Forma Blueprint"
 
 
 # -- tabla de reliquia al pasar el raton ----------------------------------------------------
@@ -318,3 +320,20 @@ def test_con_o_sin_prefijo_son_objetos_distintos(con):
     assert escalonado.casar("Akbronco Prime")[0] != ids["/p/BroncoPrime/Bp"]
     assert rapidas.palabra_de_otro_objeto("Akbronco Prime", "Bronco Prime Plano", {"akbronco", "bronco", "prime"}) == "akbronco"
     assert rapidas.palabra_de_otro_objeto("Plano DeForma", "Forma", {"forma", "plano"}) is None
+
+
+def test_la_segunda_mirada_no_coge_lo_que_hay_muy_por_debajo_de_las_tarjetas(monkeypatch):
+    """Banco (hVgH, es): "Bonus del Camino de Acero", bajo las tarjetas, salia como un nodo."""
+    lejos = _l("Bonus del Camino de Acero", 200, 360, 260, 22)  # ~280 px por debajo del raton
+    mirada_b = ([_rec(lejos.texto, (200, 360, 260, 22), 9, "El Camino de Acero: Venus")], [lejos])
+    abiertos, _, capturas = _lector_con_miradas(monkeypatch, [([], []), mirada_b])
+    assert abiertos == [] and len(capturas) == 2
+
+
+def test_si_lo_casado_no_explica_lo_leido_y_puede_faltar_una_linea_se_duda():
+    """Banco: "Empunadura De Paris" (+ "Prime" debajo, sin juntar) casaba "Xoris Empuñadura"."""
+    l1, l2 = _l("Empunadura De Paris", 200, 60, 220, 22), _l("Prime", 260, 84, 60, 22)
+    r = _rec("Empunadura De Paris", (200, 60, 220, 22), 3, "Xoris Empuñadura")
+    assert cursor.a_medias(r, [l1, l2], 170, padres={5})
+    bien = _rec("Empunadura De Paris Prime", (200, 60, 220, 46), 4, "Paris Prime Empuñadura")
+    assert not cursor.a_medias(bien, [l1, l2], 170, padres={5})
