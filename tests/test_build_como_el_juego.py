@@ -141,6 +141,19 @@ def test_el_companero_tiene_sus_diez_huecos():
     assert D.colocar("companero", puntos, [], medio_ancho=0.5).motivo == "ambigua"
 
 
+def test_las_armas_exaltadas_prueban_sus_plantillas():
+    assert D.plantillas_de("Misc", "Exalted Weapon") == ("cuerpo", "cuerpo_exaltada", "arma")
+    assert D.plantillas_de("Warframes", "Warframe") == ("warframe",) and D.plantillas_de("Misc", "Fish") == ()
+    # Captura real de Shadow Clones Prime (garras de Ash): la postura sola entre la segunda y
+    # la tercera columna, sin exilus. Con la plantilla de cuerpo a cuerpo normal no cae.
+    xs = (-0.4, -0.172, 0.056, 0.284)
+    mods = [D.Punto(M, x, y) for y in (0.36, 0.486) for x in xs] + [D.Punto(P, -0.058, 0.234)]
+    arcanos = [D.Punto("arcano", 0.69, 0.248)]
+    normal = D.colocar("cuerpo", mods, arcanos)
+    exaltada = D.colocar("cuerpo_exaltada", mods, arcanos)
+    assert exaltada.segura and exaltada.mods["postura"] == 8 and "postura" not in normal.mods
+
+
 def test_sin_plantilla_se_respeta_la_fila_y_la_columna_leidas():
     # Sin plantilla (dos filas de cinco): no se dice que huecos hay, solo donde estaba cada mod.
     xs = (-0.23, -0.001, 0.226, 0.454, 0.683)

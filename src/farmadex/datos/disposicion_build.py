@@ -65,6 +65,9 @@ PLANTILLAS: dict[str, list[Hueco]] = {
     # Companeros (centinelas, kubrows, kavats, moas, sabuesos, vulpafilas, predasitos): diez
     # huecos en dos filas de cinco, sin aura, exilus ni arcanos (capturas reales a 1080p y
     # 1440p de Nautilus Prime, Wyrm Prime, Shade Prime, Kubrow Huras y Vulpafila Panzer).
+    # Armas exaltadas cuerpo a cuerpo sin exilus (las garras de Ash, "Shadow Clones"): la
+    # postura sola, centrada entre la segunda y la tercera columna (captura real).
+    "cuerpo_exaltada": [Hueco("postura", "postura", 1.5, 0.0)] + _ocho() + [Hueco("arcano1", "arcano", 3.97, 0.21)],
     # Armas de companero (Laser de rafagas, Verglas, Tazicor...): los ocho huecos, sin exilus
     # ni arcanos (capturas reales de Burst Laser Prime y Verglas).
     "arma_companero": _ocho(),
@@ -93,6 +96,21 @@ def plantilla_de(categoria: str | None, tipo: str | None = None) -> str:
     if (categoria, tipo) in (("Sentinels", "Sentinel"), ("Pets", "Pets")):
         return "companero"
     return ""
+
+
+# Las armas exaltadas (Espada exaltada, Vientos del desierto, Reguladoras...) van todas en
+# la misma categoria del indice y no se sabe si son cuerpo a cuerpo o de fuego, ni si llevan
+# exilus: se prueban estas plantillas y se queda la que coloca mas de lo leido.
+PLANTILLAS_EXALTADA = ("cuerpo", "cuerpo_exaltada", "arma")
+
+
+def plantillas_de(categoria: str | None, tipo: str | None = None) -> tuple[str, ...]:
+    """Las plantillas que pueden ser las de ese equipo (una casi siempre; varias para las
+    armas exaltadas; ninguna si no se sabe)."""
+    if (categoria or "") == "Misc" and (tipo or "") == "Exalted Weapon":
+        return PLANTILLAS_EXALTADA
+    clase = plantilla_de(categoria, tipo)
+    return (clase,) if clase else ()
 
 
 @dataclass(frozen=True)

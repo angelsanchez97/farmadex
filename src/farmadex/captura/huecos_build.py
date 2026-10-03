@@ -108,12 +108,25 @@ def colocar_build(build, categorias: dict[int, str], tipos: TiposDeHueco | None)
     if build.equipo is None or not build.ancho or not build.alto:
         return None
     tipos = tipos or TiposDeHueco()
-    clase = disposicion.plantilla_de(categorias.get(build.equipo.item_id), tipos.tipos.get(build.equipo.item_id))
-    if not clase:
+    clases = disposicion.plantillas_de(categorias.get(build.equipo.item_id), tipos.tipos.get(build.equipo.item_id))
+    if not clases:
         return None
     puntos = [disposicion.punto_de(r.caja, build.ancho, build.alto, tipos.tipo_de_mod(r.item_id)) for r in build.equipados]
     arcanos = [disposicion.punto_de(r.caja, build.ancho, build.alto, "arcano") for r in build.arcanos]
-    return disposicion.colocar(clase, puntos, arcanos, medio_ancho=build.ancho / 2 / build.alto)
+    colocaciones = [disposicion.colocar(clase, puntos, arcanos, medio_ancho=build.ancho / 2 / build.alto) for clase in clases]
+    if len(colocaciones) == 1:
+        return colocaciones[0]
+    # Varias plantillas posibles (armas exaltadas): la que coloca mas de lo leido, si es una sola.
+    seguras = [c for c in colocaciones if c.segura]
+    if not seguras:
+        return colocaciones[0]
+    mejor = max(len(c.mods) + len(c.arcanos) for c in seguras)
+    empatadas = [c for c in seguras if len(c.mods) + len(c.arcanos) == mejor]
+    if any(c.mods != empatadas[0].mods or c.arcanos != empatadas[0].arcanos for c in empatadas[1:]):
+        return disposicion.Disposicion(clase=empatadas[0].clase, huecos=list(empatadas[0].huecos),
+                                       sueltos_mods=list(range(len(puntos))), sueltos_arcanos=list(range(len(arcanos))),
+                                       motivo="ambigua")
+    return empatadas[0]
 
 
 def caja_de_hueco(colocacion: disposicion.Disposicion, hueco: disposicion.Hueco, ancho: int, alto: int):
