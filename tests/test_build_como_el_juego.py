@@ -230,6 +230,25 @@ def test_puede_comprarlo_solo_si_el_perfil_sabe_el_rango(indice, config_propia):
     assert aumentos.puede_comprar(simaris, {"SteelMeridianSyndicate": (5, 0)}) is None
 
 
+def test_pintar_una_build_no_carga_el_diccionario_entero(indice, monkeypatch):
+    """La primera build de la sesion paraba la ventana ~0,6 s leyendo el detalle de todos
+    los mods para saber si alguno era un aumento: ahora se mira solo cada mod, y da lo mismo."""
+    con, ids = indice
+    aumentos.olvidar_cache()
+    monkeypatch.setattr(aumentos, "_ventas", lambda c, item_id=None, original=aumentos._ventas: (
+        pytest.fail("sin item_id lee las ventas de todo el indice") if item_id is None else original(c, item_id)))
+    sueltos = {en: aumentos.de(con, i) for en, i in ids.items()}
+    assert not aumentos._CACHE  # el diccionario entero sigue sin cargar
+    assert sueltos["Vitality"] is None and sueltos["Energy Siphon"] is None and sueltos["Rhino"] is None
+    assert [v.sindicato for v in sueltos["Iron Shrapnel"].ventas] == ["Steel Meridian", "The Perrin Sequence"]
+    monkeypatch.undo()
+    aumentos.olvidar_cache()
+    todos = {a.item_id: a for a in aumentos.cargar(con)}
+    assert {en: todos.get(i) for en, i in ids.items()} == sueltos
+    # Con el diccionario cargado se responde desde el.
+    assert aumentos.de(con, ids["Scattered Justice"]) is todos[ids["Scattered Justice"]]
+
+
 def test_rangos_del_perfil_leido(tmp_path):
     import sqlite3
 

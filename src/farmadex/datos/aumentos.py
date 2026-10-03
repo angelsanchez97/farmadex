@@ -62,6 +62,9 @@ CATEGORIAS_WARFRAME = ("Warframes",)
 CATEGORIAS_ARMA = ("Primary", "Secondary", "Melee", "Arch-Gun", "Arch-Melee")
 
 _CACHE: dict[int, list["Aumento"]] = {}
+_POR_ID: dict[int, dict[int, "Aumento"]] = {}
+_SUELTOS: dict[int, dict[int, "Aumento | None"]] = {}  # mirados de uno en uno
+_EQUIPOS: dict[int, dict[str, tuple[int, str]]] = {}
 
 
 @dataclass
@@ -98,11 +101,15 @@ def _rango_de(sindicato: str, titulo: str) -> int | None:
     return None
 
 
-def _ventas(con: sqlite3.Connection) -> dict[int, list[Venta]]:
+def _ventas(con: sqlite3.Connection, item_id: int | None = None) -> dict[int, list[Venta]]:
+    """Las ventas de los sindicatos por objeto; con `item_id`, solo las de ese objeto."""
     salida: dict[int, list[Venta]] = {}
+    consulta = "SELECT item_id, origen_texto, standing, datos_extra FROM fuentes WHERE tipo = 'sindicato'"
     try:
-        filas = con.execute(
-            "SELECT item_id, origen_texto, standing, datos_extra FROM fuentes WHERE tipo = 'sindicato'").fetchall()
+        if item_id is None:
+            filas = con.execute(consulta).fetchall()
+        else:
+            filas = con.execute(consulta + " AND item_id = ?", (int(item_id),)).fetchall()
     except sqlite3.Error:
         return salida
     for item_id, sindicato, standing, extra in filas:
@@ -126,53 +133,97 @@ def _ventas(con: sqlite3.Connection) -> dict[int, list[Venta]]:
     return salida
 
 
+def _equipos(con: sqlite3.Connection) -> dict[str, tuple[int, str]]:
+    """Nombre en ingles (en minusculas) -> (id, "warframe"/"arma") de los warframes y armas.
+    Es una consulta corta (sin JSON): se guarda por conexion."""
+    clave = id(con)
+    if clave in _EQUIPOS:
+        return _EQUIPOS[clave]
+    equipos: dict[str, tuple[int, str]] = {}
+    marcas = ", ".join("?" for _ in CATEGORIAS_WARFRAME + CATEGORIAS_ARMA)
+    for item_id, nombre_en, categoria in con.execute(
+            f"SELECT id, nombre_en, categoria FROM items WHERE categoria IN ({marcas}) AND padre_id IS NULL"
+            " ORDER BY length(unique_name) DESC", CATEGORIAS_WARFRAME + CATEGORIAS_ARMA):
+        equipos[(nombre_en or "").strip().lower()] = (
+            int(item_id), "warframe" if categoria in CATEGORIAS_WARFRAME else "arma")
+    _EQUIPOS[clave] = equipos
+    return equipos
+
+
+def _aumento_de_fila(item_id, nombre_en, tipo, datos, equipos: dict[str, tuple[int, str]],
+                     ventas: dict[int, list[Venta]]) -> Aumento | None:
+    """El aumento de una fila (id, nombre, tipo, detalles) del indice, o None si no lo es."""
+    if tipo and "Riven" in tipo:
+        return None
+    try:
+        compat = ((json.loads(datos).get("mod") or {}).get("compat") or "").strip()
+    except (TypeError, ValueError, AttributeError):
+        return None
+    equipo = equipos.get(compat.lower()) if compat else None
+    if equipo is None:
+        return None
+    return Aumento(int(item_id), nombre_en or "", compat, equipo[0], equipo[1], ventas.get(int(item_id), []))
+
+
+_CONSULTA_MODS = ("SELECT i.id, i.nombre_en, i.tipo, d.datos FROM items i JOIN detalles d ON d.item_id = i.id"
+                  " WHERE i.categoria = 'Mods'")
+
+
 def cargar(con: sqlite3.Connection) -> list[Aumento]:
-    """Todos los aumentos del indice, por orden alfabetico del ingles. Se calcula una vez."""
+    """Todos los aumentos del indice, por orden alfabetico del ingles. Se calcula una vez
+    (lee el detalle de todos los mods: es para el diccionario, no para pintar una build)."""
     clave = id(con)
     if clave in _CACHE:
         return _CACHE[clave]
-    equipos: dict[str, tuple[int, str]] = {}
     try:
-        marcas = ", ".join("?" for _ in CATEGORIAS_WARFRAME + CATEGORIAS_ARMA)
-        for item_id, nombre_en, categoria in con.execute(
-                f"SELECT id, nombre_en, categoria FROM items WHERE categoria IN ({marcas}) AND padre_id IS NULL"
-                " ORDER BY length(unique_name) DESC", CATEGORIAS_WARFRAME + CATEGORIAS_ARMA):
-            equipos[(nombre_en or "").strip().lower()] = (
-                int(item_id), "warframe" if categoria in CATEGORIAS_WARFRAME else "arma")
-        filas = con.execute(
-            "SELECT i.id, i.nombre_en, i.tipo, d.datos FROM items i JOIN detalles d ON d.item_id = i.id"
-            " WHERE i.categoria = 'Mods'").fetchall()
+        equipos = _equipos(con)
+        filas = con.execute(_CONSULTA_MODS).fetchall()
     except sqlite3.Error:
-        filas = []
+        equipos, filas = {}, []
     ventas = _ventas(con) if filas else {}
-    salida: list[Aumento] = []
-    for item_id, nombre_en, tipo, datos in filas:
-        if tipo and "Riven" in tipo:
-            continue
-        try:
-            compat = ((json.loads(datos).get("mod") or {}).get("compat") or "").strip()
-        except (TypeError, ValueError, AttributeError):
-            continue
-        equipo = equipos.get(compat.lower()) if compat else None
-        if equipo is None:
-            continue
-        salida.append(Aumento(int(item_id), nombre_en or "", compat, equipo[0], equipo[1],
-                              ventas.get(int(item_id), [])))
+    salida = [a for a in (_aumento_de_fila(*fila, equipos, ventas) for fila in filas) if a is not None]
     salida.sort(key=lambda a: a.nombre_en.lower())
+    for otra in [c for c in _SUELTOS if c != clave]:
+        del _SUELTOS[otra]
     _CACHE.clear()
     _CACHE[clave] = salida
+    _POR_ID.clear()
+    _POR_ID[clave] = {a.item_id: a for a in salida}
     return salida
 
 
 def olvidar_cache() -> None:
     _CACHE.clear()
+    _POR_ID.clear()
+    _SUELTOS.clear()
+    _EQUIPOS.clear()
 
 
 def de(con: sqlite3.Connection | None, item_id: int | None) -> Aumento | None:
-    """El aumento con ese id, o None si ese objeto no es un aumento."""
+    """El aumento con ese id, o None si ese objeto no es un aumento.
+
+    Si el diccionario entero no esta cargado, se mira SOLO ese mod (su detalle y sus
+    ventas): pintar la primera build de la sesion no puede pagar leer el detalle de todos
+    los mods del indice en el hilo de la ventana (la ventana se quedaba parada ~0,6 s)."""
     if con is None or not item_id:
         return None
-    return next((a for a in cargar(con) if a.item_id == int(item_id)), None)
+    clave, item_id = id(con), int(item_id)
+    if clave in _POR_ID:
+        return _POR_ID[clave].get(item_id)
+    sueltos = _SUELTOS.setdefault(clave, {})
+    if item_id in sueltos:
+        return sueltos[item_id]
+    aumento = None
+    try:
+        fila = con.execute(_CONSULTA_MODS + " AND i.id = ?", (item_id,)).fetchone()
+        if fila is not None:
+            aumento = _aumento_de_fila(*fila, _equipos(con), {})
+            if aumento is not None:
+                aumento.ventas = _ventas(con, item_id).get(item_id, [])
+    except sqlite3.Error:
+        aumento = None
+    sueltos[item_id] = aumento
+    return aumento
 
 
 def rangos_del_perfil(usuario: sqlite3.Connection | None = None) -> dict[str, tuple[int, int]]:
