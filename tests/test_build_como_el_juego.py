@@ -91,7 +91,12 @@ def test_la_plantilla_lleva_los_huecos_del_juego():
     assert [wf[f"mod{n}"].x for n in range(1, 9)] == [0, 1, 2, 3, 0, 1, 2, 3]
     assert (wf["aura"].x, wf["exilus"].x, wf["aura"].y) == (1, 2, 0) and wf["arcano1"].x > 3.5
     assert D.plantilla_de("Warframes", "Warframe") == "warframe" and D.plantilla_de("Melee", "Melee") == "cuerpo"
-    assert D.plantilla_de("Secondary", "Pistol") == "arma" and D.plantilla_de("Sentinels", "Sentinel") == ""
+    assert D.plantilla_de("Secondary", "Pistol") == "arma" and D.plantilla_de("Sentinels", "Sentinel") == "companero"
+    assert D.plantilla_de("Pets", "Pets") == "companero" and D.plantilla_de("Pets", "Pet Parts") == ""
+    # Companeros: dos filas de cinco, sin aura, exilus ni arcanos.
+    co = {h.clave: h for h in D.PLANTILLAS["companero"]}
+    assert sorted(co) == sorted(f"mod{n}" for n in range(1, 11)) and all(h.tipo == "mod" for h in co.values())
+    assert [co[f"mod{n}"].x for n in range(1, 11)] == [0, 1, 2, 3, 4] * 2
 
 
 def test_si_no_se_sabe_el_hueco_no_se_inventa():
@@ -112,8 +117,19 @@ def test_si_no_se_sabe_el_hueco_no_se_inventa():
     assert D.colocar("warframe", [], []).segura
 
 
+def test_el_companero_tiene_sus_diez_huecos():
+    # Un companero con una tarjeta ampliada (la del hueco 2 tapa el 7): el 7 queda libre y se
+    # sabe donde cae, para avisar de que esta tapado.
+    xs = (-0.23, -0.001, 0.226, 0.454, 0.683)
+    mods = [D.Punto(M, x, y) for y in (0.319, 0.444) for x in xs]
+    del mods[6]
+    r = D.colocar("companero", mods, [])
+    assert r.segura and r.clase == "companero" and "mod7" not in r.mods and len(r.mods) == 9
+    assert r.mods["mod10"] == 8 and abs(r.centro_de(D.PLANTILLAS["companero"][6])[0] - (-0.001)) < 0.01
+
+
 def test_sin_plantilla_se_respeta_la_fila_y_la_columna_leidas():
-    # Un companero (dos filas de cinco): no se dice que huecos hay, solo donde estaba cada mod.
+    # Sin plantilla (dos filas de cinco): no se dice que huecos hay, solo donde estaba cada mod.
     xs = (-0.23, -0.001, 0.226, 0.454, 0.683)
     mods = [D.Punto(M, x, y) for y in (0.319, 0.444) for x in xs]
     r = D.colocar("", mods, [])

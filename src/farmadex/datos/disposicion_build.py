@@ -62,6 +62,11 @@ PLANTILLAS: dict[str, list[Hueco]] = {
     # Arma de archwing (Mausolon...): sin exilus, con dos arcanos a la derecha ("PRIMARY" y
     # "SECONDARY"), medidos en una captura real a 1080p.
     "archgun": _ocho() + [Hueco("arcano1", "arcano", 3.97, 0.6), Hueco("arcano2", "arcano", 3.97, 2.24)],
+    # Companeros (centinelas, kubrows, kavats, moas, sabuesos, vulpafilas, predasitos): diez
+    # huecos en dos filas de cinco, sin aura, exilus ni arcanos (capturas reales a 1080p y
+    # 1440p de Nautilus Prime, Wyrm Prime, Shade Prime, Kubrow Huras y Vulpafila Panzer).
+    "companero": [Hueco(f"mod{fila * 5 + col + 1}", "mod", float(col), float(fila + 1))
+                  for fila in range(2) for col in range(5)],
 }
 
 # Que acepta cada tipo de hueco: el aura solo va en el suyo y la postura en el suyo
@@ -70,7 +75,7 @@ _ACEPTA = {"mod": {"mod"}, "exilus": {"mod"}, "aura": {"aura"}, "postura": {"pos
 
 
 def plantilla_de(categoria: str | None, tipo: str | None = None) -> str:
-    """"warframe", "arma", "cuerpo" o "" (sin plantilla: companeros, archwing...)."""
+    """"warframe", "arma", "cuerpo", "archgun", "companero" o "" (sin plantilla: archwing...)."""
     categoria, tipo = categoria or "", tipo or ""
     if categoria == "Warframes":
         return "warframe" if tipo in ("Warframe", "") else ""
@@ -82,6 +87,8 @@ def plantilla_de(categoria: str | None, tipo: str | None = None) -> str:
         return "" if tipo in ("Componente", "Zaw Component") or "Component" in tipo else "cuerpo"
     if categoria == "Arch-Gun":
         return "archgun"
+    if (categoria, tipo) in (("Sentinels", "Sentinel"), ("Pets", "Pets")):
+        return "companero"
     return ""
 
 
