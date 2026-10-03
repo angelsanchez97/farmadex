@@ -185,8 +185,10 @@ def test_sin_tarjetas_sin_leer_no_hay_avisos(catalogo, motor):
 
 def test_el_mod_suelto_de_una_tarjeta_ampliada_vuelve_a_su_hueco():
     # Rejilla medida en una captura real (Haalvu a 1440p): la tarjeta ampliada bajo el cursor
-    # crece hacia abajo desde su borde de arriba, el nombre baja una fila y media y no caia
-    # en ningun hueco. Es el mod2 (el mas alto de su columna); el mod6 queda tapado debajo.
+    # tapa el mod2 y el mod6 y su nombre cae media fila por debajo del mod6. Ahi era el mod2,
+    # pero en otras capturas reales con el nombre igual de bajo era el de abajo (Ice Storm en
+    # el mod7, Blind Rage en el mod8): no se sabe. El mod sale puesto pero sin hueco, y los
+    # dos huecos como no leidos, en vez de ponerlo en uno que puede no ser el suyo.
     xs = (-0.23, -0.002, 0.226, 0.455)
     mods = [D.Punto("mod", xs[0], 0.321), D.Punto("mod", xs[2], 0.318), D.Punto("mod", xs[3], 0.319),
             D.Punto("mod", xs[0], 0.445), D.Punto("mod", xs[2], 0.447), D.Punto("mod", xs[3], 0.446),
@@ -195,8 +197,17 @@ def test_el_mod_suelto_de_una_tarjeta_ampliada_vuelve_a_su_hueco():
     assert col.segura and col.sueltos_mods == [6]
     build = B.Build(equipados=[Reconocido("x", n, "x", 100.0, (int(960 + p.x * 1080 - 60), int(p.y * 1080 - 20), 120, 20))
                                for n, p in enumerate(mods, 1)], ancho=1920, alto=1080)
+    tapados = H.recolocar_sueltos(col, build, None, 1920, 1080)
+    assert col.sueltos_mods == [6] and "mod2" not in col.mods and "mod6" not in col.mods
+    assert tapados == {"mod2", "mod6"}
+    # Con el mod6 leido (su tarjeta a la vista), solo queda el mod2: va ahi.
+    mods.append(D.Punto("mod", xs[1], 0.446))
+    col = D.colocar("arma", mods, [])
+    build = B.Build(equipados=[Reconocido("x", n, "x", 100.0, (int(960 + p.x * 1080 - 60), int(p.y * 1080 - 20), 120, 20))
+                               for n, p in enumerate(mods, 1)], ancho=1920, alto=1080)
+    assert col.segura and col.sueltos_mods == [6] and col.mods["mod6"] == 7
     H.recolocar_sueltos(col, build, None, 1920, 1080)
-    assert col.sueltos_mods == [] and col.mods["mod2"] == 6 and "mod6" not in col.mods
+    assert col.sueltos_mods == [] and col.mods["mod2"] == 6
     # Un aura ampliada (mantener pulsado para mejorar): su nombre cae en la fila de abajo,
     # pero un aura solo puede ir en el hueco del aura.
     mods = [D.Punto("mod", xs[0], 0.39), D.Punto("mod", xs[2], 0.39), D.Punto("mod", xs[3], 0.39),
@@ -323,6 +334,49 @@ def test_las_ayudas_abiertas_se_agrupan_aunque_lleven_titulo_e_imagen():
     assert len(zonas) == 1 and zonas[0][1] < 200 and zonas[0][1] + zonas[0][3] > 598
     # Dos lineas sueltas de un nombre de tarjeta no son una ayuda.
     assert H.zonas_de_ayuda([Leido("Primed Bane of", 600, 400, 150, 22, 0.9), Leido("Grineer", 620, 426, 80, 22, 0.9)]) == []
+
+
+def test_el_rotulo_y_las_pestanas_no_son_una_ayuda_que_tapa():
+    # Captura real de Gauss Prime: configuraciones con nombre propio en minuscula debajo del
+    # rotulo; se agrupaban como una ayuda y el exilus vacio salia como "tapado".
+    lineas = [Leido("UPGRADES: GAUSS PRIME RANG 30", 650, 60, 640, 40, 0.9),
+              Leido("thermal multi", 820, 108, 130, 22, 0.9), Leido("solo", 840, 132, 50, 22, 0.9),
+              Leido("Gun spam 2", 830, 156, 100, 22, 0.9), Leido("BACK", 1700, 1040, 60, 20, 0.9)]
+    assert H.zonas_de_ayuda(lineas) and H.zonas_que_tapan(lineas, 1080) == []
+    # Una ayuda de verdad, mas abajo, si tapa.
+    ayuda = [Leido("Open a dimensional breach to", 600, 520, 300, 22, 0.9),
+             Leido("blind enemies within 15m.", 600, 548, 300, 22, 0.9),
+             Leido("Energy: 50 per cast", 600, 576, 300, 22, 0.9)]
+    assert len(H.zonas_que_tapan(lineas + ayuda, 1080)) == 1
+    # Una ayuda alta que empieza casi arriba (sin el rotulo dentro) tapa la primera fila.
+    alta = [Leido("Alternate Fire throws speargun. If no", 1100, 70, 330, 22, 0.9),
+            Leido("enemy is hit, it returns.", 1100, 96, 330, 22, 0.9),
+            Leido("Recoil. Killing an enemy within this", 1100, 122, 330, 22, 0.9)]
+    assert len(H.zonas_que_tapan(lineas + alta, 1080)) == 1
+
+
+def _tarjeta_ampliada(nombre, cx, y, alto_nombre):
+    """El nombre de una tarjeta ampliada y su descripcion debajo, centrada."""
+    lineas = [Leido(nombre, cx - 110, y, 220, alto_nombre, 0.9)]
+    for k, texto in enumerate(("+60% de Cadencia de Tiro", "+60% de Tiro Multiple", "y otra frase mas.")):
+        lineas.append(Leido(texto, cx - 105, y + alto_nombre + 4 + k * (alto_nombre + 2), 210, alto_nombre, 0.9))
+    return lineas
+
+
+def test_la_tarjeta_cogida_con_el_raton_no_se_da_por_puesta():
+    # Captura real: "Disciplina de combate" arrastrada hacia el aura, el doble de grande que
+    # las tarjetas puestas, salia como puesta. Una ampliada bajo el raton (1,3 veces) si cuenta.
+    normales = [Reconocido(f"Mod {n}", n, f"Mod {n}", 100.0, (300 + 240 * n, 600, 120, 22)) for n in range(4)]
+    for alto_nombre, sigue in ((46, False), (29, True)):
+        cogida = Reconocido("Disciplina de combate", 9, "Disciplina de combate", 100.0, (850, 300, 220, alto_nombre))
+        lineas = [Leido(r.texto_ocr, *r.caja, 0.9) for r in normales] + _tarjeta_ampliada("Disciplina de combate", 960, 300, alto_nombre)
+        build = B.Build(equipados=list(normales) + [cogida], ancho=1920, alto=1080)
+        build.lineas = lineas
+        assert H.zona_de_tarjeta_ampliada(build, cogida) is not None
+        assert H.zona_de_tarjeta_ampliada(build, normales[0]) is None
+        H.apartar_tarjetas_en_la_mano(build)
+        assert (cogida in build.equipados) == sigue
+        assert ("Disciplina de combate (¿puesta?)" in build.sin_identificar) != sigue
 
 
 def test_un_agrietado_en_un_hueco_se_dice_como_tal():

@@ -1069,8 +1069,9 @@ def leer_build(imagen, motor, casador: Casador, categorias: dict[int, str], tipo
     # releen aparte y, si aun asi no se leen, se dicen (nunca se dejan vacios en silencio).
     repartido = time.perf_counter()
     try:
-        from .huecos_build import completar_huecos
+        from .huecos_build import apartar_tarjetas_en_la_mano, completar_huecos
 
+        apartar_tarjetas_en_la_mano(build)
         completar_huecos(imagen, build, motor, casador, categorias, tipos_hueco, UMBRAL_MODS, limpiar_nombre_tarjeta)
     except ErrorMotorOCR:
         raise

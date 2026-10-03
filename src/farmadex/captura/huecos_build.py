@@ -113,7 +113,7 @@ def colocar_build(build, categorias: dict[int, str], tipos: TiposDeHueco | None)
         return None
     puntos = [disposicion.punto_de(r.caja, build.ancho, build.alto, tipos.tipo_de_mod(r.item_id)) for r in build.equipados]
     arcanos = [disposicion.punto_de(r.caja, build.ancho, build.alto, "arcano") for r in build.arcanos]
-    return disposicion.colocar(clase, puntos, arcanos)
+    return disposicion.colocar(clase, puntos, arcanos, medio_ancho=build.ancho / 2 / build.alto)
 
 
 def caja_de_hueco(colocacion: disposicion.Disposicion, hueco: disposicion.Hueco, ancho: int, alto: int):
@@ -256,7 +256,7 @@ def completar_huecos(imagen, build, motor, casador: Casador, categorias: dict[in
         return
     ancho, alto = build.ancho, build.alto
     tapados_por_ampliada = recolocar_sueltos(colocacion, build, tipos, ancho, alto, imagen)
-    zonas_ayuda = zonas_de_ayuda(build.lineas)
+    zonas_ayuda = zonas_que_tapan(build.lineas, alto)
     equipados_ids = {r.item_id for r in build.equipados}
     arcanos_ids = {r.item_id for r in build.arcanos}
     nuevos = False
@@ -340,14 +340,76 @@ def completar_huecos(imagen, build, motor, casador: Casador, categorias: dict[in
         build.colocacion = colocar_build(build, categorias, tipos)
 
 
+def zona_de_tarjeta_ampliada(build, reconocido: Reconocido, zonas=None) -> tuple[int, int, int, int] | None:
+    """La caja de la descripcion de la tarjeta si `reconocido` es el nombre de una tarjeta
+    ampliada (la que el juego agranda bajo el raton o la que se lleva cogida): un bloque de
+    frases que empieza en el nombre y va centrado con el; None si es una tarjeta normal."""
+    x, y, w, h = reconocido.caja
+    cx = x + w / 2
+    paso = _paso_en_pixeles(build)
+    if zonas is None:
+        zonas = zonas_de_ayuda(build.lineas, margen=False)
+    for zx, zy, zw, zh in zonas:
+        if abs(zx + zw / 2 - cx) <= DESCENTRADO_DUDA * paso and zy - 1.5 * h <= y <= zy + h and zh >= 2.5 * h:
+            return zx, zy, zw, zh
+    return None
+
+
+# Una tarjeta ampliada bajo el raton lleva el nombre hasta ~1,5 veces mas alto que el de
+# las tarjetas normales (medido en 132 tarjetas ampliadas del banco: mediana 1,11, maxima
+# 1,48). Una tarjeta cogida con el raton y arrastrada se pinta mucho mas grande (1,9): no
+# esta en ningun hueco, asi que no se puede decir que este puesta.
+ALTURA_TARJETA_EN_LA_MANO = 1.7
+
+
+def _alto_maximo(build, reconocido: Reconocido) -> int:
+    x, y, w, h = reconocido.caja
+    dentro = [l.alto for l in build.lineas if x <= l.x + l.ancho / 2 <= x + w and y <= l.y + l.alto / 2 <= y + h]
+    return max(dentro) if dentro else h
+
+
+def apartar_tarjetas_en_la_mano(build) -> None:
+    """Saca de `build.equipados` la tarjeta que el jugador lleva cogida con el raton (una
+    tarjeta ampliada mucho mas grande que las demas) y la deja como dudosa en
+    `build.sin_identificar`: "Disciplina de combate" arrastrada por encima del rotulo hacia
+    el hueco del aura salia como puesta (captura real)."""
+    import statistics
+
+    if not build.equipados:
+        return
+    zonas = zonas_de_ayuda(build.lineas, margen=False)
+    ampliadas = {id(r) for r in build.equipados if zona_de_tarjeta_ampliada(build, r, zonas) is not None}
+    if not ampliadas:
+        return
+    normales = [_alto_maximo(build, r) for r in list(build.equipados) + list(build.coleccion) if id(r) not in ampliadas]
+    if len(normales) < 3:
+        return
+    normal = statistics.median(normales)
+    quitar = [r for r in build.equipados
+              if id(r) in ampliadas and _alto_maximo(build, r) >= ALTURA_TARJETA_EN_LA_MANO * normal]
+    for r in quitar:
+        log.info("Mod %r: tarjeta cogida con el raton (mucho mayor que las demas): no se da por puesta", r.nombre)
+        build.equipados.remove(r)
+        build.sin_identificar.append(f"{r.nombre} (¿puesta?)")
+
+
+# Cuanto se mueve el nombre de una tarjeta ampliada respecto al de su hueco, en filas
+# (medido en ~60 tarjetas ampliadas del banco con su hueco de verdad: de -0,35 a +1,53).
+BAJADA_MINIMA, BAJADA_MAXIMA = -0.36, 1.6
+
+
 def recolocar_sueltos(colocacion: disposicion.Disposicion, build, tipos: TiposDeHueco | None,
                       ancho: int, alto: int, imagen=None) -> set[str]:
     """Un mod leido que no cayo en ningun hueco (su tarjeta estaba ampliada bajo el cursor)
-    va al hueco que le toca. El juego agranda la tarjeta hacia abajo desde su borde de
-    arriba (medido en capturas reales: al pasar el raton y al mantenerlo pulsado), asi que
-    el nombre baja una o dos filas y la tarjeta tapa los huecos de debajo. El suyo es el
-    hueco libre MAS ALTO de su columna que queda por encima del nombre y no se ve vacio;
-    los de debajo que tape quedan como "no leidos", que es lo que son."""
+    va al hueco que le toca, si se sabe cual es. La tarjeta ampliada crece hacia arriba y
+    hacia abajo y su nombre baja entre media fila y fila y media respecto al de su hueco
+    (medido en ~60 tarjetas ampliadas del banco con su hueco de verdad), asi que tapa
+    tambien el hueco de encima o el de debajo de su columna. Si solo hay un hueco libre (y
+    que no se ve vacio) que le pueda tocar, va ahi y los que tape debajo quedan como "no
+    leidos". Si hay dos (un mod del mod7 con el nombre media fila mas abajo y el mod3
+    tapado; uno del exilus con el nombre fila y media mas abajo y el mod3 tapado), no se
+    sabe cual es el suyo: el mod se queda suelto (puesto, pero sin hueco) y los dos huecos
+    como no leidos, en vez de ponerlo en el que no es (capturas reales)."""
     tapados: set[str] = set()
     if not colocacion.paso or not colocacion.sueltos_mods:
         return tapados
@@ -369,14 +431,22 @@ def recolocar_sueltos(colocacion: disposicion.Disposicion, build, tipos: TiposDe
                 continue
             hx = centro[0] * alto + ancho / 2
             arriba = centro[1] * alto - TARJETA_ARRIBA * fila  # borde de arriba de la tarjeta
-            if abs(cx - hx) > 0.3 * paso or not (arriba - 0.3 * fila <= cy <= arriba + 2.6 * fila):
+            baja = (y + h - centro[1] * alto) / fila  # cuanto ha bajado el nombre, en filas
+            if abs(cx - hx) > 0.3 * paso or not (BAJADA_MINIMA <= baja <= BAJADA_MAXIMA):
                 continue
             caja = caja_de_hueco(colocacion, hueco, ancho, alto)
             if imagen is not None and caja is not None and parece_vacio(imagen, caja):
                 continue
             candidatos.append((arriba, hueco))
+        if len(candidatos) > 1:
+            log.info("Mod suelto %r (tarjeta ampliada): puede ser de %s; no se sabe cual", r.nombre,
+                     ", ".join(hu.clave for _a, hu in candidatos))
+            for _a, hueco in candidatos:
+                tapados.add(hueco.clave)
+                libres.remove(hueco)
+            continue
         if candidatos:
-            _arriba, mejor = min(candidatos, key=lambda par: par[0])
+            _arriba, mejor = candidatos[0]
             colocacion.mods[mejor.clave] = i
             colocacion.sueltos_mods.remove(i)
             libres.remove(mejor)
@@ -454,6 +524,20 @@ def zonas_de_ayuda(lineas: list[Leido], margen: bool = True) -> list[tuple[int, 
     return zonas
 
 
+def zonas_que_tapan(lineas: list[Leido], alto: int) -> list[tuple[int, int, int, int]]:
+    """Las ayudas abiertas que pueden tapar huecos. El rotulo y las pestanas de configuracion
+    (con nombres puestos por el jugador en minuscula, "thermal multi", "solo") se agrupaban
+    como una ayuda y "tapaban" el exilus vacio de debajo (captura real de Gauss Prime): una
+    ayuda no lleva dentro el rotulo de la pantalla. (Una ayuda alta de verdad si puede
+    empezar casi arriba del todo y tapar la primera fila: capturas reales.)"""
+    from .builds import es_cabecera
+
+    rotulos = [l for l in lineas if l.y < ARRIBA_DE_UNA_AYUDA * alto * 1.5 and es_cabecera(l.texto)]
+    return [z for z in zonas_de_ayuda(lineas)
+            if not any(z[0] <= l.x + l.ancho / 2 <= z[0] + z[2] and z[1] <= l.y + l.alto / 2 <= z[1] + z[3]
+                       for l in rotulos)]
+
+
 def _tapado_por_ayuda(caja, zonas: list[tuple[int, int, int, int]]) -> bool:
     x, y, w, h = caja
     for zx, zy, zw, zh in zonas:
@@ -510,6 +594,8 @@ LINEAS_DUDA = 1.5                # altos de linea por encima y por debajo del no
 # mas grande que esto es el panel de estadisticas o media pantalla agrupada, no algo encima.
 ANCHO_MAXIMO_AYUDA, ALTO_MAXIMO_AYUDA = 0.33, 0.5
 FRANJA_DE_ARRIBA = 0.12
+# Por encima de esto va el rotulo de la pantalla ("UPGRADES / GAUSS PRIME [30]").
+ARRIBA_DE_UNA_AYUDA = 0.10
 
 
 def nombres_mas_largos(casador: Casador, categorias: dict[int, str]) -> dict[str, list[tuple[int, str, str, str]]]:

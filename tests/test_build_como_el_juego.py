@@ -92,6 +92,8 @@ def test_la_plantilla_lleva_los_huecos_del_juego():
     assert (wf["aura"].x, wf["exilus"].x, wf["aura"].y) == (1, 2, 0) and wf["arcano1"].x > 3.5
     assert D.plantilla_de("Warframes", "Warframe") == "warframe" and D.plantilla_de("Melee", "Melee") == "cuerpo"
     assert D.plantilla_de("Secondary", "Pistol") == "arma" and D.plantilla_de("Sentinels", "Sentinel") == "companero"
+    assert D.plantilla_de("Primary", "Companion Weapon") == "arma_companero"
+    assert [h.tipo for h in D.PLANTILLAS["arma_companero"]] == ["mod"] * 8
     assert D.plantilla_de("Pets", "Pets") == "companero" and D.plantilla_de("Pets", "Pet Parts") == ""
     # Companeros: dos filas de cinco, sin aura, exilus ni arcanos.
     co = {h.clave: h for h in D.PLANTILLAS["companero"]}
@@ -126,6 +128,17 @@ def test_el_companero_tiene_sus_diez_huecos():
     r = D.colocar("companero", mods, [])
     assert r.segura and r.clase == "companero" and "mod7" not in r.mods and len(r.mods) == 9
     assert r.mods["mod10"] == 8 and abs(r.centro_de(D.PLANTILLAS["companero"][6])[0] - (-0.001)) < 0.01
+    # Captura real de Nautilus Prime a 1080p: "Acordonar" ampliada tapa la primera columna y
+    # con las otras cuatro la rejilla puede ir corrida una columna a la derecha... con la
+    # quinta columna fuera de la pantalla. Sin saber el ancho es ambigua; sabiendolo, no.
+    leidos = [(0.44, 0.32), (0.693, 0.306), (0.195, 0.314), (-0.047, 0.318), (0.451, 0.443), (0.195, 0.454),
+              (0.696, 0.442), (-0.045, 0.445)]
+    puntos = [D.Punto(M, x, y) for x, y in leidos]
+    assert D.colocar("companero", puntos, []).motivo == "ambigua"
+    r = D.colocar("companero", puntos, [], medio_ancho=1920 / 2 / 1080)
+    assert r.segura and r.mods == {"mod4": 0, "mod5": 1, "mod3": 2, "mod2": 3, "mod9": 4, "mod8": 5, "mod10": 6, "mod7": 7}
+    # Si la captura esta recortada y todas las rejillas se salen, sigue sin elegirse.
+    assert D.colocar("companero", puntos, [], medio_ancho=0.5).motivo == "ambigua"
 
 
 def test_sin_plantilla_se_respeta_la_fila_y_la_columna_leidas():
