@@ -305,7 +305,7 @@ def _tramos_de_tinta(columna_con_tinta) -> list[tuple[int, int]]:
     return tramos
 
 
-def recorte_sin_icono(imagen, cifra: Leido):
+def recorte_sin_icono(imagen, cifra: Leido, cortar: bool = True):
     """El trozo de imagen con la cifra, ya sin el icono redondo de delante si lo hay.
 
     El icono es el primer "caracter" y es tan ancho como alto; una cifra es la mitad
@@ -324,6 +324,8 @@ def recorte_sin_icono(imagen, cifra: Leido):
     recorte = imagen[y0:y1, x0:x1]
     if recorte.size == 0:
         return None
+    if not cortar:
+        return recorte
     gris = recorte.max(axis=2).astype(np.int16) if recorte.ndim == 3 else recorte.astype(np.int16)
     claro, oscuro = int(np.percentile(gris, 98)), int(np.percentile(gris, 20))
     if claro - oscuro < 40:
@@ -383,6 +385,20 @@ def comprobar_cifra(imagen, placa: Placa, motor) -> None:
     minimo = MINIMO_CONFIANZA_UN_DIGITO if un_digito else MINIMO_CONFIANZA_SEGUNDA
     iguales = [c for t, c in lecturas if c >= minimo and cifra_de(t) == placa.cantidad]
     confirmada = bool(iguales) and (not un_digito or len(iguales) >= 2 or max(iguales) >= CONFIANZA_UN_DIGITO_SOLA)
+    if not confirmada and not un_digito:
+        # Dos cifras pegadas ("22" de "229.254") parecen un icono por lo anchas y el corte se
+        # las come: "9254". Con varias cifras se prueba tambien sin cortar, y solo vale si las
+        # dos relecturas dan exactamente lo mismo que la primera (un icono leido como cifra,
+        # "942" por "42", no coincide nunca con la primera lectura, que ya lo habia dejado fuera).
+        try:
+            entero = recorte_sin_icono(imagen, placa.cifra, cortar=False)
+            otras = [_reconocer_recorte(motor, entero, 48), _reconocer_recorte(motor, entero, 64)] if entero is not None else []
+        except Exception:  # noqa: BLE001
+            log.exception("No se pudo releer entera la cifra de %s", placa.unique_name)
+            otras = []
+        if len(otras) == 2 and all(c >= minimo and cifra_de(t) == placa.cantidad for t, c in otras):
+            confirmada = True
+            lecturas += otras
     if not confirmada:
         log.info("Cifra de %s sin confirmar: primera lectura %r, relecturas %s",
                  placa.unique_name, placa.cifra.texto, [(t, round(c, 2)) for t, c in lecturas])
