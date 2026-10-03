@@ -159,6 +159,17 @@ def _codigo_con_cola(trozo: str, era: str) -> str | None:
 
 
 RE_TROZOS = re.compile(r"[A-Z0-9|]+")
+# Una "g" minuscula justo detras de la letra del codigo es un 9 que el OCR ha leido como
+# letra ("LithPgRelic" a 607p): en mayusculas se tomaba por una G y salia "Lith P6", otra
+# reliquia. El 6 se lee como "G" mayuscula, nunca como "g".
+RE_G_COMO_9 = re.compile(r"(?<=[A-Z])g(?=\d{0,2}(?:$|[^A-Za-z0-9]|[Rr][Ee]))")
+# El codigo seguido de letras ("Lith G13 Relic", "NeoG6Relic"): esta entero aunque la caja
+# toque el borde del recorte; "Lith G1" cortado por el borde podria ser "Lith G13".
+RE_CODIGO_CERRADO = re.compile(r"(?:LITH|MESO|NEO|AXI)\s*[A-Z][0-9]{1,2}(?=\s*[A-Z]{2,})")
+
+
+def codigo_cerrado(texto: str) -> bool:
+    return RE_CODIGO_CERRADO.search(_sin_tildes(RE_G_COMO_9.sub("9", texto)).upper()) is not None
 
 
 def reliquias_en_texto(texto: str) -> list[tuple[str, str | None]]:
@@ -168,7 +179,7 @@ def reliquias_en_texto(texto: str) -> list[tuple[str, str | None]]:
     "ReligueMesoD4" (el OCR junta palabras) y confusiones de letra y cifra. No mira
     el indice: eso lo hace quien llama, que es quien sabe que reliquias existen.
     """
-    limpio = _sin_tildes(texto).upper()
+    limpio = _sin_tildes(RE_G_COMO_9.sub("9", texto)).upper()
     trozos = RE_TROZOS.findall(limpio)
     refinamiento = next((REFINAMIENTOS[t] for t in trozos if t in REFINAMIENTOS), None)
     salida: list[tuple[str, str | None]] = []
@@ -245,7 +256,10 @@ def elegir_reliquia(lineas, cursor: tuple[float, float], tamano: tuple[int, int]
     for l in lineas:
         if l.confianza < confianza:
             continue
-        if l.x <= 2 or l.x + l.ancho >= ancho - 2:
+        # Cortada por el borde derecho, solo vale si el codigo esta cerrado (va seguido de
+        # mas texto): "Lith G1" cortado podria ser "Lith G13". Por el izquierdo no hay
+        # riesgo: sin la era entera no se reconoce nada.
+        if l.x + l.ancho >= ancho - 2 and not codigo_cerrado(l.texto):
             continue
         for nombre, refinamiento in reliquias_en_texto(l.texto):
             reliquia_id = nombres.get(nombre)
@@ -318,20 +332,56 @@ def misma_huella(a, b, tolerancia: float = 6.0, tolerancia_celda: float = 24.0) 
 ALTO_PARA_AMPLIAR = 216
 
 
-def leer_ampliando(leer, imagen):
-    """Lee el recorte; si es pequeno, ampliado, y devuelve las cajas en su tamano original."""
+def leer_ampliando(leer, imagen, escala: float | None = None):
+    """Lee el recorte; si es pequeno (o se pide `escala`), ampliado, y devuelve las cajas en su tamano original."""
     alto = imagen.shape[0]
-    if alto >= ALTO_PARA_AMPLIAR:
+    if escala is None:
+        escala = 1.0 if alto >= ALTO_PARA_AMPLIAR else 1.5
+    if escala == 1.0:
         return leer(imagen)
     import cv2
 
-    escala = 1.5
     grande = cv2.resize(imagen, None, fx=escala, fy=escala, interpolation=cv2.INTER_CUBIC)
     lineas = leer(grande)
     for l in lineas:
         l.x, l.y = int(l.x / escala), int(l.y / escala)
         l.ancho, l.alto = int(l.ancho / escala), int(l.alto / escala)
     return lineas
+
+
+# Escalas de las lecturas que se contrastan: dos (y una tercera si no coinciden). Medido en
+# el banco de precision: a 768p la lectura a 1,5x perdia una letra ("ReligueMeso2") que a
+# 2x y 2,5x salia bien, y una sola escala no avisa de cuando se equivoca. Dos lecturas a
+# escalas distintas que dan la misma reliquia (y el mismo refinamiento) son una respuesta
+# segura; si no coinciden, decide una tercera, y sin mayoria no se ensena nada: una
+# reliquia equivocada es un dato inventado.
+ESCALAS_GRANDE = (1.0, 1.5, 2.0)
+ESCALAS_PEQUENO = (1.5, 2.0, 2.5)
+
+
+def leer_contrastando(leer, imagen, elegir):
+    """`elegir(lineas)` sobre dos lecturas a escalas distintas; una tercera desempata.
+
+    Devuelve (resultado, lecturas): el resultado que coincide en al menos dos lecturas
+    (comparado por `==`, asi que una Candidata se compara por su reliquia y refinamiento
+    en `_clave`), o None si no hay mayoria.
+    """
+    escalas = ESCALAS_GRANDE if imagen.shape[0] >= ALTO_PARA_AMPLIAR else ESCALAS_PEQUENO
+    vistos = []
+    for i, escala in enumerate(escalas):
+        vistos.append(_clave(elegir(leer_ampliando(leer, imagen, escala))))
+        if i >= 1:
+            for v in vistos:
+                if vistos.count(v) >= 2:
+                    return v, len(vistos)
+    log.info("Tres lecturas del recorte sin ponerse de acuerdo (%s): no se ensena nada", vistos)
+    return None, len(vistos)
+
+
+def _clave(candidata):
+    if candidata is None:
+        return None
+    return (candidata.reliquia_id, candidata.refinamiento, candidata.nombre)
 
 
 # -- quieto o moviendose ----------------------------------------------------------------
@@ -460,17 +510,18 @@ class LectorHoverReliquia(QObject):
         if motor.fallo:
             return 0, None, 0.0
         leer = getattr(motor, "leer_tira", None) or motor.leer
-        lineas = leer_ampliando(leer, imagen)
+        tamano = (imagen.shape[1], imagen.shape[0])
+        elegida, lecturas = leer_contrastando(
+            leer, imagen, lambda lineas: elegir_reliquia(lineas, cursor, tamano, nombres))
         ms = (time.perf_counter() - t0) * 1000
         self.lecturas += 1
         self.ms_total += ms
-        elegida = elegir_reliquia(lineas, cursor, (imagen.shape[1], imagen.shape[0]), nombres)
-        resultado = (elegida.reliquia_id, elegida.refinamiento) if elegida else (0, None)
+        resultado = (elegida[0], elegida[1]) if elegida else (0, None)
         self.cache.guardar(pos_pantalla[0], pos_pantalla[1], contexto, marca, resultado)
         if elegida:
-            log.info("Reliquia bajo el raton: %s (%r, OCR %.0f ms)", elegida.nombre, elegida.texto_ocr, ms)
+            log.info("Reliquia bajo el raton: %s (%d lecturas, OCR %.0f ms)", elegida[2], lecturas, ms)
         else:
-            log.debug("Nada seguro bajo el raton (%d lineas, OCR %.0f ms)", len(lineas), ms)
+            log.debug("Nada seguro bajo el raton (%d lecturas, OCR %.0f ms)", lecturas, ms)
         return resultado[0], resultado[1], ms
 
 

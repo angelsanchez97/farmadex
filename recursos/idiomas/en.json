@@ -1,5 +1,6 @@
 {
   "_comentario": "Farmadex UI texts. Key = the Spanish text used in the code; value = the translation. {braces} are placeholders and must stay as they are. Delete a line to fall back to Spanish.",
+  "Leído: {texto} (sin reconocer)": "Read: {texto} (not recognized)",
   "Un mod agrietado (riven). Léelo con el atajo de agrietados para ver sus estadísticas.": "A Riven mod. Read it with the Riven shortcut to see its stats.",
   "OJO: hay {n} huecos ocupados que no he podido leer (están marcados en la rejilla).": "WARNING: {n} occupied slots could not be read (they are marked in the grid).",
   "OJO: hay un hueco ocupado que no he podido leer (está marcado en la rejilla).": "WARNING: one occupied slot could not be read (it is marked in the grid).",

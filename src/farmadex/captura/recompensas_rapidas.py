@@ -29,6 +29,7 @@ from __future__ import annotations
 import re
 import sqlite3
 import time
+import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -111,9 +112,28 @@ def catalogo_de_piezas(casador: Casador, con: sqlite3.Connection) -> Casador:
     "Plano DeFang Prime" casaba exacto con el arma "Fang Prime" en vez de con
     su plano. Fuera del ultimo escalon, ese fallo ya no tiene por donde entrar.
     """
-    padres = {f[0] for f in con.execute("SELECT DISTINCT padre_id FROM items WHERE padre_id IS NOT NULL")}
-    ids = {v[0] for v in casador.candidatos.values()} - padres
-    return casador.restringido(ids)
+    if not ids_reliquias(con):
+        # Indice sin tabla de reliquias (viejo o de pruebas): no se sabe que puede salir, solo
+        # se quitan los objetos enteros.
+        padres = {f[0] for f in con.execute("SELECT DISTINCT padre_id FROM items WHERE padre_id IS NOT NULL")}
+        return casador.restringido({v[0] for v in casador.candidatos.values()} - padres)
+    return casador.restringido({v[0] for v in casador.candidatos.values()} & ids_posibles_de_reliquia(con))
+
+
+def ids_posibles_de_reliquia(con: sqlite3.Connection) -> set[int]:
+    """Lo que una tarjeta de recompensa puede ser: lo que sale de reliquias (Forma, Kuva,
+    Ayatan, rivens, piezas...) y cualquier pieza de un objeto Prime (las de un Prime nuevo
+    que aun no esta en la tabla de reliquias del indice).
+
+    Nunca un mod, un recurso suelto ni un objeto entero: con la tarjeta cortada ("Canon DeLe",
+    de "Cañon De Lex Prime") el catalogo entero casaba el mod "Cañoneo" y se ensenaba como
+    recompensa. Mejor "sin identificar" que un objeto que no puede ser.
+    """
+    ids = ids_reliquias(con)
+    ids |= {f[0] for f in con.execute(
+        "SELECT i.id FROM items i JOIN items p ON p.id = i.padre_id "
+        "WHERE (' ' || p.nombre_en || ' ') LIKE '% Prime %' AND COALESCE(p.categoria, '') <> 'Mods'")}
+    return ids
 
 
 def ids_conocidas(con: sqlite3.Connection, rutas: list[str]) -> set[int]:
@@ -144,6 +164,40 @@ def variantes_texto(texto: str) -> list[str]:
         if sin_plano != clave and sin_plano:
             salida.append(sin_plano + " plano")
     return salida
+
+
+def _palabras(texto: str) -> list[str]:
+    plano = unicodedata.normalize("NFKD", texto or "")
+    return re.findall(r"[a-z0-9]+", "".join(c for c in plano.lower() if not unicodedata.combining(c)))
+
+
+def palabras_del_catalogo(casador) -> set[str]:
+    """Todas las palabras de los nombres que conoce `casador` (se guardan en el propio casador)."""
+    hechas = getattr(casador, "_palabras_catalogo", None)
+    if hechas is None:
+        hechas = {w for clave in getattr(casador, "candidatos", {}) for w in _palabras(clave)}
+        try:
+            casador._palabras_catalogo = hechas
+        except AttributeError:
+            pass
+    return hechas
+
+
+def palabra_de_otro_objeto(texto: str, nombre: str, palabras: set[str]) -> str | None:
+    """La palabra leida que es OTRO nombre que acaba o empieza por una palabra de `nombre`.
+
+    "Akbronco Prime" (el plano sin la palabra "Blaupause") casaba con "Bronco Prime" a 92:
+    "akbronco" acaba en "bronco", pero es el nombre de otra arma. Con o sin prefijo son
+    objetos distintos (Akbronco/Bronco, Akstiletto/Stiletto...): eso no se casa.
+    """
+    del_nombre = [w for w in _palabras(nombre) if len(w) >= 4]
+    for w in _palabras(texto):
+        if len(w) < 5 or w not in palabras:
+            continue
+        for n in del_nombre:
+            if w != n and len(w) - len(n) >= 2 and (w.endswith(n) or w.startswith(n)) and n not in _palabras(texto):
+                return w
+    return None
 
 
 class CasadorEscalonado:
@@ -177,6 +231,10 @@ class CasadorEscalonado:
                 if item_id and puntos > mejor[2]:
                     mejor = (item_id, nombre, puntos)
             if not mejor[0]:
+                continue
+            otra = palabra_de_otro_objeto(texto, mejor[1], palabras_del_catalogo(casador))
+            if otra:
+                log.info("%r no casa con %r: %r es el nombre de otro objeto", texto, mejor[1], otra)
                 continue
             if i == 0 and mejor[2] >= SEGURA_CONOCIDA:
                 return mejor
@@ -331,9 +389,22 @@ def _casar_grupo(grupo: list[Leido], casador: CasadorEscalonado) -> Reconocido |
                 break
     if item_id:
         return Reconocido(texto, item_id, nombre, puntos, caja)
-    if RE_NOMBRE_PLAUSIBLE.match(texto.strip()):
+    if parece_nombre(texto):
         return Reconocido(texto, SIN_IDENTIFICAR, "", 0.0, caja)
     return None
+
+
+def parece_nombre(texto: str) -> bool:
+    """Si un texto que no casa tiene pinta de nombre de tarjeta (y se ensena "sin identificar").
+
+    Antes valia solo sin ninguna cifra, y en ruso el OCR lee la "з" como "3"
+    ("Bupmpaim:Mo3r", de "Вирм Прайм: Мозг"): de tres tarjetas salia una y las otras dos
+    desaparecian sin decir nada. Ahora basta con que casi todo sean letras; un contador
+    ("x13", "15") o una cantidad sigue sin ser un nombre.
+    """
+    letras = sum(c.isalpha() for c in texto)
+    cifras = sum(c.isdigit() for c in texto)
+    return letras >= 6 and cifras <= max(1, letras // 6)
 
 
 def casar_fila(
@@ -428,7 +499,10 @@ def leer_pantalla(
     # Cuentan las tarjetas reconocidas, no las leidas: con la escala del HUD por debajo
     # del 100 % la fila fija corta los nombres por arriba ("RhinoPr rime", "ystemes") y
     # salian cuatro tarjetas sin reconocer que se daban por buenas sin mirar la franja.
-    completa = bool(en_pantalla) and (esperadas is None or _reconocidas(en_pantalla) >= esperadas)
+    # Y tampoco vale una fila con alguna tarjeta sin identificar: la franja entera (otra
+    # escala, mas contexto) puede leerla, y `leer_pantalla` se queda con la mejor de las dos.
+    completa = (bool(en_pantalla) and _reconocidas(en_pantalla) == len(en_pantalla)
+                and (esperadas is None or _reconocidas(en_pantalla) >= esperadas))
     if completa or lento is None:
         return Lectura(en_pantalla, "fila" if en_pantalla else "nada", tiempos)
     otros = lento(ventana, tiempos)

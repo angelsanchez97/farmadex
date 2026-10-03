@@ -175,7 +175,8 @@ def test_el_lector_casa_y_luego_tira_de_cache():
     imagen = np.zeros((200, 400, 3), np.uint8)
     assert lector.leer_imagen(imagen, (110, 80), (500, 500))[:2] == (3, None)
     reliquia_id, _refino, ms = lector.leer_imagen(imagen, (112, 82), (505, 503))
-    assert reliquia_id == 3 and ms == -1.0 and lector.motor.llamadas == 1
+    # Dos lecturas contrastadas (a dos escalas) la primera vez; la segunda sale de la cache.
+    assert reliquia_id == 3 and ms == -1.0 and lector.motor.llamadas == 2
 
 
 # -- controlador --------------------------------------------------------------------------------

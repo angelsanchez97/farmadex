@@ -10,6 +10,7 @@ descartan, y el resultado de una lectura que ya tiene otra detras no se ensena.
 
 from __future__ import annotations
 
+import re
 import time
 from typing import Callable
 
@@ -18,7 +19,8 @@ from PySide6.QtCore import QTimer, Signal, Slot
 from ..idiomas import t
 from ..registro_log import obtener
 from . import pantalla
-from .ocr import resumen_tiempos
+from .ocr import ErrorMotorOCR, agrupar_bloques, casar_lineas, leer_lineas, resumen_tiempos
+from .recompensas_rapidas import RE_CANTIDAD_DELANTE, RE_DE_PEGADO, RE_DE_PEGADO_ANTES, _palabras, palabra_de_otro_objeto, palabras_del_catalogo
 from .reliquias import LectorBase
 
 log = obtener("cursor")
@@ -33,6 +35,159 @@ LADO_MINIMO = 608
 # los nombres miden el doble y un recuadro fijo solo cogia media palabra; a 720p cogia
 # medio inventario de alrededor.
 ANCHO_RECUADRO, ALTO_RECUADRO = 620, 170
+
+
+# Si el raton esta sobre el dibujo de una tarjeta (recompensas, inventario), el nombre
+# cae por debajo del recuadro normal: la segunda mirada baja hasta este multiplo del alto.
+# Medido en el banco de precision: con el raton en el dibujo de la tarjeta de recompensa
+# (a 0,33 del alto) el recuadro normal solo cogia 8 de 34 nombres; con este, todos.
+FACTOR_RECUADRO_BAJO = 2.6
+
+
+def region_mas_baja(region, limite=None, factor: float = FACTOR_RECUADRO_BAJO):
+    """El mismo recuadro, estirado hacia abajo (sin salirse de `limite`, la ventana del juego)."""
+    alto = int(region.alto * factor)
+    if limite is not None:
+        alto = min(alto, limite.y + limite.alto - region.y)
+    return pantalla.Region(region.x, region.y, region.ancho, max(region.alto, alto))
+
+
+# "+1 Steel Essence", "+50 Ferrita": el aviso de lo recogido en la mision, no un objeto
+# que el raton senale (en el banco de precision se colo como ficha al estirar el recuadro).
+RE_RECOGIDO = re.compile(r"^\s*\+\s*\d")
+
+
+def alineados(encontrados, punto, ancho_region: int) -> list:
+    """Lo leido que esta encima o debajo del raton, del mas cercano al mas lejano."""
+    encontrados = [r for r in encontrados if not RE_RECOGIDO.match(r.texto_ocr or "")]
+
+    def distancia(r):
+        x = r.caja[0] + r.caja[2] / 2
+        y = r.caja[1] + r.caja[3] / 2
+        return (x - punto[0]) ** 2 + (y - punto[1]) ** 2
+
+    cercanos = [r for r in encontrados if alineado_con_raton(r.caja, punto, ancho_region)]
+    return sorted(cercanos, key=lambda r: (distancia(r), -r.puntuacion))
+
+
+def despegar(texto: str) -> str:
+    """"Plano DeForma" -> "Plano De Forma": el OCR pega la preposicion y asi no casaba nada."""
+    texto = RE_CANTIDAD_DELANTE.sub("", texto) or texto  # "2XForma Blueprint" (Forma doble)
+    texto = RE_PEGADO_MAYUSCULA.sub(" ", texto)  # "PlanoDeForma" -> "Plano De Forma"
+    return RE_DE_PEGADO.sub(r"\1 ", RE_DE_PEGADO_ANTES.sub(r" \1", texto))
+
+
+RE_PEGADO_MAYUSCULA = re.compile(r"(?<=[a-zà-ÿ])(?=[A-ZÀ-Ý])")
+
+
+def leer_recuadro(imagen, motor, casador, umbral: int = 85, lado_minimo: int | None = LADO_MINIMO):
+    """(reconocidos, lineas) del recuadro: lo que casa y todas las lineas leidas."""
+    lineas = leer_lineas(imagen, motor, 0.4, lado_minimo)
+    for linea in lineas:
+        linea.texto = despegar(linea.texto)
+    return casar_lineas(lineas, casador, umbral), lineas
+
+
+def _dentro(linea, caja) -> bool:
+    x, y, w, h = caja
+    cx, cy = linea.x + linea.ancho / 2, linea.y + linea.alto / 2
+    return x <= cx <= x + w and y <= cy <= y + h
+
+
+# Un trozo de nombre que acaba en preposicion ("Plano De Neuropticas De") esta cortado.
+RE_ACABA_EN_ENLACE = re.compile(r"(?i)(?:\b(?:de|del|des|du|der|di|da|do|dos|das|von|of)|[:\-])\s*$")
+
+
+def a_medias(reconocido, lineas, alto_region: int, padres: set | None = None,
+             palabras: set | None = None) -> bool:
+    """Si lo casado puede ser solo un trozo del nombre que senala el raton.
+
+    Los nombres largos van en dos lineas ("Plano De Neuropticas De" / "Zephyr Prime").
+    Con una sola linea leida, el catalogo encontraba otra cosa: "Jade Neuropticas",
+    "Chasse", o el objeto entero ("Caliban Prime") en vez de la pieza. Es dudoso si
+    el bloque de lineas en el que esta tiene lineas que no entraron en el casado, o si
+    toca el borde de arriba o de abajo del recuadro (la otra linea puede estar fuera).
+    Con `padres` (ids de los objetos que tienen piezas) solo se duda de un objeto entero
+    o de un texto que acaba en preposicion; sin ellos, de todo lo que pueda estar cortado.
+    """
+    caja = reconocido.caja
+    if palabras and palabra_de_otro_objeto(reconocido.texto_ocr or "", reconocido.nombre or "", palabras):
+        return True  # "Akbronco Prime" no es "Bronco Prime"
+    if (padres is not None and reconocido.item_id not in padres
+            and not RE_ACABA_EN_ENLACE.search(reconocido.texto_ocr or "")
+            and _palabras_cuadran(reconocido.texto_ocr or "", reconocido.nombre or "")):
+        # Un nombre completo de pieza (o de algo sin piezas) no se confunde por faltarle una
+        # linea: lo peligroso es el objeto entero ("Caliban Prime") o un trozo que acaba en "De".
+        return False
+    propias = [l for l in lineas if _dentro(l, caja)]
+    alto_linea = max([l.alto for l in propias] or [caja[3]])
+    if caja[1] < 0.6 * alto_linea or caja[1] + caja[3] > alto_region - 0.8 * alto_linea:
+        return True
+    for bloque in agrupar_bloques(list(lineas)):
+        if any(l in propias for l in bloque) and any(l not in propias for l in bloque):
+            return True
+    return False
+
+
+PALABRAS_PLANO = {"blueprint", "plano", "schema", "diagrama", "blaupause", "bauplan", "plan", "progetto", "projeto", "plan"}
+
+
+def _palabras_cuadran(texto: str, nombre: str) -> bool:
+    """Si cada palabra leida (de 4 letras o mas) se parece a alguna del nombre casado.
+
+    "Empunadura De Paris" (sin el "Prime" de la linea de abajo) casaba "Xoris Empuñadura":
+    "paris" no esta en ese nombre, asi que el casado no explica lo leido.
+    """
+    from rapidfuzz import fuzz
+
+    del_nombre = _palabras(nombre)
+    if fuzz.ratio("".join(_palabras(texto)), "".join(del_nombre)) >= 90:  # "FANGPRIMEBLADE"
+        return True
+    for w in _palabras(texto):
+        if len(w) >= 4 and w not in PALABRAS_PLANO and not any(fuzz.ratio(w, n) >= 75 for n in del_nombre):
+            return False
+    return True
+
+
+def elegir_bajo_cursor(capturar, region, juego, punto_de, leer, padres: set | None = None,
+                       palabras: set | None = None):
+    """Lo que senala el raton: (mejor | None, ordenados, texto_dudoso | None).
+
+    `capturar(Region)` da la imagen, `punto_de(Region)` donde esta el raton en ella y
+    `leer(imagen)` -> (reconocidos, lineas) o None si el motor fallo. Primera mirada
+    con el recuadro normal; si no hay nada alineado con el raton o lo alineado puede
+    estar a medias (`a_medias`), segunda mirada con el recuadro estirado hacia abajo.
+    Lo que siga a medias no se da por bueno: se devuelve su texto como dudoso.
+    """
+    imagen = capturar(region)
+    if imagen is None:
+        return None, [], None
+    leido = leer(imagen)
+    if leido is None:
+        return None, [], None
+    encontrados, lineas = leido
+    ordenados = alineados(encontrados, punto_de(region), region.ancho)
+    dudoso = ordenados and a_medias(ordenados[0], lineas, region.alto, padres, palabras)
+    if not ordenados or dudoso:
+        region_baja = region_mas_baja(region, juego)
+        imagen = capturar(region_baja) if region_baja.alto > region.alto else None
+        leido = leer(imagen) if imagen is not None else None
+        if leido is not None:
+            otros, lineas_b = leido
+            punto_b = punto_de(region_baja)
+            # El nombre va justo debajo del dibujo: lo que queda mas lejos que el alto del
+            # recuadro normal es otra cosa ("Bonus del Camino de Acero", bajo las tarjetas,
+            # salia como el nodo "El Camino de Acero: Venus").
+            ordenados_b = [r for r in alineados(otros, punto_b, region_baja.ancho)
+                           if r.caja[1] + r.caja[3] / 2 - punto_b[1] <= region.alto]
+            log.info("Bajo el cursor, segunda mirada mas abajo: %d encontrados, %d alineados", len(otros), len(ordenados_b))
+            if ordenados_b and not a_medias(ordenados_b[0], lineas_b, region_baja.alto, padres, palabras):
+                return ordenados_b[0], ordenados_b, None
+            if ordenados_b or not ordenados:
+                ordenados, dudoso = ordenados_b, bool(ordenados_b)
+    if ordenados and dudoso:
+        return None, ordenados, ordenados[0].texto_ocr
+    return (ordenados[0] if ordenados else None), ordenados, None
 
 
 def tamano_recuadro(alto_juego: int | None) -> tuple[int, int]:
@@ -55,6 +210,7 @@ class LectorCursor(LectorBase):
         # un resultado, para no abrir la ficha de algo que ya no se esta mirando.
         self.ultima_pedida = 0
         self.lado_minimo = LADO_MINIMO  # lo usa LectorBase._leer_protegido
+        self._ids_padres: set | None = None
 
     @Slot()
     def leer_ahora(self) -> None:
@@ -76,6 +232,31 @@ class LectorCursor(LectorBase):
             self._ocupado = False
             self.terminado.emit(numero)
 
+    def _padres(self) -> set | None:
+        """Ids de los objetos que tienen piezas (armas y warframes enteros); None si no hay indice."""
+        if getattr(self, "_ids_padres", None) is None:
+            try:
+                from ..datos import indice
+
+                con = indice.conectar()
+                try:
+                    self._ids_padres = {f[0] for f in con.execute(
+                        "SELECT DISTINCT padre_id FROM items WHERE padre_id IS NOT NULL")}
+                finally:
+                    con.close()
+            except Exception:  # noqa: BLE001 - sin indice: se duda de todo lo que pueda estar cortado
+                log.debug("Sin indice para saber que objetos tienen piezas", exc_info=True)
+                return None
+        return self._ids_padres
+
+    def _leer_lineas_protegido(self, imagen):
+        """`leer_recuadro` sin que nada se propague: None si el motor no esta disponible."""
+        try:
+            return leer_recuadro(imagen, self.motor, self.casador, 85, self.lado_minimo)
+        except ErrorMotorOCR as e:
+            self._avisar_motor(str(e))
+            return None
+
     def _vieja(self, numero: int) -> bool:
         return bool(numero) and numero < self.ultima_pedida
 
@@ -96,48 +277,39 @@ class LectorCursor(LectorBase):
                 alto_juego = None
         ancho_r, alto_r = tamano_recuadro(alto_juego)
         region = pantalla.region_alrededor_del_cursor(ancho_r, alto_r, limite=juego)
-        imagen = pantalla.capturar(region)
-        if imagen is None:
+        fallo = []
+
+        def capturar(r):
+            imagen = pantalla.capturar(r)
+            if imagen is None and not fallo:
+                fallo.append(r)
+            return imagen
+
+        mejor, ordenados, dudoso = elegir_bajo_cursor(capturar, region, juego, punto_del_raton, self._leer_lineas_protegido,
+                                                     self._padres(), palabras_del_catalogo(getattr(self, "casador", None)))
+        fin = time.perf_counter()
+        tiempos = getattr(getattr(self, "motor", None), "tiempos", None) or {}
+        log.info("Lectura bajo el cursor en %.0f ms (%s): %s", (fin - inicio) * 1000, resumen_tiempos(tiempos),
+                 repr(mejor.nombre) if mejor else "nada")
+        if fallo and not ordenados:
             self.estado.emit(t("No se pudo capturar la pantalla"))
             self.candidatos.emit([])
             return
-        capturado = time.perf_counter()
-        encontrados = self._leer_protegido(imagen, umbral=85)
-        fin = time.perf_counter()
-        tiempos = getattr(self.motor, "tiempos", None) or {}
-        ocr = tiempos.get("total", 0.0)
-        log.info("Lectura bajo el cursor en %.0f ms (captura %.0f ms, %s, casado %.0f ms): %d encontrados",
-                 (fin - inicio) * 1000, (capturado - inicio) * 1000, resumen_tiempos(tiempos),
-                 max(0.0, fin - capturado - ocr) * 1000, len(encontrados or []))
-        if encontrados is None:
+        if dudoso:
+            # Leido pero a medias: se dice lo leido en vez de abrir la ficha de otra cosa.
+            log.info("Bajo el cursor: %r puede ser solo un trozo del nombre (%s): no se da por bueno",
+                     dudoso, ", ".join(repr(r.nombre) for r in ordenados[:3]))
+            self.estado.emit(t("Leído: {texto} (sin reconocer)", texto=dudoso))
             self.candidatos.emit([])
             return
-        if not encontrados:
+        if mejor is None:
+            if self.motor.fallo:  # ya se aviso del motor
+                self.candidatos.emit([])
+                return
+            log.info("Bajo el cursor: nada alineado con el raton")
             self.estado.emit(t("No se reconoció nada bajo el cursor"))
             self.candidatos.emit([])
             return
-
-        # El que este mas cerca del raton es el que senala. El raton no siempre esta en el
-        # centro del recuadro: junto al borde del juego el recuadro se desplaza hacia dentro.
-        punto = punto_del_raton(region)
-
-        def distancia(r):
-            x = r.caja[0] + r.caja[2] / 2
-            y = r.caja[1] + r.caja[3] / 2
-            return (x - punto[0]) ** 2 + (y - punto[1]) ** 2
-
-        # Solo cuenta lo que esta encima o debajo del raton: si el nombre que senala no se
-        # ha podido leer, el vecino de al lado no es la respuesta (abria la ficha de otra
-        # pieza de la pantalla de recompensas).
-        cercanos = [r for r in encontrados if alineado_con_raton(r.caja, punto, region.ancho)]
-        if not cercanos:
-            log.info("Bajo el cursor: nada alineado con el raton (%s)",
-                     ", ".join(repr(r.nombre) for r in encontrados))
-            self.estado.emit(t("No se reconoció nada bajo el cursor"))
-            self.candidatos.emit([])
-            return
-        ordenados = sorted(cercanos, key=lambda r: (distancia(r), -r.puntuacion))
-        mejor = ordenados[0]
         if self._vieja(numero):
             # Mientras se leia se volvio a pulsar el atajo: manda la lectura nueva.
             log.info("Lectura bajo el cursor %d descartada: ya hay otra pedida (%r)", numero, mejor.nombre)

@@ -1297,6 +1297,9 @@ class Autoprueba:
                 "total": sum(f["tarjetas"] for f in usados),
                 "inventadas": sum(f[modo]["inventadas"] for f in usados),
                 "sin_completar": sum(1 for f in usados if f[modo]["ms"] is None),
+                # La unidad de acierto es la pantalla entera: todas sus tarjetas bien y ninguna de mas.
+                "completas": sum(1 for f in usados if f[modo]["aciertos"] == f["tarjetas"] and not f[modo]["inventadas"]),
+                "pantallas": len(usados),
             }
         self.sim.poner(None)
         self.flujo("recompensas", datos)
@@ -2428,6 +2431,12 @@ class Autoprueba:
                 falla(f"recompensas ({modo}) max {m['tiempos']['max']} ms > {CRITERIOS['recompensas_ms']}")
             if m.get("sin_completar"):
                 falla(f"recompensas ({modo}): {m['sin_completar']} pantallas sin todas las tarjetas")
+            if m.get("pantallas") and m.get("completas", 0) < m["pantallas"]:
+                falla(f"recompensas ({modo}): {m['pantallas'] - m['completas']} pantallas con alguna tarjeta mal")
+        for nombre in ("cursor", "hover", "vista_precio"):
+            d = f.get(nombre, {})
+            if d.get("total") and d.get("aciertos", 0) < d["total"]:
+                falla(f"{nombre}: {d['total'] - d['aciertos']} lecturas sin el objeto correcto")
         b = f.get("build", {})
         if b.get("tiempos", {}).get("max", 0) > CRITERIOS["build_ms"]:
             falla(f"build max {b['tiempos']['max']} ms > {CRITERIOS['build_ms']}")
@@ -2489,7 +2498,8 @@ class Autoprueba:
         r = f.get("recompensas", {})
         for modo in ("atajo", "eelog"):
             m = r.get(modo, {})
-            l.append(f"recompensas {modo}: {m.get('aciertos')}/{m.get('total')} tarjetas, inventadas "
+            l.append(f"recompensas {modo}: pantallas completas {m.get('completas')}/{m.get('pantallas')}, "
+                     f"{m.get('aciertos')}/{m.get('total')} tarjetas, inventadas "
                      f"{m.get('inventadas')}, sin completar {m.get('sin_completar')}; {tiempos(m.get('tiempos'))}")
         for nombre in ("cursor", "build", "agrietado", "hover"):
             d = f.get(nombre, {})

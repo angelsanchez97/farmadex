@@ -1138,7 +1138,9 @@ class Casador:
         # ("Lex Prime (Schéma)", captura real de 2025); el glosario solo trae "Plan".
         # Y en portugues "(Diagrama)" ("Guandao Prime (Diagrama)", 86 capturas reales): sin
         # ella el plano se parecia a la "Lama" italiana de la misma arma.
-        self.palabras_plano = ["plano", "blueprint", "schema", "diagrama"]
+        # En aleman el juego pone "Blaupause" ("Akbronco Prime Blaupause", video real de 2024)
+        # y el glosario solo trae "Bauplan": sin ella el plano casaba con "Bronco Prime".
+        self.palabras_plano = ["plano", "blueprint", "schema", "diagrama", "blaupause"]
         for idioma, en, valor in con.execute(
             "SELECT idioma, en, valor FROM glosario_idiomas WHERE dominio = 'componente'"
         ):

@@ -1,5 +1,6 @@
 {
   "_comentario": "Textos da interface do Farmadex. Chave = texto em espanhol do código; valor = tradução. As {chaves} são variáveis e devem ficar como estão. Apague uma linha para voltar ao espanhol.",
+  "Leído: {texto} (sin reconocer)": "Lido: {texto} (não reconhecido)",
   "Un mod agrietado (riven). Léelo con el atajo de agrietados para ver sus estadísticas.": "Um mod Riven. Leia-o com o atalho de Rivens para ver as suas estatísticas.",
   "OJO: hay {n} huecos ocupados que no he podido leer (están marcados en la rejilla).": "ATENÇÃO: {n} espaços ocupados não puderam ser lidos (estão marcados na grade).",
   "OJO: hay un hueco ocupado que no he podido leer (está marcado en la rejilla).": "ATENÇÃO: um espaço ocupado não pôde ser lido (está marcado na grade).",
