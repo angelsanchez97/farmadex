@@ -666,7 +666,7 @@ def _admite_rotulo_de_vacio(hueco: disposicion.Hueco) -> bool:
 # por encima del nombre, el dibujo, que mide de 0,8 a 1,2 veces su ancho (medido en
 # capturas reales de Gyre Prime, Harmony y Citrine Prime).
 DIBUJO_SOBRE_EL_NOMBRE = 1.0
-ANCHO_MINIMO_AMPLIADA = 0.85
+ANCHO_MINIMO_AMPLIADA, ANCHO_MAXIMO_AMPLIADA = 0.85, 1.05
 
 
 def zonas_de_tarjetas_ampliadas(build) -> list[tuple[int, int, int, int]]:
@@ -684,7 +684,9 @@ def zonas_de_tarjetas_ampliadas(build) -> list[tuple[int, int, int, int]]:
             continue
         x, y, w, h = r.caja
         cx = x + w / 2
-        ancho = max(z[2], ANCHO_MINIMO_AMPLIADA * paso)
+        # La descripcion leida puede salir mas ancha que la tarjeta (lineas largas de un
+        # agrietado juntadas con lo de al lado): nunca mas de un paso y poco.
+        ancho = min(max(z[2], ANCHO_MINIMO_AMPLIADA * paso), ANCHO_MAXIMO_AMPLIADA * paso)
         arriba = y - DIBUJO_SOBRE_EL_NOMBRE * ancho
         salida.append((int(cx - ancho / 2), int(arriba), int(ancho), int(z[1] + z[3] - arriba)))
     return salida
