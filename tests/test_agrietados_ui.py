@@ -86,7 +86,7 @@ def test_tarjeta_fiable_rellena_y_evalua_sola(pestana, armas):
 
 
 def test_tarjeta_dudosa_no_evalua_y_avisa(pestana, armas):
-    tarjeta = _tarjeta(armas, ["Boar", "+125.6%WeaponRecoil", "+129.4%StatusChance", "48.1%Multishot", "MR12"])
+    tarjeta = _tarjeta(armas, ["Boar", "125.6%WeaponRecoil", "+129.4%StatusChance", "48.1%Multishot", "MR12"])
     assert not tarjeta.fiable
     pestana.mostrar_tarjeta(tarjeta)
     assert pestana.evaluaciones == [] and pestana.tabla.rowCount() == 0
