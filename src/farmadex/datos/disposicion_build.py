@@ -77,7 +77,8 @@ PLANTILLAS: dict[str, list[Hueco]] = {
 
 # Que acepta cada tipo de hueco: el aura solo va en el suyo y la postura en el suyo
 # (regla del juego); el exilus acepta un mod normal (no sabemos cuales son exilus).
-_ACEPTA = {"mod": {"mod"}, "exilus": {"mod"}, "aura": {"aura"}, "postura": {"postura"}, "arcano": {"arcano"}}
+# El tipo "exilus" es el rotulo del exilus vacio ("Requires Exilus Adapter"): solo cae en el exilus.
+_ACEPTA = {"mod": {"mod"}, "exilus": {"mod", "exilus"}, "aura": {"aura"}, "postura": {"postura"}, "arcano": {"arcano"}}
 
 
 def plantilla_de(categoria: str | None, tipo: str | None = None) -> str:
@@ -239,6 +240,16 @@ def colocar(clase: str, mods: list[Punto | None], arcanos: list[Punto | None],
         if dentro and all(s[2] == dentro[0][2] for s in dentro[1:]):
             soluciones, empatadas = dentro, [dentro[0][2]]
     if any(a != empatadas[0] for a in empatadas[1:]):
+        # Sigue el empate: cuenta tambien lo que no cayo en ningun hueco pero esta en una de
+        # sus columnas (el nombre de una tarjeta ampliada, que sube o baja de fila): la
+        # rejilla buena explica su columna y la corrida no (capturas reales de companeros).
+        empatadas_s = [s for s in soluciones if s[0] == mejor]
+        columnas = {id(s): _en_columna(puntos, huecos, s[3][0], s[3][1]) for s in empatadas_s}
+        tope = max(columnas.values())
+        quedan = [s for s in empatadas_s if columnas[id(s)] == tope]
+        if all(s[2] == quedan[0][2] for s in quedan[1:]):
+            soluciones, empatadas = quedan, [quedan[0][2]]
+    if any(a != empatadas[0] for a in empatadas[1:]):
         salida.sueltos_mods, salida.sueltos_arcanos, salida.motivo = todos, todos_arcanos, "ambigua"
         return salida
     _n, _e, asignacion, rejilla = min((s for s in soluciones if s[0] == mejor), key=lambda s: s[1])
@@ -261,6 +272,12 @@ def colocar(clase: str, mods: list[Punto | None], arcanos: list[Punto | None],
 # Lo que puede asomar un hueco por el borde de la captura (en pasos de columna) antes de
 # darlo por fuera: medio hueco menos un poco de margen por la medida.
 SALIDA_TOLERADA = 0.3
+
+
+def _en_columna(puntos: list[Punto], huecos: list[Hueco], paso: float, x0: float) -> int:
+    """Cuantos nombres leidos caen en la columna de algun hueco (en cualquier fila)."""
+    columnas = {h.x for h in huecos}
+    return sum(1 for p in puntos if any(abs(p.x - (x0 + c * paso)) / paso <= TOL_X for c in columnas))
 
 
 def _se_sale(huecos: list[Hueco], paso: float, x0: float, medio_ancho: float) -> bool:

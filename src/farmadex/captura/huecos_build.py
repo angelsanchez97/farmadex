@@ -113,7 +113,12 @@ def colocar_build(build, categorias: dict[int, str], tipos: TiposDeHueco | None)
         return None
     puntos = [disposicion.punto_de(r.caja, build.ancho, build.alto, tipos.tipo_de_mod(r.item_id)) for r in build.equipados]
     arcanos = [disposicion.punto_de(r.caja, build.ancho, build.alto, "arcano") for r in build.arcanos]
-    colocaciones = [disposicion.colocar(clase, puntos, arcanos, medio_ancho=build.ancho / 2 / build.alto) for clase in clases]
+    anclas = anclas_de_huecos_vacios(build) if (puntos or arcanos) and None not in puntos + arcanos else []
+    anclas_mods = [a for a in anclas if a.tipo == "exilus"]
+    anclas_arcanos = [a for a in anclas if a.tipo == "arcano"]
+    colocaciones = [_sin_anclas(disposicion.colocar(clase, puntos + anclas_mods, arcanos + anclas_arcanos,
+                                                    medio_ancho=build.ancho / 2 / build.alto), len(puntos), len(arcanos))
+                    for clase in clases]
     if len(colocaciones) == 1:
         return colocaciones[0]
     # Varias plantillas posibles (armas exaltadas): la que coloca mas de lo leido, si es una sola.
@@ -127,6 +132,58 @@ def colocar_build(build, categorias: dict[int, str], tipos: TiposDeHueco | None)
                                        sueltos_mods=list(range(len(puntos))), sueltos_arcanos=list(range(len(arcanos))),
                                        motivo="ambigua")
     return empatadas[0]
+
+
+def anclas_de_huecos_vacios(build) -> list[disposicion.Punto]:
+    """Los rotulos de los huecos vacios de arcano ("RANURA DE ARCANO VACIA", "Requires
+    Secondary Arcane Adapter") y de exilus ("Requires Exilus Adapter") como puntos de la
+    rejilla: dicen donde estan esos huecos aunque no haya nada puesto, y con uno o dos
+    mods leidos (o con una columna entera tapada) la rejilla ya no queda en el aire
+    (capturas reales de Kompressa Prime, Vauban Prime e Hydroid)."""
+    from .builds import RE_HUECO_VACIO
+
+    if not build.ancho or not build.alto:
+        return []
+    lineas = sorted(build.lineas, key=lambda l: l.y)
+    usadas: set[int] = set()
+    salida = []
+    for i, l in enumerate(lineas):
+        if i in usadas or not RE_HUECO_VACIO.search(l.texto) or l.x + l.ancho / 2 < build.ancho / 2:
+            continue
+        bloque = [l]
+        usadas.add(i)
+        # El rotulo va en dos o tres lineas ("Wymaga Bron / Boczna Adapter / Arkanum"): se
+        # juntan las de encima y las de debajo.
+        for orden in (range(i + 1, len(lineas)), range(i - 1, -1, -1)):
+            for j in orden:
+                o = lineas[j]
+                borde = bloque[-1] if j > i else bloque[0]
+                solape = min(borde.x + borde.ancho, o.x + o.ancho) - max(borde.x, o.x)
+                hueco = o.y - (borde.y + borde.alto) if j > i else borde.y - (o.y + o.alto)
+                if j in usadas or solape <= 0 or not (-0.5 * borde.alto <= hueco <= 0.8 * borde.alto):
+                    continue
+                if j > i:
+                    bloque.append(o)
+                else:
+                    bloque.insert(0, o)
+                usadas.add(j)
+        texto = " ".join(b.texto for b in bloque).upper()
+        tipo = "arcano" if re.search(r"ARCAN|ARKAN", texto) else "exilus" if "EXILUS" in texto else None
+        if tipo is None:
+            continue
+        x0, x1 = min(b.x for b in bloque), max(b.x + b.ancho for b in bloque)
+        y1 = max(b.y + b.alto for b in bloque)
+        salida.append(disposicion.punto_de((x0, bloque[0].y, x1 - x0, y1 - bloque[0].y), build.ancho, build.alto, tipo))
+    return [p for p in salida if p is not None]
+
+
+def _sin_anclas(colocacion: disposicion.Disposicion, n_mods: int, n_arcanos: int) -> disposicion.Disposicion:
+    """Quita de la colocacion los rotulos de huecos vacios que se usaron para medir la rejilla."""
+    colocacion.mods = {c: i for c, i in colocacion.mods.items() if i < n_mods}
+    colocacion.arcanos = {c: i for c, i in colocacion.arcanos.items() if i < n_arcanos}
+    colocacion.sueltos_mods = [i for i in colocacion.sueltos_mods if i < n_mods]
+    colocacion.sueltos_arcanos = [i for i in colocacion.sueltos_arcanos if i < n_arcanos]
+    return colocacion
 
 
 def caja_de_hueco(colocacion: disposicion.Disposicion, hueco: disposicion.Hueco, ancho: int, alto: int):

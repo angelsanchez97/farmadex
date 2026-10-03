@@ -137,6 +137,12 @@ def test_el_companero_tiene_sus_diez_huecos():
     assert D.colocar("companero", puntos, []).motivo == "ambigua"
     r = D.colocar("companero", puntos, [], medio_ancho=1920 / 2 / 1080)
     assert r.segura and r.mods == {"mod4": 0, "mod5": 1, "mod3": 2, "mod2": 3, "mod9": 4, "mod8": 5, "mod10": 6, "mod7": 7}
+    # Captura real de Diriga: la quinta columna solo tiene el nombre de la tarjeta ampliada,
+    # media fila mas arriba (no cae en su hueco); la rejilla buena explica su columna.
+    diriga = [(-0.23, 0.322), (-0.002, 0.322), (0.453, 0.321), (0.225, 0.318), (0.453, 0.456), (0.226, 0.448),
+              (-0.228, 0.444), (-0.001, 0.444), (0.68, 0.258)]
+    r = D.colocar("companero", [D.Punto(M, x, y) for x, y in diriga], [], medio_ancho=1920 / 2 / 1080)
+    assert r.segura and r.mods["mod1"] == 0 and r.sueltos_mods == [8]
     # Si la captura esta recortada y todas las rejillas se salen, sigue sin elegirse.
     assert D.colocar("companero", puntos, [], medio_ancho=0.5).motivo == "ambigua"
 

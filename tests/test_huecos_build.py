@@ -408,6 +408,30 @@ def test_la_tarjeta_ampliada_tapa_el_hueco_de_encima():
     assert H.zona_de_tarjeta_ampliada(build, normales[0]) is None
 
 
+def test_el_rotulo_del_arcano_vacio_ancla_la_rejilla():
+    # Captura real de Kompressa Prime (polaco): los mods ocupan tres columnas (la del Galw...
+    # tapada por una tarjeta) y la rejilla podia ir corrida una columna. El rotulo del
+    # arcano vacio ("Wymaga Bron / Boczna Adapter / Arkanum") dice donde esta su hueco.
+    cajas = [(648, 308, 128, 49), (1109, 319, 189, 27), (611, 419, 209, 64), (895, 452, 126, 32), (1120, 453, 164, 29)]
+    equipados = [Reconocido(f"Mod {n}", 10 + n, f"Mod {n}", 100.0, c) for n, c in enumerate(cajas)]
+    build = B.Build(equipo=Reconocido("KOMPRESSA PRIME", 1, "Kompressa Prime", 100.0, (0, 0, 1, 1)),
+                    equipados=equipados, ancho=1920, alto=1080)
+    build.lineas = [Leido(r.texto_ocr, *r.caja, 0.9) for r in equipados]
+    sin_rotulo = H.colocar_build(build, {1: "Secondary"}, None)
+    assert not sin_rotulo.segura and sin_rotulo.motivo == "ambigua"
+    build.lineas += [Leido("WymagaBron", 1631, 271, 120, 20, 0.9), Leido("Boczna Adapter", 1621, 290, 138, 22, 0.9),
+                     Leido("Arkanum", 1649, 311, 82, 22, 0.9)]
+    anclas = H.anclas_de_huecos_vacios(build)
+    assert [a.tipo for a in anclas] == ["arcano"]
+    # La expresion de los huecos vacios llevaba retrocesos literales en vez de  y
+    # "Adapter" solo no casaba nunca.
+    assert B.RE_HUECO_VACIO.search("Boczna Adapter") and B.RE_HUECO_VACIO.search("Adattatore Arcano")
+    assert not B.RE_HUECO_VACIO.search("Adaptation") and not B.RE_HUECO_VACIO.search("Adaptación")
+    col = H.colocar_build(build, {1: "Secondary"}, None)
+    assert col.segura and col.mods == {"mod1": 0, "mod3": 1, "mod5": 2, "mod6": 3, "mod7": 4}
+    assert col.arcanos == {} and col.sueltos_arcanos == []  # el rotulo no es un arcano puesto
+
+
 def test_un_agrietado_en_un_hueco_se_dice_como_tal():
     build = B.Build(equipo=Reconocido("FALCOR", 1, "Falcor", 100.0, (0, 0, 1, 1)))
     assert H._parece_agrietado("Falcor Para-critanem", build)

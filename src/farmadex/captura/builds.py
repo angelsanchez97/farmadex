@@ -617,7 +617,7 @@ RE_HUECO_VACIO = re.compile(r"(?i)EMPTY|\bVAC[IÍ][AO]\b|\bVIDE\b|\bLEER\b|\bVAZ
                             # La ranura de arcano bloqueada ("Requires Secondary Arcane Adapter",
                             # "Benotigt Sekundar Arkana-Adapter"): tampoco lleva nada.
                             # Palabras enteras: "Adaptation" / "Adaptacion" es un mod y casaba aqui.
-                            r"|ADAPT(?:ER|ADOR|ATEUR)|ADATTATORE"
+                            r"|\bADAPT(?:ER|ADOR|ATEUR)\b|\bADATTATORE\b"
                             # Y el hueco de exilus sin adaptador: "Requires Exilus Adapter",
                             # "Wymaga Adapter Exilus", "Requiere...", "Benotigt...", "Necessite...".
                             r"|\bREQUIRES?\b|\bREQUIERE\b|\bWYMAGA\b|\bBEN[OÖ]TIGT\b|\bN[EÉ]CESSITE\b|\bRICHIEDE\b|\bREQUER\b")
