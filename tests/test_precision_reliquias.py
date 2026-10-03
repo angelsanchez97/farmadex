@@ -169,3 +169,52 @@ def test_un_titulo_que_acaba_en_punto_no_es_un_objeto():
     lectura = vista.interpretar_titulo([_l("BUSCAR...", 0, 0, 80, 12)], [], casador)
     assert lectura.item_id is None and "punto" in lectura.motivo
     assert vista.interpretar_titulo([_l("BUSCAR", 0, 0, 80, 12)], [], casador).item_id == 5
+
+
+# -- recompensas: solo lo que puede salir de una reliquia, y nada desaparece --------------------
+
+
+def test_la_tarjeta_cortada_no_casa_con_un_mod(con):
+    """Banco: "Canon DeLe" (de "Cañon De Lex Prime", cortado) salia como el mod "Cañoneo"."""
+    from farmadex.captura.ocr import Casador
+    from farmadex.captura.reliquias import CATEGORIAS_RECOMPENSA
+    from test_captura import _insertar
+
+    ids = _insertar(con, [
+        ("/m/Cannonade", "Cannonade", "Cañoneo", "Mods", None, None),
+        ("/r/Ferrite", "Ferrite", "Ferrita", "Resources", None, None),
+        ("/p/LexPrime", "Lex Prime", "Lex Prime", "Secondary", None, None),
+        ("/p/LexPrime/B", "Barrel", "Cañón", "Secondary", "/p/LexPrime", 45),
+        ("/p/LexPrime/R", "Receiver", "Receptor", "Secondary", "/p/LexPrime", 15),
+    ])
+    catalogo = Casador(con, CATEGORIAS_RECOMPENSA)
+    assert catalogo.casar("Canon DeLe", 80)[0] == ids["/m/Cannonade"]  # el catalogo entero si se confunde
+    piezas = rapidas.catalogo_de_piezas(catalogo, con)
+    assert rapidas.CasadorEscalonado(piezas).casar("Canon DeLe")[0] is None
+    assert piezas.casar("Ferrita", 80)[0] is None
+    assert rapidas.CasadorEscalonado(piezas).casar("Cañón De Lex Prime")[0] == ids["/p/LexPrime/B"]
+    assert piezas.casar("Lex Prime", 80)[0] != ids["/p/LexPrime"]  # nunca el objeto entero
+
+
+def test_parece_nombre_admite_cifras_sueltas_del_ocr_pero_no_contadores():
+    assert rapidas.parece_nombre("Bupmpaim:Mo3r")  # "Вирм Прайм: Мозг" leido con letras latinas
+    assert rapidas.parece_nombre("aHTa3MapaiM: pueMHuK")
+    assert rapidas.parece_nombre("Plano De Forma")
+    assert not rapidas.parece_nombre("x13")
+    assert not rapidas.parece_nombre("15")
+    assert not rapidas.parece_nombre("2 X 100")
+
+
+def test_tres_tarjetas_en_ruso_salen_las_tres_sin_identificar(con):
+    """Banco (pfD-4-jzAZQ, 3440x1440, ruso): de tres tarjetas salia una; ahora las tres, sin
+    reconocer, en su sitio. El indice no tiene nombres en ruso: no se inventa ninguna."""
+    from farmadex.captura.ocr import Casador
+    from farmadex.captura.reliquias import CATEGORIAS_RECOMPENSA
+
+    ventana = Region(0, 0, 3440, 1440)
+    region = rapidas.region_fila(ventana)
+    lineas = [_l("DepCTOHpaM:CTBON", 207, 20, 265, 30), _l("aHTa3MapaiM:", 536, 5, 205, 30),
+              _l("pueMHuK", 580, 40, 118, 30), _l("Bupmpaim:Mo3r", 833, 20, 215, 30)]
+    grupos = rapidas.repartir(lineas, ventana, region, None)
+    fila = rapidas.casar_fila(lineas, rapidas.CasadorEscalonado(Casador(con, CATEGORIAS_RECOMPENSA)), 4, grupos)
+    assert [r.item_id for r in fila] == [rapidas.SIN_IDENTIFICAR] * 3

@@ -111,9 +111,23 @@ def catalogo_de_piezas(casador: Casador, con: sqlite3.Connection) -> Casador:
     "Plano DeFang Prime" casaba exacto con el arma "Fang Prime" en vez de con
     su plano. Fuera del ultimo escalon, ese fallo ya no tiene por donde entrar.
     """
-    padres = {f[0] for f in con.execute("SELECT DISTINCT padre_id FROM items WHERE padre_id IS NOT NULL")}
-    ids = {v[0] for v in casador.candidatos.values()} - padres
-    return casador.restringido(ids)
+    return casador.restringido({v[0] for v in casador.candidatos.values()} & ids_posibles_de_reliquia(con))
+
+
+def ids_posibles_de_reliquia(con: sqlite3.Connection) -> set[int]:
+    """Lo que una tarjeta de recompensa puede ser: lo que sale de reliquias (Forma, Kuva,
+    Ayatan, rivens, piezas...) y cualquier pieza de un objeto Prime (las de un Prime nuevo
+    que aun no esta en la tabla de reliquias del indice).
+
+    Nunca un mod, un recurso suelto ni un objeto entero: con la tarjeta cortada ("Canon DeLe",
+    de "Cañon De Lex Prime") el catalogo entero casaba el mod "Cañoneo" y se ensenaba como
+    recompensa. Mejor "sin identificar" que un objeto que no puede ser.
+    """
+    ids = ids_reliquias(con)
+    ids |= {f[0] for f in con.execute(
+        "SELECT i.id FROM items i JOIN items p ON p.id = i.padre_id "
+        "WHERE (' ' || p.nombre_en || ' ') LIKE '% Prime %' AND COALESCE(p.categoria, '') <> 'Mods'")}
+    return ids
 
 
 def ids_conocidas(con: sqlite3.Connection, rutas: list[str]) -> set[int]:
@@ -331,9 +345,22 @@ def _casar_grupo(grupo: list[Leido], casador: CasadorEscalonado) -> Reconocido |
                 break
     if item_id:
         return Reconocido(texto, item_id, nombre, puntos, caja)
-    if RE_NOMBRE_PLAUSIBLE.match(texto.strip()):
+    if parece_nombre(texto):
         return Reconocido(texto, SIN_IDENTIFICAR, "", 0.0, caja)
     return None
+
+
+def parece_nombre(texto: str) -> bool:
+    """Si un texto que no casa tiene pinta de nombre de tarjeta (y se ensena "sin identificar").
+
+    Antes valia solo sin ninguna cifra, y en ruso el OCR lee la "з" como "3"
+    ("Bupmpaim:Mo3r", de "Вирм Прайм: Мозг"): de tres tarjetas salia una y las otras dos
+    desaparecian sin decir nada. Ahora basta con que casi todo sean letras; un contador
+    ("x13", "15") o una cantidad sigue sin ser un nombre.
+    """
+    letras = sum(c.isalpha() for c in texto)
+    cifras = sum(c.isdigit() for c in texto)
+    return letras >= 6 and cifras <= max(1, letras // 6)
 
 
 def casar_fila(

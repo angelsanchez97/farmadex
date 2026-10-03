@@ -600,7 +600,9 @@ class LectorRecompensas(LectorBase):
     def _leer_y_casar(self, imagen, tiempos: dict) -> list[Reconocido] | None:
         """`leer_franja` sin que nada se propague: None si el motor no esta disponible."""
         try:
-            return leer_franja(imagen, self.motor, self.casador, self._conocidas(), self.UMBRAL_CONOCIDAS, tiempos)
+            # Solo lo que puede salir de una reliquia (ver rapidas.ids_posibles_de_reliquia).
+            return leer_franja(imagen, self.motor, self._casador_piezas or self.casador, self._conocidas(),
+                               self.UMBRAL_CONOCIDAS, tiempos)
         except ErrorMotorOCR as e:
             self._avisar_motor(str(e))
             return None
