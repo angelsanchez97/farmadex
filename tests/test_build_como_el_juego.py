@@ -91,7 +91,14 @@ def test_la_plantilla_lleva_los_huecos_del_juego():
     assert [wf[f"mod{n}"].x for n in range(1, 9)] == [0, 1, 2, 3, 0, 1, 2, 3]
     assert (wf["aura"].x, wf["exilus"].x, wf["aura"].y) == (1, 2, 0) and wf["arcano1"].x > 3.5
     assert D.plantilla_de("Warframes", "Warframe") == "warframe" and D.plantilla_de("Melee", "Melee") == "cuerpo"
-    assert D.plantilla_de("Secondary", "Pistol") == "arma" and D.plantilla_de("Sentinels", "Sentinel") == ""
+    assert D.plantilla_de("Secondary", "Pistol") == "arma" and D.plantilla_de("Sentinels", "Sentinel") == "companero"
+    assert D.plantilla_de("Primary", "Companion Weapon") == "arma_companero"
+    assert [h.tipo for h in D.PLANTILLAS["arma_companero"]] == ["mod"] * 8
+    assert D.plantilla_de("Pets", "Pets") == "companero" and D.plantilla_de("Pets", "Pet Parts") == ""
+    # Companeros: dos filas de cinco, sin aura, exilus ni arcanos.
+    co = {h.clave: h for h in D.PLANTILLAS["companero"]}
+    assert sorted(co) == sorted(f"mod{n}" for n in range(1, 11)) and all(h.tipo == "mod" for h in co.values())
+    assert [co[f"mod{n}"].x for n in range(1, 11)] == [0, 1, 2, 3, 4] * 2
 
 
 def test_si_no_se_sabe_el_hueco_no_se_inventa():
@@ -112,8 +119,49 @@ def test_si_no_se_sabe_el_hueco_no_se_inventa():
     assert D.colocar("warframe", [], []).segura
 
 
+def test_el_companero_tiene_sus_diez_huecos():
+    # Un companero con una tarjeta ampliada (la del hueco 2 tapa el 7): el 7 queda libre y se
+    # sabe donde cae, para avisar de que esta tapado.
+    xs = (-0.23, -0.001, 0.226, 0.454, 0.683)
+    mods = [D.Punto(M, x, y) for y in (0.319, 0.444) for x in xs]
+    del mods[6]
+    r = D.colocar("companero", mods, [])
+    assert r.segura and r.clase == "companero" and "mod7" not in r.mods and len(r.mods) == 9
+    assert r.mods["mod10"] == 8 and abs(r.centro_de(D.PLANTILLAS["companero"][6])[0] - (-0.001)) < 0.01
+    # Captura real de Nautilus Prime a 1080p: "Acordonar" ampliada tapa la primera columna y
+    # con las otras cuatro la rejilla puede ir corrida una columna a la derecha... con la
+    # quinta columna fuera de la pantalla. Sin saber el ancho es ambigua; sabiendolo, no.
+    leidos = [(0.44, 0.32), (0.693, 0.306), (0.195, 0.314), (-0.047, 0.318), (0.451, 0.443), (0.195, 0.454),
+              (0.696, 0.442), (-0.045, 0.445)]
+    puntos = [D.Punto(M, x, y) for x, y in leidos]
+    assert D.colocar("companero", puntos, []).motivo == "ambigua"
+    r = D.colocar("companero", puntos, [], medio_ancho=1920 / 2 / 1080)
+    assert r.segura and r.mods == {"mod4": 0, "mod5": 1, "mod3": 2, "mod2": 3, "mod9": 4, "mod8": 5, "mod10": 6, "mod7": 7}
+    # Captura real de Diriga: la quinta columna solo tiene el nombre de la tarjeta ampliada,
+    # media fila mas arriba (no cae en su hueco); la rejilla buena explica su columna.
+    diriga = [(-0.23, 0.322), (-0.002, 0.322), (0.453, 0.321), (0.225, 0.318), (0.453, 0.456), (0.226, 0.448),
+              (-0.228, 0.444), (-0.001, 0.444), (0.68, 0.258)]
+    r = D.colocar("companero", [D.Punto(M, x, y) for x, y in diriga], [], medio_ancho=1920 / 2 / 1080)
+    assert r.segura and r.mods["mod1"] == 0 and r.sueltos_mods == [8]
+    # Si la captura esta recortada y todas las rejillas se salen, sigue sin elegirse.
+    assert D.colocar("companero", puntos, [], medio_ancho=0.5).motivo == "ambigua"
+
+
+def test_las_armas_exaltadas_prueban_sus_plantillas():
+    assert D.plantillas_de("Misc", "Exalted Weapon") == ("cuerpo", "cuerpo_exaltada", "arma")
+    assert D.plantillas_de("Warframes", "Warframe") == ("warframe",) and D.plantillas_de("Misc", "Fish") == ()
+    # Captura real de Shadow Clones Prime (garras de Ash): la postura sola entre la segunda y
+    # la tercera columna, sin exilus. Con la plantilla de cuerpo a cuerpo normal no cae.
+    xs = (-0.4, -0.172, 0.056, 0.284)
+    mods = [D.Punto(M, x, y) for y in (0.36, 0.486) for x in xs] + [D.Punto(P, -0.058, 0.234)]
+    arcanos = [D.Punto("arcano", 0.69, 0.248)]
+    normal = D.colocar("cuerpo", mods, arcanos)
+    exaltada = D.colocar("cuerpo_exaltada", mods, arcanos)
+    assert exaltada.segura and exaltada.mods["postura"] == 8 and "postura" not in normal.mods
+
+
 def test_sin_plantilla_se_respeta_la_fila_y_la_columna_leidas():
-    # Un companero (dos filas de cinco): no se dice que huecos hay, solo donde estaba cada mod.
+    # Sin plantilla (dos filas de cinco): no se dice que huecos hay, solo donde estaba cada mod.
     xs = (-0.23, -0.001, 0.226, 0.454, 0.683)
     mods = [D.Punto(M, x, y) for y in (0.319, 0.444) for x in xs]
     r = D.colocar("", mods, [])
@@ -228,6 +276,25 @@ def test_puede_comprarlo_solo_si_el_perfil_sabe_el_rango(indice, config_propia):
     # Sin rango conocido en la venta tampoco se dice nada aunque haya perfil.
     simaris = aumentos.de(con, ids["Odd Augment"]).ventas[0]
     assert aumentos.puede_comprar(simaris, {"SteelMeridianSyndicate": (5, 0)}) is None
+
+
+def test_pintar_una_build_no_carga_el_diccionario_entero(indice, monkeypatch):
+    """La primera build de la sesion paraba la ventana ~0,6 s leyendo el detalle de todos
+    los mods para saber si alguno era un aumento: ahora se mira solo cada mod, y da lo mismo."""
+    con, ids = indice
+    aumentos.olvidar_cache()
+    monkeypatch.setattr(aumentos, "_ventas", lambda c, item_id=None, original=aumentos._ventas: (
+        pytest.fail("sin item_id lee las ventas de todo el indice") if item_id is None else original(c, item_id)))
+    sueltos = {en: aumentos.de(con, i) for en, i in ids.items()}
+    assert not aumentos._CACHE  # el diccionario entero sigue sin cargar
+    assert sueltos["Vitality"] is None and sueltos["Energy Siphon"] is None and sueltos["Rhino"] is None
+    assert [v.sindicato for v in sueltos["Iron Shrapnel"].ventas] == ["Steel Meridian", "The Perrin Sequence"]
+    monkeypatch.undo()
+    aumentos.olvidar_cache()
+    todos = {a.item_id: a for a in aumentos.cargar(con)}
+    assert {en: todos.get(i) for en, i in ids.items()} == sueltos
+    # Con el diccionario cargado se responde desde el.
+    assert aumentos.de(con, ids["Scattered Justice"]) is todos[ids["Scattered Justice"]]
 
 
 def test_rangos_del_perfil_leido(tmp_path):

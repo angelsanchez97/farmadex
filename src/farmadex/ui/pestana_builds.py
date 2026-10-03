@@ -773,7 +773,8 @@ class PestanaBuilds(QWidget):
             puntos = [disposicion_build.punto_de(r.caja, ancho, alto, self._tipo_de_mod(r.item_id))
                       for r in build.equipados]
             puntos_arcanos = [disposicion_build.punto_de(r.caja, ancho, alto, "arcano") for r in build.arcanos]
-            self.colocacion = disposicion_build.colocar(self.clase_de_disposicion(), puntos, puntos_arcanos)
+            self.colocacion = disposicion_build.colocar(self.clase_de_disposicion(), puntos, puntos_arcanos,
+                                                        medio_ancho=ancho / 2 / alto if ancho and alto else None)
         rangos = None
         cartas_mods, cartas_arcanos = [], []
         for lista, salida, es_arcano in ((build.equipados, cartas_mods, False), (build.arcanos, cartas_arcanos, True)):

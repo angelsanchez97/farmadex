@@ -113,7 +113,10 @@ def test_un_nombre_cortado_por_una_tarjeta_ampliada_no_se_da_por_el_mod_corto(ca
     nombres = [r.nombre for r in build.equipados]
     assert "Continuidad" not in nombres
     assert {"Ampliado", "Recristalizar"} <= set(nombres)
-    assert _dudosos(build) == ["Continuidad (¿Continuidad Prime?)"]
+    # La tarjeta ampliada es "Disciplina de combate" cogida con el raton (el doble de grande):
+    # tampoco se da por puesta.
+    assert "Disciplina de combate" not in nombres
+    assert sorted(_dudosos(build)) == ["Continuidad (¿Continuidad Prime?)", "Disciplina de combate (¿puesta?)"]
 
 
 def test_la_ayuda_de_la_propia_tarjeta_ampliada_no_hace_dudar(catalogo):

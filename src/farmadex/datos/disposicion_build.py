@@ -62,27 +62,56 @@ PLANTILLAS: dict[str, list[Hueco]] = {
     # Arma de archwing (Mausolon...): sin exilus, con dos arcanos a la derecha ("PRIMARY" y
     # "SECONDARY"), medidos en una captura real a 1080p.
     "archgun": _ocho() + [Hueco("arcano1", "arcano", 3.97, 0.6), Hueco("arcano2", "arcano", 3.97, 2.24)],
+    # Companeros (centinelas, kubrows, kavats, moas, sabuesos, vulpafilas, predasitos): diez
+    # huecos en dos filas de cinco, sin aura, exilus ni arcanos (capturas reales a 1080p y
+    # 1440p de Nautilus Prime, Wyrm Prime, Shade Prime, Kubrow Huras y Vulpafila Panzer).
+    # Armas exaltadas cuerpo a cuerpo sin exilus (las garras de Ash, "Shadow Clones"): la
+    # postura sola, centrada entre la segunda y la tercera columna (captura real).
+    "cuerpo_exaltada": [Hueco("postura", "postura", 1.5, 0.0)] + _ocho() + [Hueco("arcano1", "arcano", 3.97, 0.21)],
+    # Armas de companero (Laser de rafagas, Verglas, Tazicor...): los ocho huecos, sin exilus
+    # ni arcanos (capturas reales de Burst Laser Prime y Verglas).
+    "arma_companero": _ocho(),
+    "companero": [Hueco(f"mod{fila * 5 + col + 1}", "mod", float(col), float(fila + 1))
+                  for fila in range(2) for col in range(5)],
 }
 
 # Que acepta cada tipo de hueco: el aura solo va en el suyo y la postura en el suyo
 # (regla del juego); el exilus acepta un mod normal (no sabemos cuales son exilus).
-_ACEPTA = {"mod": {"mod"}, "exilus": {"mod"}, "aura": {"aura"}, "postura": {"postura"}, "arcano": {"arcano"}}
+# El tipo "exilus" es el rotulo del exilus vacio ("Requires Exilus Adapter"): solo cae en el exilus.
+_ACEPTA = {"mod": {"mod"}, "exilus": {"mod", "exilus"}, "aura": {"aura"}, "postura": {"postura"}, "arcano": {"arcano"}}
 
 
 def plantilla_de(categoria: str | None, tipo: str | None = None) -> str:
-    """"warframe", "arma", "cuerpo" o "" (sin plantilla: companeros, archwing...)."""
+    """"warframe", "arma", "cuerpo", "archgun", "companero", "arma_companero" o "" (sin plantilla: archwing...)."""
     categoria, tipo = categoria or "", tipo or ""
     if categoria == "Warframes":
         return "warframe" if tipo in ("Warframe", "") else ""
     if categoria in ("Primary", "Secondary"):
-        return "" if tipo == "Companion Weapon" else "arma"
+        return "arma_companero" if tipo == "Companion Weapon" else "arma"
     if categoria == "Melee":
         # Por exclusion: el indice trae algun arma cuerpo a cuerpo con el tipo mal puesto
         # ("Dual Viciss" como "Rifle"), y sin plantilla no se validaban sus huecos.
         return "" if tipo in ("Componente", "Zaw Component") or "Component" in tipo else "cuerpo"
     if categoria == "Arch-Gun":
         return "archgun"
+    if (categoria, tipo) in (("Sentinels", "Sentinel"), ("Pets", "Pets")):
+        return "companero"
     return ""
+
+
+# Las armas exaltadas (Espada exaltada, Vientos del desierto, Reguladoras...) van todas en
+# la misma categoria del indice y no se sabe si son cuerpo a cuerpo o de fuego, ni si llevan
+# exilus: se prueban estas plantillas y se queda la que coloca mas de lo leido.
+PLANTILLAS_EXALTADA = ("cuerpo", "cuerpo_exaltada", "arma")
+
+
+def plantillas_de(categoria: str | None, tipo: str | None = None) -> tuple[str, ...]:
+    """Las plantillas que pueden ser las de ese equipo (una casi siempre; varias para las
+    armas exaltadas; ninguna si no se sabe)."""
+    if (categoria or "") == "Misc" and (tipo or "") == "Exalted Weapon":
+        return PLANTILLAS_EXALTADA
+    clase = plantilla_de(categoria, tipo)
+    return (clase,) if clase else ()
 
 
 @dataclass(frozen=True)
@@ -159,11 +188,15 @@ def _asignar(puntos: list[Punto], huecos: list[Hueco], paso: float, x0: float, y
     return asignacion, sum(e for e, _i in mejores.values())
 
 
-def colocar(clase: str, mods: list[Punto | None], arcanos: list[Punto | None]) -> Disposicion:
+def colocar(clase: str, mods: list[Punto | None], arcanos: list[Punto | None],
+            medio_ancho: float | None = None) -> Disposicion:
     """Reparte los mods y arcanos leidos en los huecos de la plantilla `clase`.
 
     `mods` y `arcanos` van en el orden leido; None donde no hay medida. Sin plantilla
-    (`clase` vacia) se usa `colocar_libre`.
+    (`clase` vacia) se usa `colocar_libre`. Con `medio_ancho` (la mitad del ancho de la
+    captura, en altos de pantalla) se descartan las rejillas con algun hueco fuera de la
+    pantalla: con una columna entera sin leer (la de una tarjeta ampliada) la rejilla se
+    podia correr una columna y era "ambigua" (capturas reales de companeros).
     """
     huecos = PLANTILLAS.get(clase)
     if not huecos:
@@ -199,6 +232,23 @@ def colocar(clase: str, mods: list[Punto | None], arcanos: list[Punto | None]) -
         salida.sueltos_mods, salida.sueltos_arcanos, salida.motivo = todos, todos_arcanos, "no_encaja"
         return salida
     empatadas = [a for n, _e, a, _r in soluciones if n == mejor]
+    if medio_ancho and any(a != empatadas[0] for a in empatadas[1:]):
+        # Empate: solo se deshace si las rejillas que dejan algun hueco fuera de la pantalla
+        # caen y las que quedan dicen todas lo mismo (si la captura esta recortada y caen
+        # todas, sigue siendo ambigua).
+        dentro = [s for s in soluciones if s[0] == mejor and not _se_sale(huecos, s[3][0], s[3][1], medio_ancho)]
+        if dentro and all(s[2] == dentro[0][2] for s in dentro[1:]):
+            soluciones, empatadas = dentro, [dentro[0][2]]
+    if any(a != empatadas[0] for a in empatadas[1:]):
+        # Sigue el empate: cuenta tambien lo que no cayo en ningun hueco pero esta en una de
+        # sus columnas (el nombre de una tarjeta ampliada, que sube o baja de fila): la
+        # rejilla buena explica su columna y la corrida no (capturas reales de companeros).
+        empatadas_s = [s for s in soluciones if s[0] == mejor]
+        columnas = {id(s): _en_columna(puntos, huecos, s[3][0], s[3][1]) for s in empatadas_s}
+        tope = max(columnas.values())
+        quedan = [s for s in empatadas_s if columnas[id(s)] == tope]
+        if all(s[2] == quedan[0][2] for s in quedan[1:]):
+            soluciones, empatadas = quedan, [quedan[0][2]]
     if any(a != empatadas[0] for a in empatadas[1:]):
         salida.sueltos_mods, salida.sueltos_arcanos, salida.motivo = todos, todos_arcanos, "ambigua"
         return salida
@@ -217,6 +267,22 @@ def colocar(clase: str, mods: list[Punto | None], arcanos: list[Punto | None]) -
             salida.sueltos_arcanos.append(j)
     salida.segura = True
     return salida
+
+
+# Lo que puede asomar un hueco por el borde de la captura (en pasos de columna) antes de
+# darlo por fuera: medio hueco menos un poco de margen por la medida.
+SALIDA_TOLERADA = 0.3
+
+
+def _en_columna(puntos: list[Punto], huecos: list[Hueco], paso: float, x0: float) -> int:
+    """Cuantos nombres leidos caen en la columna de algun hueco (en cualquier fila)."""
+    columnas = {h.x for h in huecos}
+    return sum(1 for p in puntos if any(abs(p.x - (x0 + c * paso)) / paso <= TOL_X for c in columnas))
+
+
+def _se_sale(huecos: list[Hueco], paso: float, x0: float, medio_ancho: float) -> bool:
+    """Si con esa rejilla el centro de algun hueco queda fuera de la pantalla (o casi)."""
+    return any(abs(x0 + h.x * paso) > medio_ancho + SALIDA_TOLERADA * paso - 0.5 * paso for h in huecos)
 
 
 def _ajustar_rejilla(puntos: list[Punto], huecos: list[Hueco], asignacion: dict[int, str],
