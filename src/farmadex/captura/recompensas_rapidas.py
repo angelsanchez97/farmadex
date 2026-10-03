@@ -29,6 +29,7 @@ from __future__ import annotations
 import re
 import sqlite3
 import time
+import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -165,6 +166,40 @@ def variantes_texto(texto: str) -> list[str]:
     return salida
 
 
+def _palabras(texto: str) -> list[str]:
+    plano = unicodedata.normalize("NFKD", texto or "")
+    return re.findall(r"[a-z0-9]+", "".join(c for c in plano.lower() if not unicodedata.combining(c)))
+
+
+def palabras_del_catalogo(casador) -> set[str]:
+    """Todas las palabras de los nombres que conoce `casador` (se guardan en el propio casador)."""
+    hechas = getattr(casador, "_palabras_catalogo", None)
+    if hechas is None:
+        hechas = {w for clave in getattr(casador, "candidatos", {}) for w in _palabras(clave)}
+        try:
+            casador._palabras_catalogo = hechas
+        except AttributeError:
+            pass
+    return hechas
+
+
+def palabra_de_otro_objeto(texto: str, nombre: str, palabras: set[str]) -> str | None:
+    """La palabra leida que es OTRO nombre que acaba o empieza por una palabra de `nombre`.
+
+    "Akbronco Prime" (el plano sin la palabra "Blaupause") casaba con "Bronco Prime" a 92:
+    "akbronco" acaba en "bronco", pero es el nombre de otra arma. Con o sin prefijo son
+    objetos distintos (Akbronco/Bronco, Akstiletto/Stiletto...): eso no se casa.
+    """
+    del_nombre = [w for w in _palabras(nombre) if len(w) >= 4]
+    for w in _palabras(texto):
+        if len(w) < 5 or w not in palabras:
+            continue
+        for n in del_nombre:
+            if w != n and len(w) - len(n) >= 2 and (w.endswith(n) or w.startswith(n)) and n not in _palabras(texto):
+                return w
+    return None
+
+
 class CasadorEscalonado:
     """Casa primero contra lo que EE.log dio, luego contra lo que sale de reliquias, luego contra todo."""
 
@@ -196,6 +231,10 @@ class CasadorEscalonado:
                 if item_id and puntos > mejor[2]:
                     mejor = (item_id, nombre, puntos)
             if not mejor[0]:
+                continue
+            otra = palabra_de_otro_objeto(texto, mejor[1], palabras_del_catalogo(casador))
+            if otra:
+                log.info("%r no casa con %r: %r es el nombre de otro objeto", texto, mejor[1], otra)
                 continue
             if i == 0 and mejor[2] >= SEGURA_CONOCIDA:
                 return mejor

@@ -297,3 +297,24 @@ def test_con_las_piezas_conocidas_solo_se_duda_del_objeto_entero_o_del_trozo_que
     assert cursor.a_medias(entero, [l1, l2], 170, padres={5})
     trozo = _rec("Plano De Neuropticas De", (200, 146, 220, 22), 1, "Jade Neurópticas")
     assert cursor.a_medias(trozo, [_l("Plano De Neuropticas De", 200, 146, 220, 22)], 170, padres={5})
+
+
+def test_con_o_sin_prefijo_son_objetos_distintos(con):
+    """Banco (aleman): "Akbronco Prime Blaupause" salia como "Bronco Prime"."""
+    from farmadex.captura.ocr import Casador
+    from farmadex.captura.reliquias import CATEGORIAS_RECOMPENSA
+    from test_captura import _insertar
+
+    ids = _insertar(con, [
+        ("/p/BroncoPrime", "Bronco Prime", "Bronco Prime", "Secondary", None, None),
+        ("/p/BroncoPrime/Bp", "Blueprint", "Plano", "Secondary", "/p/BroncoPrime", 15),
+        ("/p/BroncoPrime/R", "Receiver", "Receptor", "Secondary", "/p/BroncoPrime", 15),
+        ("/p/AkbroncoPrime", "Akbronco Prime", "Akbronco Prime", "Secondary", None, None),
+        ("/p/AkbroncoPrime/Bp", "Blueprint", "Plano", "Secondary", "/p/AkbroncoPrime", 45),
+    ])
+    piezas = rapidas.catalogo_de_piezas(Casador(con, CATEGORIAS_RECOMPENSA), con)
+    escalonado = rapidas.CasadorEscalonado(piezas)
+    assert escalonado.casar("Akbronco Prime Blaupause")[0] == ids["/p/AkbroncoPrime/Bp"]
+    assert escalonado.casar("Akbronco Prime")[0] != ids["/p/BroncoPrime/Bp"]
+    assert rapidas.palabra_de_otro_objeto("Akbronco Prime", "Bronco Prime Plano", {"akbronco", "bronco", "prime"}) == "akbronco"
+    assert rapidas.palabra_de_otro_objeto("Plano DeForma", "Forma", {"forma", "plano"}) is None

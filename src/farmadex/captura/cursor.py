@@ -20,7 +20,7 @@ from ..idiomas import t
 from ..registro_log import obtener
 from . import pantalla
 from .ocr import ErrorMotorOCR, agrupar_bloques, casar_lineas, leer_lineas, resumen_tiempos
-from .recompensas_rapidas import RE_DE_PEGADO, RE_DE_PEGADO_ANTES
+from .recompensas_rapidas import RE_DE_PEGADO, RE_DE_PEGADO_ANTES, palabra_de_otro_objeto, palabras_del_catalogo
 from .reliquias import LectorBase
 
 log = obtener("cursor")
@@ -93,7 +93,8 @@ def _dentro(linea, caja) -> bool:
 RE_ACABA_EN_ENLACE = re.compile(r"(?i)(?:\b(?:de|del|des|du|der|di|da|do|dos|das|von|of)|[:\-])\s*$")
 
 
-def a_medias(reconocido, lineas, alto_region: int, padres: set | None = None) -> bool:
+def a_medias(reconocido, lineas, alto_region: int, padres: set | None = None,
+             palabras: set | None = None) -> bool:
     """Si lo casado puede ser solo un trozo del nombre que senala el raton.
 
     Los nombres largos van en dos lineas ("Plano De Neuropticas De" / "Zephyr Prime").
@@ -105,6 +106,8 @@ def a_medias(reconocido, lineas, alto_region: int, padres: set | None = None) ->
     o de un texto que acaba en preposicion; sin ellos, de todo lo que pueda estar cortado.
     """
     caja = reconocido.caja
+    if palabras and palabra_de_otro_objeto(reconocido.texto_ocr or "", reconocido.nombre or "", palabras):
+        return True  # "Akbronco Prime" no es "Bronco Prime"
     if padres is not None and reconocido.item_id not in padres and not RE_ACABA_EN_ENLACE.search(reconocido.texto_ocr or ""):
         # Un nombre completo de pieza (o de algo sin piezas) no se confunde por faltarle una
         # linea: lo peligroso es el objeto entero ("Caliban Prime") o un trozo que acaba en "De".
@@ -119,7 +122,8 @@ def a_medias(reconocido, lineas, alto_region: int, padres: set | None = None) ->
     return False
 
 
-def elegir_bajo_cursor(capturar, region, juego, punto_de, leer, padres: set | None = None):
+def elegir_bajo_cursor(capturar, region, juego, punto_de, leer, padres: set | None = None,
+                       palabras: set | None = None):
     """Lo que senala el raton: (mejor | None, ordenados, texto_dudoso | None).
 
     `capturar(Region)` da la imagen, `punto_de(Region)` donde esta el raton en ella y
@@ -136,7 +140,7 @@ def elegir_bajo_cursor(capturar, region, juego, punto_de, leer, padres: set | No
         return None, [], None
     encontrados, lineas = leido
     ordenados = alineados(encontrados, punto_de(region), region.ancho)
-    dudoso = ordenados and a_medias(ordenados[0], lineas, region.alto, padres)
+    dudoso = ordenados and a_medias(ordenados[0], lineas, region.alto, padres, palabras)
     if not ordenados or dudoso:
         region_baja = region_mas_baja(region, juego)
         imagen = capturar(region_baja) if region_baja.alto > region.alto else None
@@ -145,7 +149,7 @@ def elegir_bajo_cursor(capturar, region, juego, punto_de, leer, padres: set | No
             otros, lineas_b = leido
             ordenados_b = alineados(otros, punto_de(region_baja), region_baja.ancho)
             log.info("Bajo el cursor, segunda mirada mas abajo: %d encontrados, %d alineados", len(otros), len(ordenados_b))
-            if ordenados_b and not a_medias(ordenados_b[0], lineas_b, region_baja.alto, padres):
+            if ordenados_b and not a_medias(ordenados_b[0], lineas_b, region_baja.alto, padres, palabras):
                 return ordenados_b[0], ordenados_b, None
             if ordenados_b or not ordenados:
                 ordenados, dudoso = ordenados_b, bool(ordenados_b)
@@ -250,7 +254,7 @@ class LectorCursor(LectorBase):
             return imagen
 
         mejor, ordenados, dudoso = elegir_bajo_cursor(capturar, region, juego, punto_del_raton, self._leer_lineas_protegido,
-                                                     self._padres())
+                                                     self._padres(), palabras_del_catalogo(getattr(self, "casador", None)))
         fin = time.perf_counter()
         tiempos = getattr(getattr(self, "motor", None), "tiempos", None) or {}
         log.info("Lectura bajo el cursor en %.0f ms (%s): %s", (fin - inicio) * 1000, resumen_tiempos(tiempos),
