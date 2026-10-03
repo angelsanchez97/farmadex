@@ -46,7 +46,6 @@ from . import pantalla
 log = obtener("vista")
 
 TIC_MS = 50
-PRECALENTAR_MS = 3000  # tras arrancar el vigia: que no compita con el arranque de la ventana
 SONDEO_MS = 50  # franjas de pantalla (build y agrietado)
 QUIETO_S = 0.12  # raton quieto este tiempo = esta mirando algo
 TOLERANCIA_PX = 4
@@ -538,6 +537,7 @@ class VigiaVistas(QObject):
         self.con = None
         self._slugs: dict[int, tuple[str | None, str | None]] = {}
         self.lector_riven = None
+        self._precalentar_pendiente = False  # se pide al arrancar; se hace con el juego delante
         self._temporizador: QTimer | None = None
         self._ocupado = False
         self._hwnd = None
@@ -580,14 +580,16 @@ class VigiaVistas(QObject):
         self._temporizador.start()
         log.info("Vigia de vistas en marcha (precio=%s, agrietados=%s, builds=%s)",
                  self.activo_precio, self.activo_rivens, self.activo_builds)
-        QTimer.singleShot(PRECALENTAR_MS, self._precalentar)
+        self._precalentar_pendiente = True
 
     @Slot()
     def _precalentar(self) -> None:
         """Deja listos el casador, el motor y el lector de agrietados antes de la primera vista.
 
         Si no, la primera tarjeta que se ve en la sesion paga esa carga (casi un segundo en un PC normal).
-        Sin indice todavia no hace nada: se preparara al leer, como siempre."""
+        Se hace en el primer tic con el juego delante: al abrir Farmadex trababa la ventana un cuarto de segundo
+        (el hilo del vigia y el de la ventana se reparten Python). Sin indice todavia no hace nada: se preparara
+        al leer, como siempre."""
         try:
             if self.preparar() and self.activo_rivens:
                 self._lector_riven()
@@ -711,6 +713,10 @@ class VigiaVistas(QObject):
             if not hwnd or pantalla._ventana_activa() != hwnd:
                 self._juego_detras()
                 return
+            if self._precalentar_pendiente:
+                # Una vez, al ver el juego delante (no al abrir Farmadex, que la ventana se notaria).
+                self._precalentar_pendiente = False
+                self._precalentar()
             if not cursor_visible():
                 # En partida (el juego esconde el cursor) no se mira nada de nada.
                 self._juego_detras()

@@ -547,3 +547,24 @@ def test_el_vigia_se_precalienta_antes_de_la_primera_vista(monkeypatch):
     # Un fallo al adelantar trabajo no rompe nada.
     monkeypatch.setattr(v, "preparar", lambda: 1 / 0)
     v._precalentar()
+
+
+def test_el_precalentado_se_hace_una_vez_con_el_juego_delante(monkeypatch):
+    p = _Pantalla(monkeypatch, _fondo(1080, 1920))
+    reloj = [100.0]
+    v = vista.VigiaVistas("rapidocr", precio=False, rivens=True, builds=False)
+    monkeypatch.setattr(vista.time, "monotonic", lambda: reloj[0])
+    hechos = []
+    monkeypatch.setattr(v, "_precalentar", lambda: hechos.append(1))
+    monkeypatch.setattr(v, "_sondear", lambda *a, **k: None)
+    v.tic()
+    assert hechos == []  # sin iniciar (tests, autoprueba a mano) no se adelanta nada
+    v._precalentar_pendiente = True
+    p.delante = False
+    v.tic()
+    assert hechos == []  # el juego detras: todavia no
+    p.delante = True
+    for _ in range(3):
+        reloj[0] += 0.1
+        v.tic()
+    assert hechos == [1]
