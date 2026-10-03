@@ -257,6 +257,7 @@ def completar_huecos(imagen, build, motor, casador: Casador, categorias: dict[in
     ancho, alto = build.ancho, build.alto
     tapados_por_ampliada = recolocar_sueltos(colocacion, build, tipos, ancho, alto, imagen)
     zonas_ayuda = zonas_que_tapan(build.lineas, alto)
+    zonas_ampliadas = zonas_de_tarjetas_ampliadas(build)
     equipados_ids = {r.item_id for r in build.equipados}
     arcanos_ids = {r.item_id for r in build.arcanos}
     nuevos = False
@@ -271,9 +272,9 @@ def completar_huecos(imagen, build, motor, casador: Casador, categorias: dict[in
         if caja is None:
             continue
         dentro = _texto_en(build.lineas, caja)
-        if any(_es_hueco_vacio(l.texto) for l in dentro):
+        if _admite_rotulo_de_vacio(hueco) and any(_es_hueco_vacio(l.texto) for l in dentro):
             continue  # "RANURA DE ARCANO VACIA", "Requires Exilus Adapter": vacio de verdad
-        if hueco.clave in tapados_por_ampliada:
+        if hueco.clave in tapados_por_ampliada or _tapado_por_ayuda(caja, zonas_ampliadas):
             vistos += 1
             build.no_leidos.append(HuecoNoLeido(hueco.clave, hueco.tipo, caja, "", "tapado"))
             log.info("Hueco %s: tapado por una tarjeta ampliada", hueco.clave)
@@ -320,7 +321,7 @@ def completar_huecos(imagen, build, motor, casador: Casador, categorias: dict[in
             nuevos = True
             continue
         texto = texto or " ".join(l.texto for l in dentro)
-        if texto and _es_hueco_vacio(texto):
+        if texto and _admite_rotulo_de_vacio(hueco) and _es_hueco_vacio(texto):
             continue  # lo releido dice que esta vacio ("Wymaga Adapter Exilus")
         if not texto and not parece_ocupado(imagen, caja):
             # Ni una letra y un aspecto entre vacio y tarjeta (un hueco vacio en un video
@@ -352,7 +353,25 @@ def zona_de_tarjeta_ampliada(build, reconocido: Reconocido, zonas=None) -> tuple
     for zx, zy, zw, zh in zonas:
         if abs(zx + zw / 2 - cx) <= DESCENTRADO_DUDA * paso and zy - 1.5 * h <= y <= zy + h and zh >= 2.5 * h:
             return zx, zy, zw, zh
+    # Una tarjeta de descripcion corta ("+110% Status Duration") no llega a bloque de ayuda:
+    # se reconoce por esa linea con cifras y, debajo, el rotulo del tipo en mayusculas
+    # ("MELEE", "WARFRAME", "PISTOLA"), todo centrado con el nombre (captura real de
+    # Lasting Sting ampliada en Harmony).
+    debajo = [l for l in build.lineas
+              if abs(l.x + l.ancho / 2 - cx) <= DESCENTRADO_DUDA * paso and y + h <= l.y + l.alto / 2 <= y + h + 5 * h]
+    frases = [l for l in debajo if RE_LINEA_DE_EFECTO.search(l.texto) and len(l.texto.strip()) >= 6]
+    rotulos = [l for l in debajo if RE_ROTULO_DE_TIPO.match(l.texto.strip())
+               and any(f.y + f.alto / 2 < l.y + l.alto / 2 for f in frases)]
+    if frases and rotulos:
+        partes = [reconocido.caja] + [(l.x, l.y, l.ancho, l.alto) for l in frases + rotulos]
+        x0, y0 = min(p[0] for p in partes), min(p[1] for p in partes)
+        x1, y1 = max(p[0] + p[2] for p in partes), max(p[1] + p[3] for p in partes)
+        return x0, y0, x1 - x0, y1 - y0
     return None
+
+
+RE_LINEA_DE_EFECTO = re.compile(r"[%+]|\d")
+RE_ROTULO_DE_TIPO = re.compile(r"^[A-ZÁÉÍÓÚÄÖÜÇÑ][A-ZÁÉÍÓÚÄÖÜÇÑ\-]{2,15}(?: [A-ZÁÉÍÓÚÄÖÜÇÑ\-]{2,15})?$")
 
 
 # Una tarjeta ampliada bajo el raton lleva el nombre hasta ~1,5 veces mas alto que el de
@@ -563,6 +582,42 @@ def _parece_agrietado(texto: str, build) -> bool:
     nombre = normalizar(getattr(equipo, "nombre", "") or "")
     leido = normalizar(texto)
     return bool(nombre) and leido.startswith(nombre + " ") and len(leido) > len(nombre) + 3
+
+
+def _admite_rotulo_de_vacio(hueco: disposicion.Hueco) -> bool:
+    """Solo los huecos de arcano y de exilus ponen un rotulo cuando estan vacios ("RANURA DE
+    ARCANO VACIA", "Requires Exilus Adapter"). En uno de mod, ese texto es la ayuda de un
+    arcano abierta encima ("Requires Primary Arcane Adapter"), no un hueco vacio: la ayuda
+    de Primary Merciless tapaba el mod3 y se daba por vacio (captura real de Phenmor)."""
+    return hueco.tipo in ("arcano", "exilus")
+
+
+# La tarjeta ampliada, respecto a su descripcion: tan ancha como ella (o casi un paso) y,
+# por encima del nombre, el dibujo, que mide de 0,8 a 1,2 veces su ancho (medido en
+# capturas reales de Gyre Prime, Harmony y Citrine Prime).
+DIBUJO_SOBRE_EL_NOMBRE = 1.0
+ANCHO_MINIMO_AMPLIADA = 0.85
+
+
+def zonas_de_tarjetas_ampliadas(build) -> list[tuple[int, int, int, int]]:
+    """Lo que tapan las tarjetas ampliadas de los mods leidos: su dibujo (por encima del
+    nombre) y su descripcion. Crecen hacia arriba y hacia abajo, asi que tapan el hueco de
+    encima o el de debajo de su columna aunque ahi se vea "algo" que no parece una tarjeta
+    (el dibujo de la ampliada): Equilibrium ampliada en el mod3 de Gyre Prime tapaba el
+    exilus, que se daba por vacio (capturas reales)."""
+    zonas = zonas_de_ayuda(build.lineas, margen=False)
+    paso = _paso_en_pixeles(build)
+    salida = []
+    for r in build.equipados:
+        z = zona_de_tarjeta_ampliada(build, r, zonas)
+        if z is None:
+            continue
+        x, y, w, h = r.caja
+        cx = x + w / 2
+        ancho = max(z[2], ANCHO_MINIMO_AMPLIADA * paso)
+        arriba = y - DIBUJO_SOBRE_EL_NOMBRE * ancho
+        salida.append((int(cx - ancho / 2), int(arriba), int(ancho), int(z[1] + z[3] - arriba)))
+    return salida
 
 
 def _es_hueco_vacio(texto: str) -> bool:

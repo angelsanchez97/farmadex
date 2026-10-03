@@ -379,6 +379,35 @@ def test_la_tarjeta_cogida_con_el_raton_no_se_da_por_puesta():
         assert ("Disciplina de combate (¿puesta?)" in build.sin_identificar) != sigue
 
 
+def test_la_tarjeta_ampliada_tapa_el_hueco_de_encima():
+    # Captura real de Gyre Prime: Equilibrium ampliada en el mod3 crece hacia arriba y tapa
+    # el exilus; su dibujo no parece ni hueco vacio ni tarjeta y se daba por vacio.
+    normales = [Reconocido(f"Mod {n}", n, f"Mod {n}", 100.0, (300 + 240 * n, 700, 120, 22)) for n in range(3)]
+    ampliada = Reconocido("Equilibrium", 9, "Equilibrium", 100.0, (1450, 500, 120, 24))
+    build = B.Build(equipados=normales + [ampliada], ancho=1920, alto=1080)
+    build.lineas = [Leido(r.texto_ocr, *r.caja, 0.9) for r in normales] + _tarjeta_ampliada("Equilibrium", 1510, 500, 24)
+    zonas = H.zonas_de_tarjetas_ampliadas(build)
+    assert len(zonas) == 1
+    x, y, w, h = zonas[0]
+    exilus = (1400, 380, 220, 90)   # el hueco de encima, en la misma columna
+    vecino = (1150, 380, 220, 90)   # el de la columna de al lado
+    assert y < 400 and H._tapado_por_ayuda(exilus, zonas) and not H._tapado_por_ayuda(vecino, zonas)
+    # El rotulo de hueco vacio solo vale en los huecos de arcano y de exilus: en uno de mod es
+    # la ayuda de un arcano abierta encima ("Requires Primary Arcane Adapter").
+    assert H._admite_rotulo_de_vacio(D.Hueco("exilus", "exilus", 2, 0))
+    assert H._admite_rotulo_de_vacio(D.Hueco("arcano1", "arcano", 4, 0))
+    assert not H._admite_rotulo_de_vacio(D.Hueco("mod3", "mod", 2, 1))
+    # Una ampliada de descripcion corta (una linea) se reconoce por el rotulo de su tipo
+    # debajo (captura real de Lasting Sting en Harmony); una tarjeta normal no.
+    corta = Reconocido("Lasting Sting", 8, "Lasting Sting", 100.0, (1107, 603, 137, 26))
+    build = B.Build(equipados=normales + [corta], ancho=1920, alto=1080)
+    build.lineas = [Leido(r.texto_ocr, *r.caja, 0.9) for r in normales + [corta]] + [
+        Leido("+110%StatusDuration", 1078, 628, 198, 22, 0.9), Leido("MELEE", 1146, 658, 58, 21, 0.9),
+        Leido("14", 1024, 689, 23, 15, 0.9)]
+    assert H.zona_de_tarjeta_ampliada(build, corta) is not None
+    assert H.zona_de_tarjeta_ampliada(build, normales[0]) is None
+
+
 def test_un_agrietado_en_un_hueco_se_dice_como_tal():
     build = B.Build(equipo=Reconocido("FALCOR", 1, "Falcor", 100.0, (0, 0, 1, 1)))
     assert H._parece_agrietado("Falcor Para-critanem", build)
